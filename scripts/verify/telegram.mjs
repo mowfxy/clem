@@ -1,7 +1,8 @@
 // Pairing Telegram against the real App, a real in-memory engine and the account Worker's Telegram routes over a fake
 // Telegram API (tests/telegram-fake.ts; nothing leaves the machine), in dark and light: the pair card the organizer posts
 // in the main thread (unpaired, a code with its countdown, Connected as @name), and Settings → Channels → Telegram
-// (paired, the Unpair confirmation, not connected, a code, Pair in chat).
+// (paired, the Unpair confirmation, not connected, a code, Pair in chat); and an organizer message on Telegram is plain
+// text with no buttons.
 // Usage: node scripts/verify/telegram.mjs [out-dir]   (screenshots are tg-*.png)
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -70,6 +71,10 @@ try {
       check(await until(async () => (await card.getAttribute("data-state")) === "paired", 8000), `${theme}: the card updates to paired`);
       check(/Connected as @sara/.test(await card.textContent()) && await card.getByRole("button", { name: "Unpair" }).count() === 1, `${theme}: Connected as @sara, with Unpair`);
       await shot("card-paired", ".tg-card");
+      // What Clem says by itself reaches Telegram as the message itself: plain text, no buttons.
+      const plain = "MATH 301 Quiz 2 is tomorrow at 3:45 pm in D1.003.";
+      const pushed = await o.push("tg-plain:" + theme, "Clem", plain, {}, undefined, { channels: ["telegram"], loud: true });
+      check(pushed === "sent" && tg.said().at(-1)?.text === plain && !tg.said().at(-1)?.reply_markup, `${theme}: an organizer message arrives on Telegram as plain text with no buttons (${pushed}: ${JSON.stringify(tg.said().at(-1))?.slice(0, 160)})`);
 
       // Settings → Channels → Telegram shows the same thing.
       await page.keyboard.press("Control+,");

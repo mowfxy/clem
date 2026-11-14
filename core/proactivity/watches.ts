@@ -15,7 +15,7 @@ export const watchSchema = z.object({
 });
 export type Watch = z.infer<typeof watchSchema>;
 /** The one line every chat's AI is told about watches (byte-stable). */
-export const WATCH_GUIDE = `- {"kinetra":{"action":"clem.watch","text":"<what to tell them about, in their words>","repeat":false}}: when the person asks to be told about something later ("tell me when the midterm room is posted", "ping me if lab 3 moves", "watch for grades in Math"), Clem watches every GUC change for it and tells them once (repeat: every time). Then put the returned clem-card in your reply.`;
+export const WATCH_GUIDE = `- {"kinetra":{"action":"clem.watch","text":"<what to tell them about, in their words>","repeat":false}}: when the person asks to be told about something later ("tell me when the midterm room is posted", "ping me if lab 3 moves", "watch for grades in Math"), Clem watches every GUC change for it and tells them once (repeat: every time). Then confirm in one sentence what you will tell them. {"kinetra":{"action":"clem.watches"}} lists watches; {"kinetra":{"action":"clem.unwatch","id":"<id>"}} stops one.`;
 
 const KIND_WORDS: [RegExp, Watch["kinds"]][] = [
   [/\bgrades?|marks?|results?\b/i, ["new_grade"]],

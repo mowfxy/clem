@@ -2548,16 +2548,8 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
-        // A watch ("tell me when the midterm room is posted"): kept by the organizer, answered with its card.
-        if (tool?.action === "clem.watch" || tool?.action === "clem.unwatch") {
-          const o = (await engineFor(user.id)).organizer;
-          if (tool.action === "clem.unwatch") { await o.stopWatch(String(tool.id || "")); return { ok: true }; }
-          if (typeof tool.text !== "string" || tool.text.trim().length < 3) return { error: "Say what to watch for in \"text\"." };
-          const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string }[];
-          const w = await o.watch(tool.text.slice(0, 300), spaces.map((s) => ({ id: s.id, name: s.name, ...(/^[A-Z]{2,5} ?\d{3}/.test(s.description || "") ? { code: s.description!.match(/^[A-Z]{2,5} ?\d{3}/)![0] } : {}) })), { repeat: tool.repeat === true, channel: tool.push === false ? "app" : "push" });
-          return { ok: true, watch: w, card: "Put this card in your reply so they can stop it:\n```clem-card\n" + JSON.stringify({ type: "watch", id: w.id, text: w.text }) + "\n```" };
-        }
-        // Schedule, reminders and study time (core/proactivity/tools.ts): the organizer runs them.
+        // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
+        // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
         if (isClemAction(tool?.action)) {
           return (await engineFor(user.id)).organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
         }

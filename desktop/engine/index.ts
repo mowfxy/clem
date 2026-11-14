@@ -130,8 +130,10 @@ export class Engine {
   /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card (all local rows; empty
    *  once GUC is disconnected). */
   private async gucFacts() {
-    const [slots, deadlines, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(Date.now()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner), this.links(), this.now()]);
-    return { slots, deadlines, links, now };
+    const [slots, list, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(Date.now()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, this.clock()), this.links(), this.now()]);
+    // Coming up as the hub shows it (exam seats included, as kind "exam" with their hall and seat), but nothing done:
+    // what is over is never handed to the organizer.
+    return { slots, deadlines: list.filter((d) => !d.done), links, now };
   }
 
   private key() { return "guc-" + this.owner; }
@@ -258,10 +260,10 @@ export class Engine {
       // A refused sign-in is the password only when the CMS home page refuses it too, asked once after a short wait.
       // When the home page takes it, the sync is tried once more; a page that still refuses is that page's trouble
       // (the portal or one course), never a reason to ask the person for a new password.
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader }).catch(async (e) => {
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader, now: new Date(this.clock()) }).catch(async (e) => {
         if (asGucError(e).kind !== "auth") throw e;
         if (!(await this.passwordWorks(credentials))) throw e;
-        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader }).catch((again) => {
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader, now: new Date(this.clock()) }).catch((again) => {
           throw asGucError(again).kind === "auth" ? new GucError("unavailable", "sign-in refused past the home page: " + (asGucError(again).detail || "")) : again;
         });
       });
@@ -298,8 +300,10 @@ export class Engine {
 
   // ---------- The GUC hub's reads (src/guc/GucHub.tsx) ----------
   async overview(): Promise<HubOverview> {
-    const [status, counts, term, mail] = await Promise.all([this.status(), read.counts(this.db, this.owner), read.term(this.db, this.owner), read.mail(this.db, this.owner)]);
+    const [status, counts, term, mail, coming] = await Promise.all([this.status(), read.counts(this.db, this.owner), read.term(this.db, this.owner), read.mail(this.db, this.owner), read.deadlines(this.db, this.owner, this.clock())]);
     const today = cairo(this.clock()).ymd, missed = status.stats?.missed;
+    // Coming up's badge: what is still ahead, exam seats included.
+    counts.deadlines = coming.filter((d) => !d.done).length;
     return { connected: status.connected, syncing: status.syncing, username: status.username, lastSync: status.lastSync, error: status.error, ...(status.passwordNeeded ? { passwordNeeded: true } : {}), ...(missed?.length ? { missed } : {}),
       counts: { ...counts, exams: term.exams.filter((e) => !/^\d{4}-\d{2}-\d{2}/.test(e.date) || e.date >= today).length, mail: mail.items.filter((m) => !m.read).length } };
   }
@@ -311,15 +315,19 @@ export class Engine {
   materials(courseKey: string) { return read.materials(this.db, this.owner, courseKey); }
   search(query: string) { return read.search(this.db, this.owner, query); }
   grades(courseKey?: string) { return read.grades(this.db, this.owner, courseKey); }
-  deadlines() { return read.deadlines(this.db, this.owner); }
+  deadlines() { return read.deadlines(this.db, this.owner, this.clock()); }
   /** This term from the portal: midterms, coursework and exam seats (the latest sync's snapshot). */
   term() { return read.term(this.db, this.owner); }
   /** The newest GUC Inbox messages (read-only). */
   mail() { return read.mail(this.db, this.owner); }
-  /** One message's whole text, read from GUC now (never stored): the hub's open message and the AI's guc.mail. */
-  async mailMessage(id: string): Promise<MailMessage> {
+  /** One message's whole text, read from GUC now (never stored): the hub's open message and the AI's guc.mail. The
+   *  hub's open (the `gucMailMessage` request, which passes only the id) marks it read, on Exchange and here at once, so
+   *  it shows read even if GUC refuses; the AI passes `{ markRead: false }` and leaves it as it was. */
+  async mailMessage(id: string, o: { markRead?: boolean } = { markRead: true }): Promise<MailMessage> {
     this.reader ||= new GucClient(await this.signIn(), this.http, this.sleep);
-    return readMessage(this.reader, id);
+    const { marked: _m, ...message } = await readMessage(this.reader, id, { markRead: o.markRead === true });
+    if (o.markRead === true) { await read.markMailOpened(this.db, this.owner, id); this.version++; }
+    return message;
   }
 
   /** One CMS file the person asked for (guc.save), saved to their files under the course's linked subject, and, when
@@ -459,7 +467,7 @@ export class Engine {
   async now(t = Date.now()): Promise<GucNow> {
     const c = cairo(t), key = `${this.version}:${c.ymd}:${c.time.slice(0, 2)}`;
     if (this.nowCache?.key === key) return this.nowCache.value;
-    const [slots, deadlines, counts] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner), read.counts(this.db, this.owner)]);
+    const [slots, deadlines, counts] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, t), read.counts(this.db, this.owner)]);
     const value = gucNow({ slots, deadlines, unread: counts.unread }, t);
     this.nowCache = { key, value };
     return value;

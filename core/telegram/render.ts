@@ -1,5 +1,6 @@
 // Clem's replies and cards as Telegram messages (docs/DESKTOP.md "Telegram"): Telegram HTML (escaped), at most 4096
-// characters each, with tap buttons. A button's tap is stored by the engine under a short token (desktop/engine/
+// characters each. What Clem says by itself is plain text with no buttons (plainMessage); cards in an answer keep the
+// buttons of the flows they belong to (GUC settings, a new lecture, the password). A button's tap is stored by the engine under a short token (desktop/engine/
 // telegram.ts), so Telegram carries only "b:<token>" and the tap comes back through the inbox to the same appliers.
 import { cardsIn, readCard, type ClemCard } from "../guc/cards.ts";
 import { hubPath } from "../guc/hub.ts";
@@ -19,8 +20,6 @@ export type TgMessage = { html: string; buttons: Button[][] };
 export type RenderContext = {
   /** A subject's or project's name. */
   name?: (spaceId?: string) => string | undefined;
-  /** An organizer line's live status (apply, applied, confirm, said…), so only real Undo and Do it are offered. */
-  status?: (key: string) => string | undefined;
 };
 
 /** Text made safe for Telegram's HTML: only &, < and > (and " in attributes) are special. */
@@ -73,24 +72,15 @@ export function cardMessage(card: ClemCard, c: RenderContext = {}): TgMessage | 
   switch (card.type) {
     case "brief":
       return { html: lines([`<b>${esc(card.title)}</b>`, ...card.items.map((i) => `• ${i.time ? esc(i.time) + " " : ""}${esc(i.text)}${i.space ? ` <i>(${esc(i.space)})</i>` : ""}`)]), buttons: [[open()]] };
-    case "organizer": {
-      const buttons: Button[][] = [];
-      for (const l of card.lines) {
-        if (!l.key || buttons.length >= 6) continue;
-        const s = c.status?.(l.key);
-        if (s === "apply" || s === "applied") buttons.push([{ text: `Undo: ${label(l.text)}`, tap: { t: "undo", key: l.key } }]);
-        else if (s === "confirm") buttons.push([{ text: `Do it: ${label(l.text)}`, tap: { t: "confirm", key: l.key } }, { text: "Not now", tap: { t: "dismiss", key: l.key } }]);
-        else if (s === "said" && l.key.startsWith("change:")) buttons.push([{ text: `Mute: ${label(l.text)}`, tap: { t: "mute", key: l.key } }]);
-      }
-      const first = card.lines.find((l) => l.href)?.href;
-      return { html: lines([`<b>${esc(card.title)}</b>`, ...card.lines.map((l) => `• ${l.time ? esc(l.time) + " " : ""}${esc(l.text)}${l.space ? ` <i>(${esc(l.space)})</i>` : ""}`)]), buttons: [...buttons, [open(first)]] };
-    }
+    // Cards Clem used to post by itself (before its messages were plain words): their text, no buttons.
+    case "organizer":
+      return { html: lines([`<b>${esc(card.title)}</b>`, ...card.lines.map((l) => `• ${l.time ? esc(l.time) + " " : ""}${esc(l.text)}${l.space ? ` <i>(${esc(l.space)})</i>` : ""}`)]), buttons: [] };
     case "reminder":
-      return { html: lines([`<b>Reminder:</b> ${esc(card.title)}`, card.space ? `<i>${esc(card.space)}</i>` : "", card.note ? esc(card.note) : ""]), buttons: [[open(card.spaceId ? `#/app/space/${encodeURIComponent(card.spaceId)}` : "#" + hubPath("deadlines"))]] };
+      return { html: lines([`<b>Reminder:</b> ${esc(card.title)}`, card.space ? `<i>${esc(card.space)}</i>` : "", card.note ? esc(card.note) : ""]), buttons: [] };
     case "digest":
       return { html: lines([`<b>${esc(card.title || "Also new")}</b>`, ...card.lines.map((l) => `• ${esc(l.text)}${l.space ? ` <i>(${esc(l.space)})</i>` : ""}`)]), buttons: [] };
     case "watch":
-      return { html: lines([`<b>Watching for you</b>`, esc(card.text), card.detail ? `<i>${esc(card.detail)}</i>` : ""]), buttons: [[{ text: "Stop watching", tap: { t: "stop", id: card.id } }]] };
+      return { html: lines([`<b>Watching for you</b>`, esc(card.text), card.detail ? `<i>${esc(card.detail)}</i>` : ""]), buttons: [] };
     case "routine":
       return { html: lines([`<b>${esc(card.title)}</b>`, esc(card.when), card.does ? `<i>${esc(card.does)}</i>` : ""]), buttons: [] };
     case "lecture": {
@@ -164,5 +154,7 @@ export function replyMessages(content: string, c: RenderContext = {}): TgMessage
 }
 /** A single card from its JSON body (what the notifier hands over). */
 export const cardJson = (body: string, c: RenderContext = {}) => { const card = readCard(body); return card ? cardMessage(card, c) : null; };
+/** Something Clem says by itself: plain text, no title, no buttons (core/proactivity/sweep.ts sweepMessages). */
+export const plainMessage = (text: string): TgMessage => ({ html: esc(cut(text.trim(), CHUNK)), buttons: [] });
 /** A notification without a card: its title and body. */
 export const noticeMessage = (title: string, body: string, buttons: Button[][] = []): TgMessage => ({ html: `<b>${esc(cut(title, 200))}</b>${body ? "\n" + esc(cut(body, 1500)) : ""}`, buttons });

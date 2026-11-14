@@ -1,8 +1,8 @@
-// Clem's organizer against the real App and a real in-memory engine, in dark and light: the morning brief's card in
-// the main thread with blocks the window applied and Undo, the event sweep's card (a cancelled class pushed, the rest
-// and a new lecture as one digest line, no lecture card), Settings → Proactivity (nothing set by hand; Clem asks in chat) and
-// "What Clem did today" with Undo. The engine runs on a fixed Cairo morning; the organizer model is a fixed reply, so
-// each post opens with Clem's own words above its card.
+// Clem's organizer against the real App and a real in-memory engine, in dark and light: the morning brief as one plain
+// message in the main thread with blocks the window applied, the event sweep as plain messages (a cancelled class
+// pushed in Clem's words, the routine post and new lecture named in one closing sentence), no card and no button
+// anywhere, "undo that" by text (clem.undo) put back by the window, Settings → Proactivity (nothing set by hand) and
+// "What Clem did today" with its Undo. The engine runs on a fixed Cairo morning; the organizer model is a fixed reply.
 // Usage: node scripts/verify/proactivity.mjs [out-dir]   (screenshots are pro-*.png)
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -31,8 +31,8 @@ try {
     const h = host(), pushes = [];
     h.workspace = async () => workspace;
     h.notify = (n) => pushes.push(n);
-    const SAID = { morning: "Two things slipped from yesterday, so they get your first free hours today. Nothing else is due.", event: "Today's lab is off, so you have that slot back. The rest can wait." };
-    h.complete = async (r) => (r.user.includes("the morning plan") ? JSON.stringify({ message: SAID.morning }) : JSON.stringify({ message: SAID.event, levels: [{ i: 0, level: "urgent", why: "Today", say: "Today's Circuits lab is cancelled. A make-up will be announced." }, { i: 1, level: "digest", why: "Routine" }, { i: 2, level: "digest", why: "Routine" }] }));
+    const SAID = { morning: "Two things slipped from yesterday, so they get your first free hours today. Nothing else is due.", event: "Today's Circuits lab is cancelled, so you have that slot back." };
+    h.complete = async (r) => (r.user.includes("the morning plan") ? JSON.stringify({ message: SAID.morning }) : JSON.stringify({ message: "Ignored after a change.", levels: [{ i: 0, level: "urgent", why: "Today", say: SAID.event }, { i: 1, level: "digest", why: "Routine" }, { i: 2, level: "digest", why: "Routine" }] }));
     const engine = await Engine.open(OWNER, h, { memory: true, jobs: false, clock: () => clock.t });
     const o = engine.organizer;
     await engine.db.query("insert into guc_courses (owner_id, course_key, course_id, season_id, season, code, name, active) values ($1, '1201:64', 1201, 64, 'Winter 2026', 'ELCT 201', 'Circuits', true)", [OWNER]);
@@ -49,13 +49,16 @@ try {
     await ev("mat:v3", "new_material", "New in ELCT 201 Circuits: Lecture 6 - Thevenin and Norton", "slides · Week 6");
     const later = await o.sweep("event");
     check(later.posted && later.called, `${theme}: the event sweep posts after one short call`);
-    check(pushes.length === 1 && /cancelled/.test(pushes[0].body), `${theme}: only the cancelled lab is pushed now (${pushes.length})`);
-    check(pushes[0]?.open?.chat === "main-fixture" && /^pro-/.test(pushes[0]?.open?.message || ""), `${theme}: the push opens its card in the main thread`);
+    check(pushes.length === 1 && pushes[0].title === "Clem" && pushes[0].body.startsWith(SAID.event), `${theme}: one message, one notification, titled Clem (${pushes.length})`);
+    check(pushes[0]?.open?.chat === "main-fixture" && /^pro-/.test(pushes[0]?.open?.message || ""), `${theme}: the push opens its message in the main thread`);
+    const told = (await o.inbox()).posts.map((p) => p.content);
+    check(told.every((c) => !c.includes("```")), `${theme}: no card in anything Clem posted`);
+    check(told.some((c) => c.startsWith(SAID.event) && /Also up: .*Circuits\./.test(c)), `${theme}: the routine post and new lecture are one closing sentence`);
 
     const call = {
       gucStatus: () => engine.status(), gucOverview: () => engine.overview(), gucNow: () => engine.now(), gucInbox: () => [], gucNewCourses: () => [], gucLinks: () => engine.links(), gucCourses: () => engine.courses(),
-      proInbox: () => o.inbox(), proAck: (r) => o.ack(r), proStatus: (r) => o.statuses(r.keys), proUndo: (r) => o.undo(r.key), proConfirm: (r) => o.confirm(r.key), proDismiss: (r) => o.dismiss(r.key),
-      proMute: (r) => o.mute(r.key), proUnmute: (r) => o.unmute(r.key), proMutes: () => o.mutesList(), proSettings: (r) => (r.set ? o.setSettings(r.set) : o.settings()), proLog: () => o.log(0),
+      proInbox: () => o.inbox(), proAck: (r) => o.ack(r), proStatus: (r) => o.statuses(r.keys), proUndo: (r) => o.undo(r.key),
+      proUnmute: (r) => o.unmute(r.key), proMutes: () => o.mutesList(), proSettings: (r) => (r.set ? o.setSettings(r.set) : o.settings()), proLog: () => o.log(0),
       proWatches: () => o.watches(), proStopWatch: (r) => o.stopWatch(r.id), proPoke: () => 60,
     };
     const fx = await openFixture(browser, {
@@ -74,24 +77,18 @@ try {
       check(box.filter((r) => r.status === "applied" && r.undo).length === 2, `${theme}: the window applied the brief's block and move (${box.map((r) => r.status).join(",")})`);
       await page.locator(".nav-item", { hasText: "Clem" }).click();
       await page.locator(".chat-view.main-thread").waitFor({ timeout: 4000 });
-      const morning = page.locator(".pro-card", { hasText: "planned" }).last();
-      await morning.waitFor({ timeout: 6000 });
-      check(/Thevenin problem set/.test(await morning.textContent()), `${theme}: the brief lists today's block for the overdue task`);
-      check(await morning.getByRole("button", { name: "Undo this" }).count() === 2, `${theme}: each change Clem made has Undo`);
-      await morning.scrollIntoViewIfNeeded();
-      await shot("morning", ".pro-card:has-text('planned')");
-      await morning.getByRole("button", { name: "Undo this" }).last().click();
-      check(await until(async () => (await morning.locator("li[data-status=undone]").count()) === 1), `${theme}: Undo marks the line undone`);
-      await shot("morning-undone", ".pro-card:has-text('planned')");
-
-      const changes = page.locator(".pro-card", { hasText: "Since you last looked" }).last();
-      await changes.waitFor({ timeout: 4000 });
-      check(await page.getByText(SAID.morning).count() === 1 && await page.getByText(SAID.event).count() === 1, `${theme}: Clem's own words stand above each card`);
-      check(/lab is cancelled/i.test(await changes.textContent()), `${theme}: the cancelled lab is said`);
-      check(await changes.locator("li", { hasText: "Also new" }).count() === 1, `${theme}: routine news is one digest line`);
-      check(await changes.getByRole("button", { name: /Don’t tell me about this kind of thing/ }).count() >= 1, `${theme}: a change can be muted`);
-      check(await page.locator(".pro-card", { hasText: "New lecture" }).count() === 0 && await page.getByRole("button", { name: /^Make flashcards from / }).count() === 0, `${theme}: a new lecture gets no card of its own (only when asked)`);
-      await changes.scrollIntoViewIfNeeded();
+      const thread = page.locator(".chat-view.main-thread");
+      await thread.getByText(SAID.morning).waitFor({ timeout: 6000 });
+      check(await thread.getByText(SAID.morning).count() === 1 && await thread.getByText(SAID.event, { exact: false }).count() === 1, `${theme}: each thing Clem said is its own plain message`);
+      check(await thread.locator(".pro-card").count() === 0, `${theme}: no card in the main thread`);
+      check(await thread.getByRole("button", { name: /Undo|Mute|Don’t tell me|Do it|Not now|Stop|Cancel/ }).count() === 0, `${theme}: no Undo, Mute, Do it, Stop or Cancel button`);
+      await thread.getByText(SAID.morning).scrollIntoViewIfNeeded();
+      await shot("morning", ".chat-view.main-thread");
+      // "Undo that": by text, put back by the window through the inbox.
+      const undo = await o.tool({ action: "clem.undo" });
+      check(undo.ok, `${theme}: clem.undo takes back Clem's latest change (${undo.undone || undo.error})`);
+      await page.evaluate(() => window.fireGuc({ phase: "done", done: 1, total: 1, label: "Up to date" }));
+      check(await until(async () => (await o.log(0)).some((r) => r.status === "undone")), `${theme}: the window put it back and acknowledged it`);
       await shot("digest", ".chat-view.main-thread");
 
       // Settings → Proactivity.

@@ -16,7 +16,7 @@ export type CardHandlers = {
   /** GUC cards' actions (src/guc/setup.ts), and the subject of the chat the card is in. */
   guc?: GucActions;
   chatSpace?: string | null;
-  /** The organizer's cards: Undo, one tap, mute, Stop and the lecture buttons (src/proactivity/pro.ts). */
+  /** Older organizer cards: links inside Clem, and the lecture card's buttons (src/proactivity/ProCards.tsx). */
   pro?: ProActions;
 };
 

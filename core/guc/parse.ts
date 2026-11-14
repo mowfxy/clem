@@ -25,7 +25,6 @@ export function stableId(text: string) {
   for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); a = Math.imul(a ^ c, 0x01000193) >>> 0; b = Math.imul(b ^ c, 0x5bd1e995) >>> 0; b = (b ^ (b >>> 15)) >>> 0; }
   return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
 }
-const clean = (s: string) => s.replace(/ /g, " ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
 export type PageState = "ok" | "login" | "unavailable";
@@ -100,10 +99,110 @@ export function parseCourseList(html: string): GucCourse[] {
   return courses;
 }
 
-/** Splits a block of announcements into paragraphs, so a new one is told apart from the ones already there. */
-function paragraphs($: cheerio.CheerioAPI, el: ReturnType<cheerio.CheerioAPI>) {
-  const html = (el.html() || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h\d)>/gi, "\n\n");
-  return cheerio.load(html).text().replace(/ /g, " ").split(/\n[ \t]*\n|\n(?=\s*[-•*]\s)/).map(clean).filter((t) => t.length > 2);
+// ---------- Announcement text: the box read as it is written ----------
+/** Bumped when the announcement reader changes: each course's page is read again once, and what it gives is a baseline
+ *  (no "new announcement" for posts that only changed shape; read state carries over in the engine's save). 2: whole
+ *  posts instead of one per paragraph or table cell. */
+export const ANNOUNCEMENT_VERSION = 2;
+/** A DOM node as domhandler (cheerio's tree) has it; only what the reader needs. */
+type DomNode = { type: string; name?: string; data?: string; children?: DomNode[]; attribs?: Record<string, string> };
+/** What the reader makes of a box: lines (`start`: the first line of a paragraph), table rows, paragraph gaps and rules. */
+type Piece = { kind: "line" | "row" | "gap" | "hr"; text?: string; start?: boolean };
+const BLOCK = new Set(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "section", "article", "header", "footer", "center", "pre", "address", "dl", "dt", "dd", "figure", "figcaption", "form", "fieldset", "main", "nav", "aside", "ul", "ol", "tr", "caption"]);
+const SKIP = new Set(["script", "style", "noscript", "template", "head", "title", "input", "select", "button", "iframe", "object", "img"]);
+const tidy = (s: string) => s.replace(/ /g, " ").replace(/\s+/g, " ").trim();
+/** Rows of this table only (not of a table nested in a cell), through thead/tbody/tfoot. */
+const rowsOf = (t: DomNode) => (t.children || []).flatMap((c) => (c.name === "tr" ? [c] : /^(thead|tbody|tfoot)$/.test(c.name || "") ? (c.children || []).filter((r) => r.name === "tr") : []));
+const cellsOf = (tr: DomNode) => (tr.children || []).filter((c) => c.name === "td" || c.name === "th");
+const span = (n: DomNode, a: string) => Math.min(50, Math.max(1, Number.parseInt(n.attribs?.[a] || "1") || 1));
+
+/** A table as rows of cells with rowspan and colspan spread out, so each row reads complete on its own. A cell spread
+ *  across columns is said once in its row (`dup` marks its copies). */
+function tableGrid(t: DomNode, cell: (n: DomNode) => string) {
+  type Cell = { text: string; dup?: boolean };
+  const grid: Cell[][] = [], carry: (Cell & { left: number })[] = [];
+  for (const tr of rowsOf(t).slice(0, 400)) {
+    const row: Cell[] = [];
+    let col = 0;
+    const take = () => { const c = carry[col]; row[col] = { text: c.text, dup: c.dup }; c.left--; col++; };
+    for (const td of cellsOf(tr)) {
+      while (carry[col]?.left > 0) take();
+      const text = cell(td), wide = span(td, "colspan"), tall = span(td, "rowspan");
+      for (let k = 0; k < wide; k++) { row[col] = { text, dup: k > 0 }; if (tall > 1) carry[col] = { text, dup: k > 0, left: tall - 1 }; col++; }
+    }
+    // Cells still spanning down from rows above, after this row's own cells.
+    while (col < carry.length) { if (carry[col]?.left > 0) take(); else col++; }
+    grid.push(row);
+  }
+  return grid;
+}
+
+/** Walks a box into pieces: block elements end a paragraph, <br> ends a line (two in a row, a paragraph), list items
+ *  are "- item" lines, a table is one line per row with its cells joined by " · ", and a link keeps its address. */
+function readPieces(nodes: DomNode[]): Piece[] {
+  const out: Piece[] = [];
+  let cur = "", start = true;
+  const flush = () => { const t = tidy(cur); cur = ""; if (t) { out.push({ kind: "line", text: t, start }); start = false; } };
+  const gap = () => { flush(); if (out.length && out.at(-1)!.kind !== "gap") out.push({ kind: "gap" }); start = true; };
+  const cellText = (n: DomNode) => tidy(readPieces(n.children || []).filter((p) => p.text).map((p) => p.text).join(" "));
+  const walk = (n: DomNode) => {
+    if (n.type === "text") { cur += (n.data || "").replace(/\s+/g, " "); return; }
+    if (n.type !== "tag") return;
+    const name = (n.name || "").toLowerCase();
+    if (SKIP.has(name)) return;
+    if (name === "br") { if (tidy(cur)) flush(); else gap(); return; }
+    if (name === "hr") { gap(); out.push({ kind: "hr" }); start = true; return; }
+    if (name === "a") {
+      const before = cur.length;
+      (n.children || []).forEach(walk);
+      const text = tidy(cur.slice(before)), href = (n.attribs?.href || "").trim();
+      const url = /^(https?:|mailto:)/i.test(href) ? href : href && !/^(#|javascript:)/i.test(href) ? cmsHref(href) : "";
+      if (url && text && text !== url && text !== url.replace(/^mailto:/i, "")) cur += ` (${url})`;
+      else if (url && !text) cur += url;
+      return;
+    }
+    if (name === "li") { flush(); readPieces(n.children || []).filter((p) => p.text).forEach((p, i) => out.push({ kind: "line", text: i ? p.text : "- " + p.text, start: false })); return; }
+    if (name === "table") {
+      gap();
+      const grid = tableGrid(n, cellText);
+      // A layout table (one cell a row) is a frame, not data: its cells read as paragraphs, so stamps in them still count.
+      if (grid.every((r) => r.filter((c) => c && !c.dup).length <= 1)) for (const tr of rowsOf(n)) for (const td of cellsOf(tr)) { (td.children || []).forEach(walk); gap(); }
+      else for (const r of grid) { const cells = r.filter((c) => c?.text && !c.dup).map((c) => c.text); if (cells.length) out.push({ kind: "row", text: cells.join(" · ") }); }
+      gap();
+      return;
+    }
+    const block = BLOCK.has(name);
+    if (block) gap();
+    (n.children || []).forEach(walk);
+    if (block) gap();
+  };
+  nodes.forEach(walk);
+  flush();
+  return out;
+}
+
+const isSeparator = (t: string) => /^[\s\-_=*~—–]*$/.test(t) && (t.match(/[-_=*~—–]/g) || []).length >= 5;
+/** "[12/9/2026]" starts a post wherever a line starts; "12/9/2026:" and "(12/9/2026)" only where a paragraph starts. */
+const STAMP_BRACKET = /^\[\s*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*\]/;
+const STAMP = /^(\(\s*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*\)|\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*:)/;
+const piecesText = (ps: Piece[]) => ps.map((p) => (p.kind === "gap" ? "" : p.text || "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+/** An element's whole text as written: line breaks, list items and table rows kept (a week's announcement). */
+export const boxText = (el: { toArray(): unknown[] }) => piecesText(readPieces(el.toArray() as DomNode[]).filter((p) => !(p.kind === "line" && isSeparator(p.text!))));
+
+/** The course's announcement box as whole posts, top first. A post ends only at a clear boundary: an <hr>, a line of
+ *  five or more dashes, underscores, equals or stars (dropped), or a paragraph that opens with a date stamp
+ *  ("[4/11/2026]: …", kept in its post). Greetings, sign-offs and tables stay inside their post, so a letter, or a quiz
+ *  notice with its table of rooms, is one announcement, not one per paragraph or cell. */
+export function announcementPosts(el: { toArray(): unknown[] }): string[] {
+  const posts: Piece[][] = [[]];
+  for (const p of readPieces((el.toArray() as DomNode[]).flatMap((n) => n.children || []))) {
+    const here = posts.at(-1)!, has = here.some((x) => x.text);
+    if (p.kind === "hr" || (p.kind === "line" && isSeparator(p.text!))) { if (has) posts.push([]); continue; }
+    if (p.kind === "line" && has && (STAMP_BRACKET.test(p.text!) || (p.start && STAMP.test(p.text!)))) { posts.push([p]); continue; }
+    here.push(p);
+  }
+  return posts.map(piecesText).filter((t) => /[\p{L}\p{N}]/u.test(t));
 }
 
 /** A CMS link as an absolute URL. An href that is already http(s) (a Google Drive link) is kept as it is, and
@@ -130,7 +229,8 @@ export function parseCoursePage(html: string, courseKey: string): GucCoursePage 
   const $ = cheerio.load(html);
   const desc = $(`#${P}desc`);
   if (!desc.length && !$("div.weeksdata").length) throw new SiteChanged("a course page");
-  const announcements: GucAnnouncement[] = paragraphs($, desc).map((text) => ({ id: stableId(courseKey + "|c|" + text), courseKey, scope: "course", text }));
+  // Ids hash the post's text, so an unchanged post keeps its id (and read state); `order` keeps the page's own order.
+  const announcements: GucAnnouncement[] = (desc.length ? announcementPosts(desc) : []).map((text, order) => ({ id: stableId(courseKey + "|c|" + text), courseKey, scope: "course", text, order }));
   const weeks: GucWeek[] = [], materials: GucMaterial[] = [];
   $("div.weeksdata").each((_, el) => {
     const week = $(el), title = oneLine(week.find("h2").first().text()) || "Week";
@@ -139,13 +239,18 @@ export function parseCoursePage(html: string, courseKey: string): GucCoursePage 
     const labelled = (word: RegExp) => {
       const strong = week.find("strong").filter((_, s) => word.test(oneLine($(s).text()))).first();
       if (!strong.length) return undefined;
-      const near = strong.siblings("p").first();
-      return clean((near.length ? near : strong.parent().nextAll("p").first()).text());
+      // The label's own box minus the label, so a table or list after the <p> is kept. A box holding other labels or
+      // files is the week's whole body: then only the <p> beside the label; with nothing beside it, the <p> after its box.
+      const box = strong.parent();
+      if (box.children("strong").length > 1 || box.find(".card-body").length) return boxText(strong.siblings("p").first());
+      const own = box.clone();
+      own.children("strong").first().remove();
+      return boxText(own.children().length || own.text().trim() ? own : box.nextAll("p").first());
     };
     const body = week.children().eq(1).children();
-    const part = (i: number) => { const el = body.eq(i), p = el.find("p"); return clean((p.length ? p : el).text()); };
+    const part = (i: number) => boxText(body.eq(i));
     const announcement = labelled(/^announcement/i) ?? part(0), description = labelled(/^description/i) ?? part(1);
-    if (announcement) announcements.push({ id: stableId(courseKey + "|w|" + title + "|" + announcement), courseKey, scope: "week", week: title, text: announcement });
+    if (announcement && /[\p{L}\p{N}]/u.test(announcement)) announcements.push({ id: stableId(courseKey + "|w|" + title + "|" + announcement), courseKey, scope: "week", week: title, text: announcement, order: announcements.length });
     const items: GucMaterial[] = [];
     week.find(".card-body").each((_, card) => {
       const c = $(card), box = c.find("[id^=content]").first(), head = box.children().first();

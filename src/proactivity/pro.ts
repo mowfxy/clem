@@ -1,12 +1,12 @@
 // The window's side of Clem's organizer (desktop/engine/organizer.ts): it applies what the organizer decided to the
-// workspace (core/proactivity/actions.ts), posts its cards in the main thread, and answers Undo, one-tap offers,
-// "Don't tell me about this" and Stop on watches. Line statuses are cached here so every card reads them live.
+// workspace (core/proactivity/actions.ts), posts its messages in the main thread, and puts back what the person asked
+// to undo (in words, clem.undo; or from Settings → Proactivity's log). Nothing here raises a toast or a dialog: what
+// Clem says by itself is plain messages, and the person answers in words. Line statuses are cached here for old cards.
 import { useEffect, useState } from "react";
 import { applyAction, proAction, undoAction, type Undo, type Workspace } from "../../core/proactivity/actions";
 import { desktop } from "../desktop/bridge";
 import type { State } from "../store";
 
-const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 const ask = <T,>(request: Record<string, unknown>) => desktop!.invoke(request as never) as Promise<T>;
 
 // ---------- Live line statuses ----------
@@ -36,7 +36,6 @@ export const refreshStatuses = () => { const keys = [...statuses.keys()]; status
 export type ProDeps = {
   state: () => State;
   patch: (fn: (s: State) => State) => void;
-  toast: (message: string) => void;
 };
 const pick = (s: State): Workspace => ({ plans: s.plans, files: s.files, spaces: s.spaces, memory: s.memory, automations: s.automations });
 const put = (s: State, w: Workspace): State => ({ ...s, plans: w.plans, files: w.files, memory: w.memory, automations: w.automations });
@@ -53,44 +52,43 @@ export function createPro(deps: ProDeps) {
     setStatus(key, r.undo ? "applied" : "done");
     return { key, ok: true, undo: r.undo };
   }
-  /** What the organizer decided since last time: its actions applied, its cards posted in the main thread. */
+  /** What the organizer decided since last time: its actions applied, what the person undid in words put back, its
+   *  messages posted in the main thread. */
   async function pull() {
     if (busy || !desktop) return;
     busy = true;
     try {
-      const inbox = await ask<{ posts: { id: string; content: string; at: number }[]; apply: { key: string; action: unknown }[] }>({ action: "proInbox" });
+      const inbox = await ask<{ posts: { id: string; content: string; at: number }[]; apply: { key: string; action: unknown }[]; revert?: { key: string; undo: Undo }[] }>({ action: "proInbox" });
       if (!Array.isArray(inbox?.apply) || !Array.isArray(inbox.posts)) return;
       const results = inbox.apply.map((a) => apply(a.key, a.action));
+      const reverted = (inbox.revert || []).map((r) => { deps.patch((s) => put(s, undoAction(pick(s), r.undo))); setStatus(r.key, "undone"); return r.key; });
       const main = deps.state().chats.find((c) => c.kind === "main");
       const posts = main ? inbox.posts : [];
       if (posts.length) deps.patch((s) => ({ ...s, chats: s.chats.map((c) => c.kind !== "main" ? c : { ...c, updated: Date.now(), messages: [...c.messages, ...posts.filter((p) => !c.messages.some((m) => m.id === p.id)).map((p) => ({ id: p.id, role: "assistant" as const, content: p.content, at: p.at }))] }) }));
-      if (results.length || posts.length) await ask({ action: "proAck", posts: posts.map((p) => p.id), results });
+      if (results.length || posts.length || reverted.length) await ask({ action: "proAck", posts: posts.map((p) => p.id), results, ...(reverted.length ? { reverted } : {}) });
       if (posts.length) refreshStatuses();
     } catch { /* the engine isn't open yet: next time */ } finally { busy = false; }
   }
+  /** Undo from Settings → Proactivity's log (or a button on an older Telegram message): false when it can't any more. */
   async function undo(key: string) {
     try {
       const u = await ask<Undo | null>({ action: "proUndo", key });
-      if (!u) { deps.toast("That can’t be undone any more."); return false; }
+      if (!u) return false;
       deps.patch((s) => put(s, undoAction(pick(s), u)));
       setStatus(key, "undone");
       return true;
-    } catch (e) { deps.toast(clean(e)); return false; }
+    } catch { return false; }
   }
+  /** "Do it" on an older Telegram message that still has the button. */
   async function confirm(key: string) {
     try {
       const got = await ask<{ key: string; action: unknown } | null>({ action: "proConfirm", key });
       if (!got) return false;
       const r = apply(got.key, got.action);
       await ask({ action: "proAck", results: [r] });
-      if (!r.ok) deps.toast(r.error || "That couldn’t be done.");
       return r.ok;
-    } catch (e) { deps.toast(clean(e)); return false; }
+    } catch { return false; }
   }
-  async function dismiss(key: string) { try { await ask({ action: "proDismiss", key }); setStatus(key, "dismissed"); } catch (e) { deps.toast(clean(e)); } }
-  async function mute(key: string) { try { await ask({ action: "proMute", key }); setStatus(key, "muted"); deps.toast("Got it. Clem won’t tell you about this kind of thing."); } catch (e) { deps.toast(clean(e)); } }
-  async function stopWatch(id: string) { try { await ask({ action: "proStopWatch", id }); setStatus("watch:" + id, "stopped"); } catch (e) { deps.toast(clean(e)); } }
-  async function stopRoutine(id: string) { try { await ask({ action: "proStopRoutine", id }); setStatus("routine:" + id, "stopped"); } catch (e) { deps.toast(clean(e)); } }
-  return { pull, undo, confirm, dismiss, mute, stopWatch, stopRoutine };
+  return { pull, undo, confirm };
 }
 export type Pro = ReturnType<typeof createPro>;

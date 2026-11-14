@@ -1,14 +1,14 @@
 // Telegram's relay in the engine (docs/DESKTOP.md "Telegram"). Host-agnostic: the account service comes in through
 // EngineHost.account (desktop: the signed-in person's Supabase token; a VPS: its own), answers through
 // EngineHost.converse (desktop: the window's main thread, the same agent, tools and hand-off as typing there).
-// It pulls what the paired chat sent from the Worker's inbox, answers it (typing while it works), sends Clem's cards
-// with tap buttons, runs taps through the same appliers as the window's buttons, sends CMS files, and is the
-// notifier's Telegram channel. No electron here.
+// It pulls what the paired chat sent from the Worker's inbox, answers it (typing while it works), sends CMS files, and
+// is the notifier's Telegram channel: what Clem says by itself arrives as plain messages with no buttons, and the
+// person steers it in words. Taps on buttons of older messages still run through the same appliers. No electron here.
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { TG_FILE_LIMIT } from "../../core/telegram/pairing.ts";
 import { cardsIn } from "../../core/guc/cards.ts";
-import { noticeMessage, replyMessages, type Button, type Tap, type TgMessage } from "../../core/telegram/render.ts";
+import { noticeMessage, plainMessage, replyMessages, type Button, type Tap, type TgMessage } from "../../core/telegram/render.ts";
 import type { Db } from "./db.ts";
 import type { EngineHost, TelegramTurn } from "./host.ts";
 import type { Organizer } from "./organizer.ts";
@@ -173,17 +173,16 @@ export class TelegramRelay {
     for (const s of ws?.spaces || []) this.names.set(s.id, s.name);
     return this.names;
   }
-  /** Clem's answer (Markdown with clem-cards): its text, then each card with its buttons. */
+  /** Clem's answer (Markdown with clem-cards): its text, then each card (organizer cards as text, without buttons). */
   async reply(content: string) {
     const names = await this.context();
-    const keys = cardsIn(content).flatMap((c) => (c.type === "organizer" ? c.lines.flatMap((l) => (l.key ? [l.key] : [])) : []));
-    const statuses: Record<string, string> = keys.length ? await this.organizer.statuses(keys) : {};
-    await this.send(replyMessages(content, { name: (id) => (id ? names.get(id) : undefined), status: (k) => statuses[k] }));
+    await this.send(replyMessages(content, { name: (id) => (id ? names.get(id) : undefined) }));
   }
-  /** The notifier's Telegram channel: the cards when there are any, else the notice with Open in Clem. */
+  /** The notifier's Telegram channel. What Clem says by itself is a plain message, as in the app: its words, no
+   *  buttons (the person answers in words). Only the password notice, a security flow, keeps its card. */
   async deliver(n: { title: string; body: string; cards?: string; open?: { route?: string; chat?: string; message?: string } }) {
-    if (n.cards && cardsIn(n.cards).length) return this.reply(n.cards);
-    return this.send([noticeMessage(n.title, n.body, n.open ? [[{ text: "Open in Clem", tap: { t: "open", ...n.open } }]] : [])]);
+    if (n.cards && cardsIn(n.cards).some((c) => c.type === "guc_password")) return this.reply(n.cards);
+    return this.send([plainMessage(n.title === "Clem" || !n.title ? n.body : `${n.title}: ${n.body}`)]);
   }
   private async upload(name: string, type: string, bytes: Uint8Array, caption?: string) {
     const form = new FormData();

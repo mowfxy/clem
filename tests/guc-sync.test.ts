@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { portalUrls, urls } from "../core/guc/parse.ts";
+import * as cheerio from "cheerio";
+import { ANNOUNCEMENT_VERSION, portalUrls, urls } from "../core/guc/parse.ts";
 import { EWS_URL } from "../core/guc/ews.ts";
 import { diffSnapshots } from "../core/guc/diff.ts";
 import { emptySnapshot } from "../core/guc/types.ts";
@@ -64,9 +65,9 @@ test("a full sync reads every current course's page (files listed, none download
     status = await engine.sync();
     assert.equal(guc.log.filter((r) => r.url.includes("CourseViewStn")).length, 3);
     const kinds = (await engine.db.query<{ kind: string }>("select kind from guc_events order by kind")).map((e) => e.kind);
-    // The edited announcement (its date moved) reads as new, beside the new milestone paragraph.
-    assert.deepEqual(kinds, ["deadline_added", "deadline_changed", "exam_posted", "new_announcement", "new_announcement", "new_grade", "new_grade", "new_grade", "new_mail", "new_material", "schedule_changed"], kinds.join());
-    assert.equal(status.stats!.events, 11);
+    // The edited post (its date moved, a milestone paragraph added under it) is one announcement, not one per paragraph.
+    assert.deepEqual(kinds, ["deadline_added", "deadline_changed", "exam_posted", "new_announcement", "new_grade", "new_grade", "new_grade", "new_mail", "new_material", "schedule_changed"], kinds.join());
+    assert.equal(status.stats!.events, 10);
     const mail = await engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'new_mail'");
     assert.match(mail[0].title, /Exams Office: Midterm hall change/);
     assert.match(mail[0].detail, /moved to H14/, "a 300-character preview of the new message only");
@@ -76,7 +77,7 @@ test("a full sync reads every current course's page (files listed, none download
     guc.log.length = 0;
     status = await engine.sync();
     assert.equal(status.stats!.events, 0);
-    assert.equal((await engine.db.query("select * from guc_events")).length, 11);
+    assert.equal((await engine.db.query("select * from guc_events")).length, 10);
     assert.equal((await engine.db.query("select * from guc_snapshots")).length, 4, "the latest snapshots are kept, older ones pruned at 5");
   } finally { await engine.close(); }
 });
@@ -152,5 +153,74 @@ test("with a model, the AI reads each course's posts once, with the schedule, an
     const before = asked.length;
     await engine.sync();
     assert.equal(asked.length, before, "nothing new on CMS: the AI isn't asked again");
+  } finally { await engine.close(); }
+});
+
+// ---------- Whole announcements through the engine ----------
+const box = (id: string) => cheerio.load(fixture("cms-announcements"))("#" + id).html() || "";
+/** The fixture course page with its announcement box replaced. */
+const withBox = (html: string) => fixture("cms-course").replace(/(<div id="ContentPlaceHolderright_ContentPlaceHoldercontent_desc">)[\s\S]*?(\n {6}<\/div>)/, `$1${html}$2`);
+
+test("a post that gains a table row is one Updated announcement; posts keep their page order through the database", async () => {
+  const pages = site(), guc = fakeGuc(pages), h = host();
+  pages[urls.course(1201, 64)] = withBox(box("math"));
+  const engine = await Engine.open("owner-ann", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  try {
+    await engine.connect("student.name", "secret");
+    const first = await engine.announcements({ courseKey: "1201:64" });
+    assert.deepEqual(first.items.map((a) => a.text.slice(0, 12)), ["The Fourth i", "Quiz 2 will ", "Office hours", "Quiz 1 will "], "page order, though all were first seen together");
+    assert.match(first.items[1].text, /\nMonday 16\.11 · 3:45 P\.M\. · T29 - T30 · D1\.003\n/);
+    await engine.markAllRead();
+
+    pages[urls.course(1201, 64)] = withBox(box("math").replace("</tbody>", "<tr><td>Tuesday 17.11</td><td>4:30 P.M.</td><td>T43 - T44</td><td>Exam Hall 2</td></tr></tbody>"));
+    await engine.sync();
+    const events = await engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'new_announcement'");
+    assert.deepEqual(events.map((e) => e.title), ["Updated announcement in CSEN 701"], "one event, not one per row");
+    assert.match(events[0].detail, /^Tuesday 17\.11 · 4:30 P\.M\. · T43 - T44 · Exam Hall 2\nQuiz 2 will be held/);
+    const after = await engine.announcements({ courseKey: "1201:64" });
+    assert.equal(after.items.length, 4);
+    assert.deepEqual(after.items.filter((a) => !a.read).map((a) => a.text.slice(0, 12)), ["Quiz 2 will "], "the changed post is unread again; the rest stay read");
+  } finally { await engine.close(); }
+});
+
+test("the new announcement reader takes over silently: whole posts, read state and first-seen carried over, no events", async () => {
+  const pages = site(), guc = fakeGuc(pages), h = host();
+  pages[urls.course(1201, 64)] = withBox(box("math"));
+  const engine = await Engine.open("owner-switch", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  try {
+    await engine.connect("student.name", "secret");
+    // What an older reader left: one row per paragraph or table cell, all read, seen over the past weeks, and the
+    // snapshot it wrote (its fragments, no announcement reader version, no deadlines read from whole posts).
+    const posts = await engine.db.query<{ course_key: string; scope: string; week: string | null; body: string }>("select course_key, scope, week, body from guc_announcements where owner_id = 'owner-switch'");
+    const fragments = posts.flatMap((p) => p.body.split(/\n| · /).map((t) => t.trim()).filter(Boolean).map((text) => ({ ...p, text })));
+    const unique = [...new Map(fragments.map((f) => [f.course_key + "|" + f.scope + "|" + f.text, f])).values()];
+    await engine.db.query("delete from guc_announcements where owner_id = 'owner-switch'");
+    for (const [i, f] of unique.entries()) await engine.db.query("insert into guc_announcements (owner_id, announcement_id, course_key, scope, week, body, first_seen, read_at) values ('owner-switch', $1, $2, $3, $4, $5, $6, $7)",
+      ["old" + i, f.course_key, f.scope, f.week, f.text, new Date(Date.parse("2026-10-01T08:00:00Z") + i * 60_000), f.text === "T29 - T30" ? null : new Date("2026-10-20T08:00:00Z")]);
+    const [snap] = await engine.db.query<{ id: number; data: any; seen: any }>("select id, data, seen from guc_snapshots where owner_id = 'owner-switch' order by id desc limit 1");
+    const { announcements: _v, ...oldSeen } = snap.seen;
+    await engine.db.query("update guc_snapshots set data = $2, seen = $3 where id = $1", [snap.id, { ...snap.data, deadlines: [], announcements: unique.map((f, i) => ({ id: "old" + i, courseKey: f.course_key, scope: f.scope, ...(f.week ? { week: f.week } : {}), text: f.text })) }, oldSeen]);
+    await engine.db.query("delete from guc_deadlines where owner_id = 'owner-switch'");
+
+    const before = (await engine.db.query("select * from guc_events")).length;
+    await engine.sync();
+    const kinds = (await engine.db.query<{ kind: string }>("select kind from guc_events")).slice(before).map((e) => e.kind);
+    assert.deepEqual(kinds.filter((k) => /announcement|deadline/.test(k)), [], "no announcement and no deadline is news because of the switch");
+    const rows = await engine.db.query<{ course_key: string; body: string; read_at: Date | null; first_seen: Date }>("select course_key, body, read_at, first_seen from guc_announcements where owner_id = 'owner-switch' order by course_key, position");
+    assert.equal(rows.length, posts.length, "whole posts again, not fragments");
+    assert.ok(rows.filter((r) => r.course_key !== "1201:64").every((r) => r.read_at), "a course with nothing unread: every post read");
+    const mine = rows.filter((r) => r.course_key === "1201:64");
+    assert.deepEqual(mine.map((r) => [r.body.slice(0, 12), !!r.read_at]), [["The Fourth i", true], ["Quiz 2 will ", false], ["Office hours", true], ["Quiz 1 will ", true]], "only the post holding the unread fragment is unread");
+    const quiz = unique.findIndex((f) => f.course_key === "1201:64" && f.text.startsWith("Quiz 2 will"));
+    assert.equal(new Date(mine[1].first_seen).toISOString(), new Date(Date.parse("2026-10-01T08:00:00Z") + quiz * 60_000).toISOString(), "first seen when its earliest fragment was");
+    assert.equal((await engine.overview()).counts.unread, 1);
+    assert.ok((await engine.deadlines()).length > 0, "the deadline reader still read the posts");
+    const [latest] = await engine.db.query<{ seen: any }>("select seen from guc_snapshots where owner_id = 'owner-switch' order by id desc limit 1");
+    assert.equal(latest.seen.announcements.v, ANNOUNCEMENT_VERSION);
+
+    // From now on the reader is the same: a new post is news again.
+    pages[urls.course(1201, 64)] = withBox(box("math") + "<hr><p>Lab 4 is cancelled this week.</p>");
+    await engine.sync();
+    assert.deepEqual((await engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'new_announcement'")).map((e) => [e.title, e.detail]), [["New announcement in CSEN 701", "Lab 4 is cancelled this week."]]);
   } finally { await engine.close(); }
 });

@@ -1,6 +1,7 @@
 // The GUC hub's data: answers from the engine (desktop/engine/guc-read.ts) through src/guc/swr.ts, kept per owner in
 // memory and in IndexedDB, so a tab draws its last copy on the first frame and refreshes behind it. A finished sync
-// (onGuc "done") refreshes everything on screen.
+// (onGuc "done"), and its first step being saved (onGuc "saved": news, files, grades and mail, before deadlines are read),
+// refresh everything on screen.
 import { useEffect, useSyncExternalStore } from "react";
 import { get, set } from "idb-keyval";
 import type { DesktopRequest } from "../../desktop/contracts";
@@ -24,7 +25,7 @@ let listening = false;
 function listen() {
   if (listening || !desktop?.onGuc) return;
   listening = true;
-  desktop.onGuc((p) => { if (p.phase === "done") void gucCache.revalidateAll((k) => k.startsWith(storageNamespace() + "|")); });
+  desktop.onGuc((p) => { if (p.phase === "done" || p.phase === "saved") void gucCache.revalidateAll((k) => k.startsWith(storageNamespace() + "|")); });
 }
 
 const none = () => () => {};

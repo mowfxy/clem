@@ -85,7 +85,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   // Clem's organizer (desktop/engine/organizer.ts).
   z.object({ action: z.literal("proSettings"), set: proPatch.optional() }),
   z.object({ action: z.literal("proInbox") }),
-  z.object({ action: z.literal("proAck"), posts: z.array(z.string().regex(/^pro-[\w-]{1,60}$/)).max(100).optional(), results: z.array(z.object({ key: proKey, ok: z.boolean(), undo: z.any().optional(), error: z.string().max(300).optional() })).max(200).optional() }),
+  z.object({ action: z.literal("proAck"), posts: z.array(z.string().regex(/^pro-[\w-]{1,60}$/)).max(100).optional(), results: z.array(z.object({ key: proKey, ok: z.boolean(), undo: z.any().optional(), error: z.string().max(300).optional() })).max(200).optional(), reverted: z.array(proKey).max(100).optional() }),
   z.object({ action: z.literal("proLog") }),
   z.object({ action: z.literal("proStatus"), keys: z.array(proKey).min(1).max(100) }),
   z.object({ action: z.literal("proUndo"), key: proKey }),

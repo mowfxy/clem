@@ -60,13 +60,16 @@ export const checkGrade = (o: { mid701?: string; quiz701?: string } = {}): FakeP
 };
 export const examSeats = (hall = "C7.301") => fixture("exam-seats").replace("{{HALL}}", hall);
 
-/** A fake Exchange: FindItem lists `inbox` (oldest first), GetItem answers bodies; a write operation is a fault. */
-export function fakeEws(inbox: { id: string; subject: string; from: string; at: string; body?: string; read?: boolean }[]): FakePage {
+/** A fake Exchange: FindItem lists `inbox` (oldest first), GetItem answers bodies, UpdateItem marks a message read (and
+ *  is logged in `o.updates`; `o.refuse` answers it with an error, as a server that won't take the change); any other
+ *  write is a fault. */
+export function fakeEws(inbox: { id: string; subject: string; from: string; at: string; body?: string; read?: boolean }[], o: { refuse?: boolean; updates?: string[] } = {}): FakePage {
   return (r) => {
     const op = /messages\/(\w+)$/.exec(r.headers?.SOAPAction || "")?.[1];
     const env = (b: string) => `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>${b}</s:Body></s:Envelope>`;
     if (op === "FindItem") {
-      const offset = Number(/Offset="(\d+)"/.exec(r.body || "")?.[1] || 0), page = inbox.slice(offset, offset + 100), last = offset + page.length >= inbox.length;
+      const order = /Order="Descending"/.test(r.body || "") ? [...inbox].reverse() : inbox;
+      const offset = Number(/Offset="(\d+)"/.exec(r.body || "")?.[1] || 0), page = order.slice(offset, offset + 100), last = offset + page.length >= inbox.length;
       return env(`<m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages><m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode>
         <m:RootFolder IndexedPagingOffset="${offset + page.length}" TotalItemsInView="${inbox.length}" IncludesLastItemInRange="${last}"><t:Items>${page.map((m) => `<t:Message><t:ItemId Id="${m.id}" ChangeKey="x"/><t:Subject>${m.subject}</t:Subject><t:DateTimeReceived>${m.at}</t:DateTimeReceived><t:HasAttachments>false</t:HasAttachments><t:From><t:Mailbox><t:Name>${m.from}</t:Name><t:EmailAddress>${m.from.toLowerCase().replace(/\s+/g, ".")}@guc.edu.eg</t:EmailAddress></t:Mailbox></t:From><t:IsRead>${m.read ? "true" : "false"}</t:IsRead></t:Message>`).join("")}</t:Items></m:RootFolder>
         </m:FindItemResponseMessage></m:ResponseMessages></m:FindItemResponse>`);
@@ -74,6 +77,13 @@ export function fakeEws(inbox: { id: string; subject: string; from: string; at: 
     if (op === "GetItem") {
       const ids = [...(r.body || "").matchAll(/ItemId Id="([^"]+)"/g)].map((m) => m[1]);
       return env(`<m:GetItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"><m:ResponseMessages>${ids.map((id) => `<m:GetItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:Items><t:Message><t:ItemId Id="${id}" ChangeKey="x"/><t:Body BodyType="Text">${inbox.find((m) => m.id === id)?.body || ""}</t:Body></t:Message></m:Items></m:GetItemResponseMessage>`).join("")}</m:ResponseMessages></m:GetItemResponse>`);
+    }
+    if (op === "UpdateItem") {
+      o.updates?.push(r.body || "");
+      const id = /ItemId Id="([^"]+)"/.exec(r.body || "")?.[1], m = inbox.find((x) => x.id === id);
+      const code = o.refuse ? "ErrorAccessDenied" : m ? "NoError" : "ErrorItemNotFound";
+      if (code === "NoError" && /<t:IsRead>true<\/t:IsRead>/.test(r.body || "")) m!.read = true;
+      return env(`<m:UpdateItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages"><m:ResponseMessages><m:UpdateItemResponseMessage ResponseClass="${code === "NoError" ? "Success" : "Error"}"><m:ResponseCode>${code}</m:ResponseCode></m:UpdateItemResponseMessage></m:ResponseMessages></m:UpdateItemResponse>`);
     }
     return env(`<s:Fault><faultstring>not allowed</faultstring></s:Fault>`);
   };

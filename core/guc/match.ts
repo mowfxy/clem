@@ -81,3 +81,27 @@ export function matchSubject<T extends MatchSubject>(course: MatchCourse, subjec
   if (byCode) return { best: { item: byCode, score: 1 }, confidence: 1, sure: true, alternatives: [] };
   return rank(course.name, subjects, (s) => ({ code: normCode(s.name + " " + (s.description || "")), name: s.name }));
 }
+
+/** The course a schedule slot is. The portal's schedule cell names the course ("Mathematics III", "Physics III (t)"),
+ *  not its code, so each slot is matched to the course list: a code in the cell first; then the same name (case,
+ *  spacing, punctuation, "&"/"and" and roman numerals aside); then the same name without its bracket ("(t)", "(A2)"),
+ *  where a "(t)" or "(p)" picks between two courses of that name by the code's last letter (PHYST / PHYSP); then
+ *  `rank` only when it is sure. The newest active term wins; no course: undefined. */
+export function slotCourse<T extends MatchCourse>(cell: string, courses: T[]): T | undefined {
+  const active = courses.filter((c) => c.active !== false), latest = Math.max(0, ...active.map((c) => c.seasonId || 0));
+  const pool = active.filter((c) => (c.seasonId || 0) === latest);
+  const code = normCode(cell);
+  if (code) return pool.find((c) => codeKey(c.code) === codeKey(code)) || courses.find((c) => codeKey(c.code) === codeKey(code));
+  const flat = (s: string) => words(s).join(" "), bare = (s: string) => flat(s.replace(/\([^)]*\)/g, " "));
+  const exact = pool.filter((c) => flat(c.name) === flat(cell));
+  if (exact.length === 1) return exact[0];
+  const same = pool.filter((c) => bare(c.name) === bare(cell));
+  if (same.length === 1) return same[0];
+  if (same.length > 1) {
+    const tag = /\(\s*([a-z])\s*\)/i.exec(cell)?.[1]?.toUpperCase();
+    const byTag = tag ? same.filter((c) => new RegExp(`^[A-Z]+${tag}\\s`, "i").test(c.code)) : [];
+    return byTag.length === 1 ? byTag[0] : undefined;
+  }
+  const r = rank(cell.replace(/\([^)]*\)/g, " "), pool, (c) => c);
+  return r.sure ? r.best?.item : undefined;
+}
