@@ -1078,11 +1078,11 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const gucOn = () => gucCache.get<HubOverview>(gucKey({ action: "gucOverview" }))?.data?.connected;
   // Opening a setup thread posts what a restart left unasked.
   useEffect(() => { if (desktop && activeChat?.setup && activeChat.spaceId) void gucSetup.resume(activeChat.spaceId); }, [activeChat?.id]);
-  // A sync that found courses of a new term no subject has: one card in the main thread. What checks saved and found:
-  // files into their subject and cards into its Setup chat.
+  // After a sync: a new term's courses are linked to the subjects that are clearly theirs, the files checks saved join
+  // their subject's Files, and the organizer's posts land in the main thread. Nothing else is written into a chat.
   useEffect(() => {
     if (!ready || !desktop) return;
-    const post = () => { void gucSetup.postNewCourses(mainThreadOf(stateRef.current.chats)?.id); void gucSetup.applyInbox(); void pro.pull(); };
+    const post = () => { void gucSetup.linkNewCourses(); void gucSetup.applyInbox(); void pro.pull(); };
     post();
     return desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
   }, [ready]);
@@ -3637,11 +3637,12 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 if (files.length) upload(files, false, { spaceId: s.id, folderId: null });
                 setModal(null);
                 setSpacePreset(null);
-                // A new subject with GUC connected starts its setup thread; otherwise its page opens.
+                // The subject's page opens. With GUC connected Clem links its CMS course behind it when it can tell
+                // which one it is; nothing else opens and nothing is asked about what to keep.
+                openSpace(s.id);
                 const guc = s.kind === "subject" && desktop ? gucOn() : false;
-                if (guc) void gucSetup.begin(s.id);
-                else openSpace(s.id);
-                if (guc === undefined) void desktop?.invoke({ action: "gucStatus" }).then((g) => { if (g.connected) void gucSetup.begin(s.id); }).catch(() => {});
+                if (guc) void gucSetup.begin(s.id, { quiet: true });
+                if (guc === undefined) void desktop?.invoke({ action: "gucStatus" }).then((g) => { if (g.connected) void gucSetup.begin(s.id, { quiet: true }); }).catch(() => {});
               }}/>
           ) : modal === "skill-detail" && editingSkill ? (
             <><IconPicker value={editingSkill.icon} onChange={icon=>{setEditingSkill({...editingSkill,icon});patch(s=>({...s,skills:s.skills.map(x=>x.id===editingSkill.id?{...x,icon}:x)}));}}/>

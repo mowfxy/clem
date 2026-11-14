@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Mohr's circle for plane stress",
-  "caption": "σₓ = 80 MPa, σᵧ = −40 MPa, τₓᵧ = 30 MPa; point X = (σₓ, τₓᵧ), Y = (σᵧ, −τₓᵧ)",
+  "caption": "σ_x = 80 MPa, σ_y = −40 MPa, τ_{xy} = 30 MPa; point X = (σ_x, τ_{xy}), Y = (σ_y, −τ_{xy})",
   "canvas": { "width": 900, "height": 560, "world": { "xMin": -1.3, "xMax": 14.6, "yMin": -1.4, "yMax": 8.3 } },
   "vars": { "sx": "80", "sy": "-40", "txy": "30",
             "C": "(sx + sy)/2", "R": "sqrt(((sx - sy)/2)^2 + txy^2)",
@@ -27,7 +27,7 @@
     { "id": "tT", "type": "arrow", "from": { "ref": "el.top", "dx": -0.55, "dy": 0.18 }, "to": { "ref": "el.top", "dx": 0.55, "dy": 0.18 }, "color": "friction" },
     { "id": "tB", "type": "arrow", "from": { "ref": "el.bottom", "dx": 0.55, "dy": -0.18 }, "to": { "ref": "el.bottom", "dx": -0.55, "dy": -0.18 }, "color": "friction" },
     { "id": "elT", "type": "text", "text": "Stress element", "at": { "x": 11.4, "y": 6.3 } },
-    { "id": "thT", "type": "text", "text": "θₚ = 13.3° (2θₚ on the circle)", "size": 11, "at": { "x": 11.4, "y": 0.9 } }
+    { "id": "thT", "type": "text", "text": "θ_p = 13.3° (2θ_p on the circle)", "size": 11, "at": { "x": 11.4, "y": 0.9 } }
   ],
   "checks": [
     { "id": "X_on_circle", "type": "onCurve", "point": "X", "curve": "circ", "tol": "0.002 m" },

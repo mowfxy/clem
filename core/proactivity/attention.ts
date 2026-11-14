@@ -10,14 +10,15 @@ import type { Level } from "./settings.ts";
 export type Importance = "urgent" | "notify" | "digest" | "silent";
 export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "file_saved" | "deadline_added" | "deadline_changed" | "schedule_changed" | "slot_cancelled" | "slot_moved" | "slot_added" | "room_changed" | "exam_posted" | "new_mail";
 /** A change since the last sweep: a GUC event, or a timetable change found by `slotChanges`. `soon`: it is about today
- *  or tomorrow. */
-export type Change = { key: string; kind: ChangeKind; title: string; detail: string; subjectId?: string; code?: string; materialId?: string; soon?: boolean; day?: string; start?: string };
+ *  or tomorrow. `everyone`: a mail GUC sent to all students that names none of this student's courses
+ *  (core/guc/mail-about.ts); `mine`: a mail written to the student alone. */
+export type Change = { key: string; kind: ChangeKind; title: string; detail: string; subjectId?: string; code?: string; materialId?: string; soon?: boolean; day?: string; start?: string; everyone?: true; mine?: true };
 export type Mute = { kind: ChangeKind; subjectId?: string; words?: string[] };
 /** `say`: the organizer's own line for it, in Clem's voice (when the model judged it). */
 export type Rated = { level: Importance; why: string; ambiguous?: true; say?: string };
 
 /** Words that make an announcement worth a message. */
-export const ACTION_WORDS = /\b(cancel(?:l?ed|lation)?|postpone[ds]?|moved?|reschedul\w*|deadline|due|submit|submission|quiz(?:zes)?|exams?|midterms?|finals?|mandatory|attendance|compensation|make-?up|room|venue|hall|location)\b/i;
+export const ACTION_WORDS = /\b(cancel(?:l?ed|lation)?|postpone[ds]?|moved?|reschedul\w*|deadline|due|submit|submission|quiz(?:zes)?|exams?|midterms?|finals?|mandatory|attendance|compensation|make-?up|room|venue|hall|location|extra (?:lecture|tutorial|lab|class|session))\b/i;
 const URGENT_WORDS = /\b(cancel(?:l?ed|lation)?|postpone[ds]?|today|tonight|tomorrow|now|immediately|urgent)\b/i;
 const TRIVIAL = /^(welcome|hello|hi|dear (?:all|students)[,.!]?\s*(?:good luck|thanks?|thank you)|good luck|thanks?|thank you|reminder:? (?:have a|enjoy))\b/i;
 const ROUTINE = /\b(slides?|lecture notes?|uploaded|posted the|recording|tutorial sheet|practice sheet|solutions?)\b/i;
@@ -38,10 +39,14 @@ export function importance(c: Change, mutes: Mute[] = []): Rated {
     case "new_material": case "file_saved": case "slot_added": return { level: "digest", why: "Routine." };
     case "schedule_changed": return { level: "silent", why: "Said by the class changes." };
     case "new_mail": case "new_announcement": {
-      const body = c.detail.trim();
+      // Mail for every student is not this student's news: it stays in the Mail tab, and the model never reads it.
+      if (c.everyone) return { level: "silent", why: "Sent to everyone." };
+      // Mail has its say in the subject line too ("MATH301 Extra Lecture").
+      const body = (c.kind === "new_mail" ? c.title.replace(/^Email from [^:]*:s*/, "") + " " : "") + c.detail.trim();
       if (ACTION_WORDS.test(body)) return { level: URGENT_WORDS.test(body) && /\b(cancel|postpone|moved?|reschedul)/i.test(body) ? "urgent" : "notify", why: "It asks something of you." };
       if (!body || body.length < 25 || TRIVIAL.test(body)) return { level: "silent", why: "Nothing to act on." };
       if (ROUTINE.test(body)) return { level: "digest", why: "Routine." };
+      if (c.mine) return { level: "notify", why: "Written to you." };
       return { level: "digest", why: "Unclear.", ambiguous: true };
     }
   }

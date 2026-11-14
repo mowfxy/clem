@@ -262,3 +262,20 @@ test("mail: the Inbox lists with previews (the baseline too) and one message ope
     assert.ok("error" in (await t.run({ action: "guc.mail", id: "nope" }) as object));
   } finally { await t.close(); }
 });
+
+test("guc.settings everywhere: one answer covers every linked course and the ones linked later", async () => {
+  const t = await open();
+  try {
+    const out = await t.run({ action: "guc.settings", everywhere: true, saveText: "everything" }) as string;
+    assert.match(out, /^Updated all 2 linked courses, and every course linked later/, out);
+    for (const id of ["subj-emb", "subj-mp"]) assert.equal((await t.engine.subject(id)).settings.save.kinds.videos, true, id);
+    assert.equal((await t.engine.subject("subj-never-seen")).settings.save.kinds.videos, true, "a subject with no settings of its own starts from it");
+    // One subject can still differ, and the rest keep the answer for all.
+    await t.run({ action: "guc.settings", subject: "Embedded", save: { videos: false } });
+    assert.equal((await t.engine.subject("subj-emb")).settings.save.kinds.videos, false);
+    assert.equal((await t.engine.subject("subj-mp")).settings.save.kinds.videos, true);
+    assert.equal((await t.engine.subject("subj-never-seen")).settings.save.kinds.videos, true);
+    assert.match((await t.run({ action: "guc.settings", everywhere: true, checkText: "every day at 9pm" }) as { error: string }).error, /For every course/);
+    assert.match((await t.run({ action: "guc.settings", everywhere: true, saveText: "the blue ones" }) as { error: string }).error, /couldn't read/);
+  } finally { await t.close(); }
+});

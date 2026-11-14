@@ -24,11 +24,12 @@ export function ewsRequest(op: string, body: string) {
   return { headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: `http://schemas.microsoft.com/exchange/services/2006/messages/${op}`, "User-Agent": "Clem-GUC-Mail-ReadOnly/1.0" }, body: envelope(body) };
 }
 
-/** One page of the Inbox, oldest first: ids, subject, sender, when, read and attachment flags. */
-export const findInbox = (offset: number) => ewsRequest("FindItem", `<m:FindItem Traversal="Shallow">
+/** One page of the Inbox, oldest first: ids, subject, sender, when, read and attachment flags, and (`to`) the names it
+ *  was written to, which is how Clem tells a message for one student from one for everybody (core/guc/mail-about.ts). */
+export const findInbox = (offset: number, to = true) => ewsRequest("FindItem", `<m:FindItem Traversal="Shallow">
 <m:ItemShape><t:BaseShape>IdOnly</t:BaseShape><t:AdditionalProperties>
 <t:FieldURI FieldURI="item:Subject"/><t:FieldURI FieldURI="item:DateTimeReceived"/><t:FieldURI FieldURI="item:HasAttachments"/>
-<t:FieldURI FieldURI="message:From"/><t:FieldURI FieldURI="message:Sender"/><t:FieldURI FieldURI="message:IsRead"/>
+<t:FieldURI FieldURI="message:From"/><t:FieldURI FieldURI="message:Sender"/><t:FieldURI FieldURI="message:IsRead"/>${to ? '<t:FieldURI FieldURI="item:DisplayTo"/>' : ""}
 </t:AdditionalProperties></m:ItemShape>
 <m:IndexedPageItemView MaxEntriesReturned="${PAGE}" Offset="${Math.max(0, Math.floor(offset))}" BasePoint="Beginning"/>
 <m:SortOrder><t:FieldOrder Order="Ascending"><t:FieldURI FieldURI="item:DateTimeReceived"/></t:FieldOrder></m:SortOrder>
@@ -39,7 +40,7 @@ export const getBodies = (ids: string[]) => ewsRequest("GetItem", `<m:GetItem><m
 <t:AdditionalProperties><t:FieldURI FieldURI="item:Body"/></t:AdditionalProperties></m:ItemShape>
 <m:ItemIds>${ids.map((id) => `<t:ItemId Id="${esc(id)}"/>`).join("")}</m:ItemIds></m:GetItem>`);
 
-export type EwsItem = { itemId: string; subject: string; received: string; from: string; read: boolean; attachments: boolean };
+export type EwsItem = { itemId: string; subject: string; received: string; from: string; read: boolean; attachments: boolean; to?: string };
 export class EwsError extends Error { code: string; constructor(code: string) { super(code); this.name = "EwsError"; this.code = code; } }
 
 const $x = (xml: string) => cheerio.load(xml, { xml: { xmlMode: true, decodeEntities: true } });
@@ -71,7 +72,7 @@ export function parseFind(xml: string): { items: EwsItem[]; last: boolean; next:
     if (!id || !received) return;
     const box = (pick($, el, "From").length ? pick($, el, "From") : pick($, el, "Sender")).first();
     const name = pick($, box, "Name").first().text().trim(), email = pick($, box, "EmailAddress").first().text().trim();
-    items.push({ itemId: id, subject: pick($, el, "Subject").first().text().trim() || "(no subject)", received, from: name && email ? `${name} <${email}>` : name || email || "Unknown sender", read: /^true$/i.test(pick($, el, "IsRead").first().text().trim()), attachments: /^true$/i.test(pick($, el, "HasAttachments").first().text().trim()) });
+    items.push({ itemId: id, subject: pick($, el, "Subject").first().text().trim() || "(no subject)", received, from: name && email ? `${name} <${email}>` : name || email || "Unknown sender", read: /^true$/i.test(pick($, el, "IsRead").first().text().trim()), attachments: /^true$/i.test(pick($, el, "HasAttachments").first().text().trim()), ...(pick($, el, "DisplayTo").length ? { to: pick($, el, "DisplayTo").first().text().trim().slice(0, 400) } : {}) });
   });
   return { items, last, next: Number.isFinite(next) ? next : NaN };
 }
@@ -90,7 +91,7 @@ export function parseBodies(xml: string, max = PREVIEW) {
 }
 
 /** A message as Clem keeps it: the EWS id only as a hash. */
-export const asMail = (i: EwsItem, preview: string): GucMail => ({ id: mailId(i.itemId), from: i.from, subject: i.subject, received: i.received, preview, attachments: i.attachments, read: i.read });
+export const asMail = (i: EwsItem, preview: string): GucMail => ({ id: mailId(i.itemId), from: i.from, subject: i.subject, received: i.received, preview, attachments: i.attachments, read: i.read, ...(i.to !== undefined ? { to: i.to } : {}) });
 export const mailId = (itemId: string) => stableId("ews|" + itemId);
 /** Error codes that mean the password is wrong. */
 export const EWS_AUTH = new Set(["ErrorInvalidClientSecurityContext", "ErrorInvalidCredentials"]);

@@ -43,7 +43,7 @@
     { "id": "nD", "type": "text", "text": "D", "at": { "x": 2.2, "y": -2.05 } },
     { "id": "iS", "type": "currentArrow", "from": { "x": -1.2, "y": -2.9 }, "to": { "x": -1.2, "y": 0 }, "label": "I_s = 58.4 mA" },
     { "id": "iG", "type": "currentArrow", "from": "Gm.pin0", "to": "D", "t": 0.5, "label": "I_g" },
-    { "id": "tbl", "type": "table", "at": { "x": 6.15, "y": 2.2 }, "size": 11, "rows": [["branch", "I (mA)"], ["R₁", "34.65"], ["R₂", "32.67"], ["R₃", "23.76"], ["R₄", "25.74"], ["G", "1.98"]] }
+    { "id": "tbl", "type": "table", "at": { "x": 6.15, "y": 2.05 }, "size": 11, "rows": [["branch", "I (mA)"], ["R_1", "34.65"], ["R_2", "32.67"], ["R_3", "23.76"], ["R_4", "25.74"], ["G", "1.98"]] }
   ],
   "checks": [
     { "id": "kcl_B", "type": "kcl", "node": "B", "currents": [{ "value": "I1", "direction": "in" }, { "value": "I2", "direction": "out" }, { "value": "Ig", "direction": "out" }] },

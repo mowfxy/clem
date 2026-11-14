@@ -7,9 +7,9 @@ import { matchCourse } from "../../core/guc/match";
 import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { EmptyState } from "../ui/Calm";
-import { CheckSchedule, DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
+import { DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
 import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton } from "./GucHub";
-import { unlinkSubject, useSubject } from "./subject";
+import { checkSubjectNow, unlinkSubject, useSubject } from "./subject";
 import { confirmDialog } from "../dialogs";
 import { useGuc } from "./useGuc";
 import { SubjectPasswordBanner } from "./GucPassword";
@@ -51,10 +51,11 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
             <b>{dayShort(s.day)}</b><span>{s.start || PERIOD_TIMES[s.period - 1]?.[0]}–{s.end || PERIOD_TIMES[s.period - 1]?.[1]}</span><span>{s.type || "Class"}</span><small>{[s.location, s.group].filter(Boolean).join(" · ")}</small>
           </li>)}</ul> : <EmptyState scene="calendar" line={`No ${course.code} classes on your GUC schedule yet.`} />)
         : <div className="guc-settings-cards">
+          {/* Clem looks at CMS every few minutes by itself, so there is no schedule to set; where files live is only a
+              choice once a VPS is connected. */}
           <SaveRules subjectId={space.id} actions={actions} />
-          <CheckSchedule subjectId={space.id} actions={actions} />
           <DriveFolder subjectId={space.id} actions={actions} />
-          <Storage subjectId={space.id} actions={actions} />
+          {v.data.vps && <Storage subjectId={space.id} actions={actions} />}
         </div>}
     </section>
   </div>;
@@ -62,12 +63,14 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
 
 /** The linked course as one slim line across the tab: what it is on the left, Open in CMS and Unlink on the right. */
 function CourseBar({ subjectId, course, actions }: { subjectId: string; course: { key: string; code: string; name: string; season: string }; actions: GucActions }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false), [checking, setChecking] = useState(false);
+  const check = () => { setChecking(true); void checkSubjectNow(subjectId).then((x) => actions.toast(x.lastCheck?.saved ? `Checked CMS just now · saved ${x.lastCheck.saved} file${x.lastCheck.saved === 1 ? "" : "s"}.` : "Checked CMS just now · nothing new."), (e) => actions.toast(String((e as Error)?.message || e))).finally(() => setChecking(false)); };
   const unlink = () => void confirmDialog({ title: `Unlink ${course.code}?`, message: "Clem stops checking this course for this subject. Files already saved stay.", confirm: "Unlink" })
     .then((yes) => { if (!yes) return; setBusy(true); return unlinkSubject(subjectId).catch((e) => actions.toast(String((e as Error)?.message || e))).finally(() => setBusy(false)); });
   return <div className="guc-course-bar">
     <Icon name="guc" size={16} />
     <span><b>{course.code}</b> {course.name}<small>{course.season}</small></span>
+    <button type="button" className="lib-btn" disabled={checking} onClick={check}><Icon name="refresh" size={14} />{checking ? "Checking…" : "Check now"}</button>
     <button type="button" className="lib-btn" onClick={() => actions.openHub(hubPath("cms", course.key))}><Icon name="external" size={14} />Open in CMS</button>
     <button type="button" className="lib-btn" disabled={busy} onClick={unlink}>Unlink</button>
   </div>;

@@ -4,7 +4,7 @@
   "caption": "1→2 isobaric, 2→3 isochoric, 3→1 isothermal; shaded area = net work",
   "canvas": { "width": 640, "height": 480, "world": { "xMin": -1.2, "xMax": 7.6, "yMin": -1.4, "yMax": 5.3 } },
   "elements": [
-    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 6.4, "h": 4.6, "x": { "min": 0, "max": 4, "ticks": [0, 1, 2, 3, 4], "label": "V", "unit": "m³" }, "y": { "min": 0, "max": 2.5, "ticks": [0, 0.5, 1, 1.5, 2, 2.5], "label": "P", "unit": "MPa" } },
+    { "id": "ax", "type": "axes", "at": { "x": 0, "y": 0 }, "w": 6.4, "h": 4.6, "x": { "min": 0, "max": 4, "ticks": [0, 1, 2, 3, 4], "label": "V", "unit": "m^3" }, "y": { "min": 0, "max": 2.5, "ticks": [0, 0.5, 1, 1.5, 2, 2.5], "label": "P", "unit": "MPa" } },
     { "id": "W", "type": "shade", "axes": "ax", "upper": 2, "lowerSeries": "iso", "from": 1, "to": 3, "fill": "bodyFill", "label": { "text": "W", "size": 13 } },
     { "id": "p12", "type": "series", "axes": "ax", "data": [[1, 2], [3, 2]], "style": "line", "color": "ink", "mayTouch": ["W"] },
     { "id": "p23", "type": "series", "axes": "ax", "data": [[3, 2], [3, 0.6667]], "style": "line", "color": "ink", "mayTouch": ["W", "p12"] },

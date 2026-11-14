@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Atwood machine",
-  "caption": "m₁ = 3 kg rises, m₂ = 5 kg falls",
+  "caption": "m_1 = 3 kg rises, m_2 = 5 kg falls",
   "canvas": { "width": 720, "height": 560, "world": { "xMin": -1.6, "xMax": 7.6, "yMin": -0.9, "yMax": 6.3 } },
   "vars": { "m1": "3 kg", "m2": "5 kg", "g": "9.81 m/s^2",
             "a": "(m2 - m1)*g/(m1 + m2)", "T": "2*m1*m2*g/(m1 + m2)" },

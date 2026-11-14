@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Hydrogen energy levels and emission lines",
-  "caption": "Eₙ = −13.6 eV/n²; drawn to scale (vertical: 0.45 m per eV); λ = hc/ΔE",
+  "caption": "E_n = −13.6 eV/n^2; drawn to scale (vertical: 0.45 m per eV); λ = hc/ΔE",
   "canvas": { "width": 720, "height": 620, "world": { "xMin": -2.6, "xMax": 7.6, "yMin": -0.9, "yMax": 7.6 } },
   "vars": { "Ry": "13.6 eV", "k": "0.45 m/eV", "y0": "15 eV",
             "E1": "-Ry/1^2", "E2": "-Ry/2^2", "E3": "-Ry/3^2", "E4": "-Ry/4^2",

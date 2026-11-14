@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Unity-feedback control loop",
-  "caption": "T(s) = KG/(1 + KGH) = K/(s² + s + K); K = 4 gives ωₙ = 2 rad/s, ζ = 0.25, zero steady-state step error",
+  "caption": "T(s) = KG/(1 + KGH) = K/(s^2 + s + K); K = 4 gives ω_n = 2 rad/s, ζ = 0.25, zero steady-state step error",
   "canvas": { "width": 860, "height": 360, "world": { "xMin": -0.6, "xMax": 11.6, "yMin": -3.0, "yMax": 1.9 } },
   "vars": { "K": "4", "wn": "sqrt(K)", "zeta": "1/(2*wn)", "T0": "K/(0^2 + 0 + K)" },
   "elements": [

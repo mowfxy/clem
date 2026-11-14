@@ -71,7 +71,7 @@
       },
       "w": 0.6,
       "h": 0.5,
-      "text": "m₁"
+      "text": "m_1"
     },
     {
       "id": "M2",
@@ -82,7 +82,7 @@
       },
       "w": 0.7,
       "h": 0.6,
-      "text": "m₂"
+      "text": "m_2"
     },
     {
       "id": "rope",
@@ -106,7 +106,7 @@
         "M1"
       ],
       "label": {
-        "text": "m₁g",
+        "text": "m_1g",
         "position": "left"
       }
     },
@@ -120,7 +120,7 @@
         "M2"
       ],
       "label": {
-        "text": "m₂g",
+        "text": "m_2g",
         "position": "right"
       }
     }

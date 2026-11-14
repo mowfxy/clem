@@ -17,11 +17,15 @@ async function call(client: GucClient, request: { headers: Record<string, string
 }
 const ewsFailure = (e: unknown) => e instanceof EwsError ? (EWS_AUTH.has(e.code) ? new GucError("auth", e.code) : new GucError("unavailable", e.code)) : e;
 
-/** Every Inbox message (paged 100 at a time), oldest first. */
+/** Every Inbox message (paged 100 at a time), oldest first. A server that won't list who a message was written to is
+ *  asked again without it (the messages then count as sent to everyone unless they name a course). */
 async function inbox(client: GucClient) {
   const all: EwsItem[] = [];
+  let to = true;
   for (let offset = 0, pages = 0; pages < 60; pages++) {
-    const page = parseFind(await call(client, findInbox(offset)));
+    let page: ReturnType<typeof parseFind>;
+    try { page = parseFind(await call(client, findInbox(offset, to))); }
+    catch (e) { if (!to || !(e instanceof EwsError) || EWS_AUTH.has(e.code)) throw e; to = false; page = parseFind(await call(client, findInbox(offset, false))); }
     all.push(...page.items);
     if (page.last || !page.items.length) break;
     offset = Number.isFinite(page.next) && page.next > offset ? page.next : offset + page.items.length;

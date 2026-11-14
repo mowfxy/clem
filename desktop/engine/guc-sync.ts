@@ -4,6 +4,7 @@ import { diffSnapshots, newCourses, type Seen } from "../../core/guc/diff.ts";
 import { courseDeadlines, DEADLINE_VERSION } from "../../core/guc/deadlines.ts";
 import { applyReader, courseTexts, readerPrompt } from "../../core/guc/deadline-ai.ts";
 import { parseModelJson } from "../../core/model-json.ts";
+import { sameCode } from "../../core/guc/codes.ts";
 import { courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { readMail } from "./guc-mail.ts";
 import { emptySnapshot, type GucDeadline, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
@@ -198,7 +199,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
           }
           if (ai) list = ai;
           else {
-            const rules = new Map(courseDeadlines(unread.map((t) => ({ text: t.text, source: t.source })), course.key, now).map((d) => [d.id, d]));
+            const rules = new Map(courseDeadlines(unread.map((t) => ({ text: t.text, source: t.source })), course.key, now, next.slots.filter((s) => sameCode(s.code, course.code))).map((d) => [d.id, d]));
             list = [...tracked.filter((d) => !rules.has(d.id)), ...rules.values()];
           }
         }
@@ -215,7 +216,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   }));
 
   seen.deadlines = { v: DEADLINE_VERSION, courses: [...fresh], read: textsRead };
-  const eventList = [...diffSnapshots(prev.data, next, prev.seen, now.getTime()), ...newCourses(prev.data, next, linked)];
+  const eventList = [...diffSnapshots(prev.data, next, prev.seen, now.getTime(), { username: client.username }), ...newCourses(prev.data, next, linked)];
   const stats: GucSyncStats = { requests: client.requests - before, skipped, changed, events: eventList.length, ms: Date.now() - started, ...(missed.length ? { missed } : {}) };
   await db.tx(async (t) => {
     if (changed) await save(t, owner, next);

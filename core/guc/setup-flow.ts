@@ -14,12 +14,12 @@ export type SetupState = { done: Partial<Record<SetupStep, "answered" | "skipped
 /** `linked`: a CMS course is linked (save and check are about its files). `vps`: a VPS is connected (where files live). */
 export type SetupContext = { linked: boolean; vps: boolean };
 
-export const startSetup = (now: number, linked = false): SetupState => ({ done: linked ? { link: "answered" } : {}, started: now });
-/** Setup asks one thing: what to save (after the course is linked, which a sure match does by itself). When to check
- *  isn't asked (new files are saved as soon as a sync sees them), and the Drive copy and storage keep their defaults
- *  until the person says otherwise in the chat. */
-export function applies(step: SetupStep, ctx: SetupContext) {
-  if (step === "save") return ctx.linked;
+/** Already linked (made from a course, or a sure match): there is nothing to ask, so it starts finished. */
+export const startSetup = (now: number, linked = false): SetupState => ({ done: linked ? { link: "answered" } : {}, started: now, ...(linked ? { finished: true } : {}) });
+/** Setup asks one thing, and only when Clem can't tell: which CMS course the subject is. What to keep isn't asked per
+ *  subject: every subject starts from what the person said for all their courses (ALL_SUBJECTS), and Clem says what
+ *  that is. When to check, the Drive copy and storage keep their defaults until the person says otherwise in chat. */
+export function applies(step: SetupStep, _ctx: SetupContext) {
   return step === "link";
 }
 /** The first step not yet answered or skipped that applies, or null when setup is done. */
@@ -67,11 +67,13 @@ This term on CMS you have: ${i.choices.slice(0, 12).join(", ")}.` : "";
       if (i.course) return `Is ${b(i.subject)} ${course} on CMS? Tell me yes, or which course it is instead, or that it isn't on CMS.` + list;
       return `Which CMS course is ${b(i.subject)}? Just tell me its code or name, or that it isn't on CMS.` + list;
     }
-    case "save": return (i.lead || (i.course ? `${b(i.subject)} is linked to ${course}.` : "")) + ` I watch it on CMS every few minutes, save new files the moment they're posted, and tell you here about announcements, grades and deadlines.
+    case "save": case "check": case "drive": case "storage": return "";
+    // Nothing is asked: Clem says what it does, and how to change it.
+    default: return i.linked && i.course
+      ? `${i.lead || `${b(i.subject)} is linked to ${course}.`} I watch it on CMS every few minutes: I keep ${i.save.toLowerCase()} the moment they're posted, and tell you here about its announcements, grades and deadlines.
 
-What should I keep from it? Right now that's ${i.save.toLowerCase()}. Say it however you like: "everything", "just slides and sheets", "no solutions", "only PDFs from week 3 on".`;
-    case "check": case "drive": case "storage": return "";
-    default: return `Done. I'll keep ${i.save.toLowerCase()}${i.linked && i.course ? ` from ${b(i.course.code)}` : ""}. Tell me here anytime to change it, or to copy files to Google Drive.`;
+Want something else kept? Just say it ("everything", "no videos", "only PDFs"), for this course or for all of them.`
+      : `Okay, ${b(i.subject)} stays off CMS. You can link it any time from its CMS tab, or tell me its course code.`;
   }
 }
 
@@ -167,7 +169,7 @@ export function updateSummary(u: SettingsUpdateCard) {
     u.drive ? `Drive copy turned ${u.drive.enabled ? "on" : "off"}` : "", u.storage ? `Files now live ${u.storage.location === "vps" ? "on your VPS" : "on this device"}` : "",
     u.unlink ? "Unlinked from CMS" : "", u.checkNow ? "Checking CMS now" : "",
   ].filter(Boolean);
-  return parts.join(" · ") || "No change";
+  return (parts.join(" · ") || "No change") + (u.everywhere && parts.length ? " · for all your courses" : "");
 }
 
 /** What Clem says when neither it nor the AI could read a reply. */

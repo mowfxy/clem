@@ -93,7 +93,7 @@ Multi-line text, optionally framed; origin at the block centre. Lines are given 
 **Anchors:** `center`, `top`, `bottom`, `left`, `right`, `topLeft`, `topRight`, `bottomLeft`, `bottomRight`, `line(i)`
 
 ```json
-{ "id": "textBlock", "type": "textBlock", "at": { "x": 2, "y": 1.5 }, "lines": ["Given:", "m = 2 kg", "v₀ = 3 m/s"], "align": "left", "frame": true}
+{ "id": "textBlock", "type": "textBlock", "at": { "x": 2, "y": 1.5 }, "lines": ["Given:", "m = 2 kg", "v_0 = 3 m/s"], "align": "left", "frame": true}
 ```
 
 ### `curvedArrow`
@@ -340,7 +340,7 @@ Pin support: a triangle with its pin at the origin, on hatched ground.
 | `scale` | size factor (default 1) |
 | `fill` | triangle fill (default mechanismFill) |
 
-**Anchors:** `top`, `contact`, `base`, `left`, `right`
+**Anchors:** `top`, `contact`, `base`, `under`, `left`, `right`
 
 ```json
 { "id": "pinSupport", "type": "pinSupport", "at": { "x": 2, "y": 1.8 }, "scale": 1.6 }
@@ -358,7 +358,7 @@ Roller support: pin triangle on two rollers, on hatched ground.
 | `scale` | size factor (default 1) |
 | `fill` | triangle fill (default mechanismFill) |
 
-**Anchors:** `top`, `contact`, `base`, `left`, `right`
+**Anchors:** `top`, `contact`, `base`, `under`, `left`, `right`
 
 ```json
 { "id": "rollerSupport", "type": "rollerSupport", "at": { "x": 2, "y": 1.8 }, "scale": 1.6 }
@@ -376,7 +376,7 @@ Fixed (clamped) support: a wall face through the origin with hatching behind it.
 | `scale` | size factor (default 1) |
 | `fill` | triangle fill (default mechanismFill) |
 
-**Anchors:** `top`, `contact`, `base`, `left`, `right`
+**Anchors:** `top`, `contact`, `base`, `under`, `left`, `right`
 
 ```json
 { "id": "fixedSupport", "type": "fixedSupport", "at": { "x": 2, "y": 1.5 }, "rotation": 0, "scale": 1.6 }
@@ -455,8 +455,8 @@ Rope along `route`: point references and {around: pulleyId, dir: cw|ccw} items. 
 ```json
 { "id": "rope", "type": "rope", "route": ["rope_m1.top",{ "around": "rope_p", "dir": "cw" }, "rope_m2.top"]}
 { "id": "rope_p", "type": "pulley", "at": { "x": 2, "y": 2.2 }, "r": 0.5 }
-{ "id": "rope_m1", "type": "mass", "at": { "x": 1.5, "y": 0.9 }, "w": 0.5, "h": 0.4, "text": "m₁" }
-{ "id": "rope_m2", "type": "mass", "at": { "x": 2.5, "y": 1.1 }, "w": 0.5, "h": 0.4, "text": "m₂" }
+{ "id": "rope_m1", "type": "mass", "at": { "x": 1.5, "y": 0.9 }, "w": 0.6, "h": 0.48, "text": "m_1" }
+{ "id": "rope_m2", "type": "mass", "at": { "x": 2.5, "y": 1.1 }, "w": 0.6, "h": 0.48, "text": "m_2" }
 ```
 
 ### `coilSpring`
@@ -714,7 +714,7 @@ Applied moment: a curved arrow around the origin, counter-clockwise or clockwise
 **Anchors:** `center`, `start`, `end`
 
 ```json
-{ "id": "moment", "type": "moment", "at": { "x": 2, "y": 1.5 }, "r": 0.6, "direction": "ccw", "label": "M₀" }
+{ "id": "moment", "type": "moment", "at": { "x": 2, "y": 1.5 }, "r": 0.6, "direction": "ccw", "label": "M_0" }
 ```
 
 ### `triad`
@@ -1052,13 +1052,13 @@ Thermal reservoir: a box outlined in force red (hot) or rayAlt blue (cold) with 
 | `w` | width |
 | `h` | height |
 | `kind` | hot \| cold |
-| `text` | centred text, e.g. T₁ = 500 K |
+| `text` | centred text, e.g. T_1 = 500 K |
 | `textSize` | 11-13 |
 
 **Anchors:** `center`, `top`, `bottom`, `left`, `right`, `topAt(t)`, `bottomAt(t)`
 
 ```json
-{ "id": "reservoir", "type": "reservoir", "at": { "x": 2, "y": 1.5 }, "w": 2.6, "h": 0.8, "kind": "hot", "text": "T₁ = 600 K" }
+{ "id": "reservoir", "type": "reservoir", "at": { "x": 2, "y": 1.5 }, "w": 2.6, "h": 0.8, "kind": "hot", "text": "T_1 = 600 K" }
 ```
 
 ### `liquidSurface`
@@ -1674,8 +1674,8 @@ Logic gate (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUF). style iec (default) matche
 **Anchors:** `center`, `out`, `in(k)`, `in0`, `in1`, `in2`, `in3`, `top`, `bottom`
 
 ```json
-{ "id": "logicGate", "type": "logicGate", "at": { "x": 1.5, "y": 1.75 }, "kind": "AND", "inputs": 3, "w": 1.1 }
-{ "id": "logicGate_b", "type": "logicGate", "at": { "x": 3, "y": 0.6 }, "kind": "AND", "style": "ansi", "w": 0.8 }
+{ "id": "logicGate", "type": "logicGate", "at": { "x": 1.15, "y": 1.6 }, "kind": "AND", "inputs": 3, "w": 1.1 }
+{ "id": "logicGate_b", "type": "logicGate", "at": { "x": 2.95, "y": 1.6 }, "kind": "AND", "style": "ansi", "w": 0.8 }
 ```
 
 ### `flipFlop`
@@ -1755,7 +1755,7 @@ State of a finite-state machine: a circle with its name, a second ring when acce
 **Anchors:** `center`, `top`, `bottom`, `left`, `right`, `rim(angle)`, `initialTail`
 
 ```json
-{ "id": "state", "type": "state", "at": { "x": 2.3, "y": 1.5 }, "r": 0.5, "text": "q₀", "accepting": true, "initial": 180 }
+{ "id": "state", "type": "state", "at": { "x": 2.3, "y": 1.5 }, "r": 0.5, "text": "q_0", "accepting": true, "initial": 180 }
 ```
 
 ### `transition`
@@ -1801,7 +1801,7 @@ Self-loop on a round part (a state): a loop centred in direction `angle` (defaul
 
 ```json
 { "id": "selfLoop", "type": "selfLoop", "state": "selfLoop_s", "angle": 90, "label": "a" }
-{ "id": "selfLoop_s", "type": "state", "at": { "x": 2, "y": 1.15 }, "r": 0.45, "text": "q₁" }
+{ "id": "selfLoop_s", "type": "state", "at": { "x": 2, "y": 1.15 }, "r": 0.45, "text": "q_1" }
 ```
 
 ## Plots

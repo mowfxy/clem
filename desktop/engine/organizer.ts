@@ -125,17 +125,46 @@ export class Organizer {
   private async workspace(): Promise<Snapshot> { return snapshotOf(await this.host.workspace?.().catch(() => null), this.clock()); }
   private async done() { return new Set((await this.db.query<{ key: string }>("select key from organizer_actions where owner_id = $1", [this.owner])).map((r) => r.key)); }
   private async mutes(): Promise<Mute[]> { return (await this.db.query<{ mute: Mute }>("select mute from organizer_mutes where owner_id = $1", [this.owner])).map((r) => r.mute); }
-  /** GUC events since the last sweep, as changes with their subject. */
-  private async events(after: Date | null, links: SubjectLink[]) {
+  /** GUC events since the last sweep, as changes with their subject. Only what is still true and not yet said gets
+   *  through: a deadline is one change however often it moved between sweeps, and only at the date it has now; a mail
+   *  that repeats a CMS announcement (GUC mails those out too) is dropped for the announcement, whichever came first;
+   *  a mail for every student is marked so (it is never told). New-term courses are not news for the thread. */
+  private async events(after: Date | null, links: SubjectLink[], deadlines: HubDeadline[] = []) {
     const rows = await this.db.query<{ event_key: string; kind: ChangeKind; course_key: string | null; title: string; detail: string; created_at: Date }>(
       "select event_key, kind, course_key, title, detail, created_at from guc_events where owner_id = $1 and created_at > $2 order by created_at limit 300", [this.owner, after || new Date(0)]);
     const subject = new Map(links.map((l) => [l.courseKey, l.subjectId])), code = new Map(links.map((l) => [l.courseKey, l.code]));
-    const soon = (detail: string) => { const m = /(\d{4}-\d{2}-\d{2}[T\d:.Z+-]*)\s*$/.exec(detail); return !!m && dueAt(m[1]) - this.clock() < 48 * 3600e3 && dueAt(m[1]) > this.clock(); };
-    const changes: Change[] = rows.filter((r) => r.kind !== "schedule_changed").map((r) => {
+    const due = new Map(deadlines.map((d) => [d.id, dueAt(d.due)])), now = this.clock();
+    const dlId = (key: string) => key.split(":")[1] || "";
+    // How close it is comes from the deadline as it stands now (older events carried the date at the end of their detail).
+    const soon = (key: string, detail: string) => { const m = /(\d{4}-\d{2}-\d{2}[T\d:.Z+-]*)\s*$/.exec(detail), t = due.get(dlId(key)) ?? (m ? dueAt(m[1]) : 0); return !!t && t > now && t - now < 48 * 3600e3; };
+    const lastOf = new Map(rows.filter((r) => r.kind.startsWith("deadline")).map((r) => [dlId(r.event_key), r.event_key]));
+    const stale = (r: (typeof rows)[number]) => {
+      if (!r.kind.startsWith("deadline")) return false;
+      const id = dlId(r.event_key), t = due.get(id);
+      if (lastOf.get(id) !== r.event_key) return true;
+      // Gone from GUC since, or already past: not news any more. (Without GUC's list there is nothing to check against.)
+      if (!t) return due.size > 0;
+      if (t <= now) return true;
+      const moved = r.kind === "deadline_changed" ? Date.parse(r.event_key.slice(("dl:" + id + ":").length)) : NaN;
+      return Number.isFinite(moved) && Math.abs(moved - t) >= 60_000;
+    };
+    // The same words as an announcement: the letters and digits of its first lines.
+    const gist = (s: string) => s.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, "").slice(0, 60);
+    const courseMail = rows.filter((r) => r.kind === "new_mail" && r.course_key);
+    const posted = courseMail.length ? (await this.db.query<{ course_key: string; body: string }>("select course_key, body from guc_announcements where owner_id = $1 and course_key = any($2::text[])", [this.owner, [...new Set(courseMail.map((r) => r.course_key))]])).map((a) => ({ course: a.course_key, gist: gist(a.body) })) : [];
+    const anns = rows.some((r) => r.kind === "new_announcement");
+    const mailed = anns ? (await this.db.query<{ action: { change?: Change } }>("select action from organizer_actions where owner_id = $1 and key like 'change:mail:%' and created_at > $2", [this.owner, new Date(now - 3 * 864e5)])).flatMap((a) => (a.action?.change ? [gist(a.action.change.detail)] : [])).filter((g) => g.length >= 24) : [];
+    const alike = (a: string, b: string) => a.length >= 24 && b.length >= 24 && (a.includes(b.slice(0, 40)) || b.includes(a.slice(0, 40)));
+    const repeat = (r: (typeof rows)[number]) => {
+      if (r.kind === "new_mail" && r.course_key) return posted.some((p) => p.course === r.course_key && alike(p.gist, gist(r.detail)));
+      if (r.kind === "new_announcement") return mailed.some((m) => alike(m, gist(r.detail)));
+      return false;
+    };
+    const changes: Change[] = rows.filter((r) => r.kind !== "schedule_changed" && (r.kind as string) !== "new_course" && !stale(r) && !repeat(r)).map((r) => {
       let materialId: string | undefined, detail = r.detail;
       if (r.kind === "new_material") materialId = r.event_key.replace(/^mat:/, "");
       if (r.kind === "file_saved") { try { const d = JSON.parse(r.detail); materialId = String(d.id); detail = d.week || ""; } catch { /* old row */ } }
-      return { key: r.event_key, kind: r.kind, title: r.title, detail, ...(r.course_key && subject.get(r.course_key) ? { subjectId: subject.get(r.course_key) } : {}), ...(r.course_key && code.get(r.course_key) ? { code: code.get(r.course_key) } : {}), ...(materialId ? { materialId } : {}), ...(r.kind.startsWith("deadline") && soon(r.detail) ? { soon: true } : {}) };
+      return { key: r.event_key, kind: r.kind, title: r.title, detail, ...(r.course_key && subject.get(r.course_key) ? { subjectId: subject.get(r.course_key) } : {}), ...(r.course_key && code.get(r.course_key) ? { code: code.get(r.course_key) } : {}), ...(materialId ? { materialId } : {}), ...(r.kind.startsWith("deadline") && soon(r.event_key, r.detail) ? { soon: true } : {}), ...(r.kind === "new_mail" && r.event_key.startsWith("mail:all:") ? { everyone: true as const } : r.kind === "new_mail" && !r.course_key ? { mine: true as const } : {}) };
     });
     return { changes, last: rows.at(-1)?.created_at };
   }
@@ -159,7 +188,7 @@ export class Organizer {
     const [state] = await this.db.query<{ snapshot: Snapshot | null; slots: GucSlot[] | null; events_after: Date | null }>("select snapshot, slots, events_after from organizer_sweeps where owner_id = $1 and kind = '_state'", [this.owner]);
     const [last] = await this.db.query<{ last_day: string | null }>("select last_day from organizer_sweeps where owner_id = $1 and kind = $2", [this.owner, kind]);
     // The very first sweep only sets the baseline: what GUC already held is not news.
-    const ev = state ? await this.events(state.events_after || null, g.links)
+    const ev = state ? await this.events(state.events_after || null, g.links, g.deadlines)
       : { changes: [] as Change[], last: (await this.db.query<{ t: Date | null }>("select max(created_at) as t from guc_events where owner_id = $1", [this.owner]))[0]?.t || undefined };
     const subjectOfCode = (code: string) => g.links.find((l) => l.code === code)?.subjectId;
     const slotCh = state?.slots && g.slots.length ? slotChanges(state.slots, g.slots, started, subjectOfCode) : [];
@@ -170,7 +199,11 @@ export class Organizer {
     let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete, voice: s.level !== "quiet" });
     let called = false;
     if (plan.ask && this.host.complete) {
-      try { const reply = await this.host.complete({ ...plan.ask, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning }); called = true; plan = readReply(reply, plan, snap, done); }
+      try {
+        const reply = await this.host.complete({ ...plan.ask, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning }); called = true; plan = readReply(reply, plan, snap, done);
+        // After a change, Clem's own words stand only over news it judged; over certain facts the card's lines say it.
+        if (kind === "event" && !plan.rate.length) delete plan.message;
+      }
       catch (e) { this.host.log("warn", "[organizer] model: " + (e as Error).message); }
     }
     // What this sweep saw, so the next one sees only what changes after it. A first sweep only sets the baseline.
@@ -291,27 +324,19 @@ export class Organizer {
   }
 
   // ---------- Telegram ----------
-  /** The pair card in the main thread, when Telegram isn't paired: once on first run, once when a Telegram channel is
-   *  turned on, and whenever the person asks (Settings → Pair in chat). Never twice for the same reason. */
-  /** The first time: Clem asks, openly, how the person wants it around. Nothing is assumed: a new person starts with no
-   *  timed routines (no morning plan they never asked for), only news worth knowing and deadline reminders. Whatever
-   *  they answer, the AI turns into routines (clem.routine) and preferences (clem.prefs). Once per owner. */
-  async offerSetup() {
+  /** The first time: nothing is assumed and nothing is asked. A new person starts with no timed routines (no morning
+   *  plan they never asked for), only news about their own courses and deadline reminders. Clem posts no hello and no
+   *  questions: routines (clem.routine) and preferences (clem.prefs) come from what the person says in chat, when they
+   *  say it, or from Settings. True when the quiet defaults were saved now. */
+  async quietStart() {
     const [saved] = await this.db.query("select 1 from organizer_settings where owner_id = $1", [this.owner]);
-    if (!saved && !(await this.db.query("select 1 from notifications_sent where owner_id = $1 and event_key = 'setup:first'", [this.owner])).length)
-      await this.setSettings({ jobs: { morning: { on: false }, midday: { on: false }, evening: { on: false }, weekly: { on: false } } });
-    const text = [
-      "Hi, I'm Clem. Before I do anything on my own, I'd rather hear how you'd like me around. Nothing is set up yet, so answer however you like, as much or as little as you want:",
-      "",
-      "- **What's on your plate right now** that you'd like help keeping on top of? Uni, work, a project, a habit, anything.",
-      "- **When would you like to hear from me**, and about what? For example the moment a grade or announcement is posted, a heads-up before deadlines, a quick look at your day, a Sunday-night plan for the week, or only when something can't wait.",
-      "- **Anything I should keep an eye on for you?** A course, an email from someone, an exam hall, a web page, or a webhook from another app.",
-      "- **When should I leave you alone?** Hours you sleep or don't want notifications.",
-      "",
-      "Until you tell me otherwise I'll stay quiet and only tell you about new GUC news and deadlines coming up. You can change any of it later; just tell me.",
-    ].join("\n");
-    return this.post(text, "setup:first");
+    if (saved) return false;
+    // Balanced: news that matters and deadline reminders are said; routine uploads wait as one line under the next card.
+    await this.setSettings({ level: "balanced", jobs: { morning: { on: false }, midday: { on: false }, evening: { on: false }, weekly: { on: false } } });
+    return true;
   }
+  /** The Telegram pair card in the main thread. The engine posts it only when the person asks (Settings → Pair in
+   *  chat); it never appears by itself. Never twice for the same reason. */
   async offerTelegram(why: "first" | "channel" | "asked") {
     const t = this.telegram;
     if (!t?.available || (why !== "asked" && await t.paired())) return null;

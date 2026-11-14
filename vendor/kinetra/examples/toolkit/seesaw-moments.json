@@ -2,7 +2,7 @@
   "version": 1,
   "canvas": { "width": 800, "height": 420, "world": { "xMin": -5, "xMax": 5, "yMin": -2.6, "yMax": 2.4 } },
   "title": "Balanced seesaw",
-  "caption": "Moments about the pivot cancel: m₁g·d₁ = m₂g·d₂",
+  "caption": "Moments about the pivot cancel: m_1g·d_1 = m_2g·d_2",
   "vars": { "m1": "6 kg", "m2": "4 kg", "g": "9.81 m/s^2", "d1": "2 m", "d2": "d1*m1/m2" },
   "scales": { "force": { "per": "40 N" } },
   "elements": [

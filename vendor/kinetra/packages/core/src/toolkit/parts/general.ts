@@ -13,7 +13,7 @@ import {
   pickOf, polar, poly, polylineLen, propPath, ptsOf, px, rot, roundedRectPoints, shape, sizeProp, strokeWidthProp, sub, text, textProp, textPx, unit, v, vector,
 } from "./kit.js";
 import type { ElementSpec, Geo, PartContext, PartInstance, Prim, Vec2 } from "./kit.js";
-import { formatLabelMarkup } from "../text_metrics.js";
+import { formatLabelMarkup, measureLabelWidth } from "../text_metrics.js";
 
 const boxAnchors = (c: Vec2, w: number, h: number, a = 0): Record<string, Vec2> => {
   const f = (x: number, y: number) => add(c, rot(v(x * w / 2, y * h / 2), a));
@@ -79,7 +79,7 @@ export function circleGeo(c: Vec2, r: number, fill: string, stroke: string, t: s
   if (t) prims.push(fittedText(fits, c, t, size, color, outline));
   return { prims, fits, outline, radius: r, anchors: { center: c, top: polar(c, r, 90 * DEG), bottom: polar(c, r, -90 * DEG), left: polar(c, r, Math.PI), right: polar(c, r, 0) }, argAnchors: { rim: a => polar(c, r, a) }, label: { at: c, candidates: t ? ["above-right", "above", "below", "right", "left", "below-right", "above-left", "below-left"] : CLOSED }, refs: { r: lengthQ(r, ctx) } };
 }
-addSample("circleNode", (id, c, r) => [{ id, type: "circleNode", at: P(c.x, c.y), r: between(r, 0.45, 0.7), text: pickOf(r, ["A", "S₀", "q1", "42"]) }]);
+addSample("circleNode", (id, c, r) => [{ id, type: "circleNode", at: P(c.x, c.y), r: between(r, 0.45, 0.7), text: pickOf(r, ["A", "S_0", "q1", "42"]) }]);
 
 // --- textBlock --------------------------------------------------------------------------
 
@@ -120,7 +120,7 @@ definePart<TextBlockProps>({
     return { prims, outline, anchors: boxAnchors(c, W, H), argAnchors: { line: k => Number.isInteger(k) ? centers[k] : undefined }, label: { at: c, candidates: ABOVE_FIRST }, refs: { w: lengthQ(W, ctx), h: lengthQ(H, ctx) } };
   },
 });
-addSample("textBlock", (id, c, r) => [{ id, type: "textBlock", at: P(c.x, c.y), lines: ["Given:", "m = 2 kg", "v₀ = 3 m/s"], align: pickOf(r, ["left", "center"] as const), frame: r() < 0.6 }]);
+addSample("textBlock", (id, c, r) => [{ id, type: "textBlock", at: P(c.x, c.y), lines: ["Given:", "m = 2 kg", "v_0 = 3 m/s"], align: pickOf(r, ["left", "center"] as const), frame: r() < 0.6 }]);
 
 // --- curvedArrow --------------------------------------------------------------------------
 
@@ -570,7 +570,11 @@ definePart<LegendProps>({
     const p = i.props, pad = 6, sw = 22, gap = 6;
     const ms = p.entries.map(e => textPx(e.text, p.size));
     const rowH = Math.max(14, ...ms.map(m => m.h)) + 3;
-    const Wpx = pad * 2 + sw + gap + Math.max(...ms.map(m => m.w)), Hpx = pad * 2 + rowH * p.entries.length - 3;
+    // Entry text is left-aligned: every entry's glyphs start at the same x. `slack` is the widest
+    // margin between a centred footprint (glyphs and backdrop) and its glyphs.
+    const gws = p.entries.map(e => measureLabelWidth(e.text, p.size));
+    const slack = Math.max(...ms.map((m, k) => (m.w - gws[k]!) / 2));
+    const Wpx = pad * 2 + sw + gap + slack + Math.max(...ms.map((m, k) => (m.w + gws[k]!) / 2)), Hpx = pad * 2 + rowH * p.entries.length - 3;
     const W = px(ctx, Wpx), H = px(ctx, Hpx), c = i.origin;
     const L = c.x - W / 2, T = c.y + H / 2;
     const prims: Prim[] = [];
@@ -585,7 +589,7 @@ definePart<LegendProps>({
       else if (e.kind === "box") prims.push({ k: "rect", c: sm, w: px(ctx, 14), h: px(ctx, 10), rxPx: 0, fill: e.fill, stroke: e.color });
       else if (e.kind === "dot") prims.push(dot(sm, e.color));
       else prims.push(circle(sm, px(ctx, 4.5), "none", e.color));
-      prims.push(text(v(L + px(ctx, pad + sw + gap + ms[k]!.w / 2), cy), e.text, p.size, "#333"));
+      prims.push(text(v(L + px(ctx, pad + sw + gap + slack + gws[k]! / 2), cy), e.text, p.size, "#333"));
     });
     const outline = [v(L, T - H), v(L + W, T - H), v(L + W, T), v(L, T)];
     return { prims, outline, anchors: boxAnchors(c, W, H), argAnchors: { entry: k => Number.isInteger(k) ? rows[k] : undefined } };

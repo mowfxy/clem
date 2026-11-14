@@ -46,7 +46,7 @@
       },
       "scale": 1.8,
       "span": 1.6,
-      "label": "Rf = 10 kΩ"
+      "label": "R_f = 10 kΩ"
     },
     {
       "id": "G",

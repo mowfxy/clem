@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Minkowski diagram: frame S′ moving at β = 0.6 relative to S",
-  "caption": "c = 1; the hyperbola ct² − x² = 1 calibrates the primed axes",
+  "caption": "c = 1; the hyperbola ct^2 − x^2 = 1 calibrates the primed axes",
   "canvas": { "width": 680, "height": 660, "world": { "xMin": -1.2, "xMax": 5.0, "yMin": -0.9, "yMax": 5.2 } },
   "vars": { "beta": "0.6", "gam": "1/sqrt(1 - beta^2)", "xE": "2", "tE": "3",
             "xp": "gam*(xE - beta*tE)", "tp": "gam*(tE - beta*xE)" },

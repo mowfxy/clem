@@ -142,15 +142,14 @@ test("engine: study sessions avoid other plans, land in the plan with Undo, and 
   } finally { await e.close(); }
 });
 
-test("engine: Clem asks once how it should run, and everything it asks about is changed in chat (clem.prefs)", async () => {
+test("engine: a new person gets quiet defaults and no hello; everything is changed in chat when they say so (clem.prefs)", async () => {
   const clock = { t: T(SUN, "09:00") };
   const { e, o } = await engine(clock);
   try {
-    assert.ok(await o.offerSetup());
-    assert.equal(await o.offerSetup(), undefined, "once");
-    const [ask] = (await o.inbox()).posts;
-    for (const q of [/how you'd like me around/, /Nothing is set up yet/, /leave you alone/, /keep an eye on/, /just tell me/]) assert.match(ask.content, q);
-    assert.doesNotMatch(ask.content, /morning plan|07:30/, "no routine the person never asked for");
+    assert.equal(await o.quietStart(), true);
+    assert.equal(await o.quietStart(), false, "once");
+    assert.deepEqual((await o.inbox()).posts, [], "nothing is posted: no hello, no questions");
+    assert.equal((await o.settings()).level, "balanced");
     assert.deepEqual(Object.values((await o.settings()).jobs).map((j) => j.on), [false, false, false, false], "a new person starts with no timed routines");
     const r = await o.tool({ action: "clem.prefs", level: "balanced", quiet: { from: "00:30", to: "08:00" }, jobs: { morning: { time: "08:15" }, midday: { on: false } }, study: { days: [0, 1, 2] } }) as { ok: boolean; text: string };
     assert.equal(r.ok, true);

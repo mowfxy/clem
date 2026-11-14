@@ -22,6 +22,8 @@ import { colorProp, textBoxPolygon } from "./parts.js";
 import type { PartContext, ViewMap } from "./parts.js";
 import { resolveLayout } from "./resolver.js";
 import type { Resolved } from "./resolver.js";
+import { tidyLabelBackdrops } from "./backdrops.js";
+import type { Box } from "./geometry.js";
 import { TOOLKIT_TEXT, checkToolkitStyle } from "./style.js";
 import { formatLabelMarkup, measureTitleWidth, plainLabelText, renderScriptTspans } from "./text_metrics.js";
 import type { ComposeModel, LabelPosition, LabelSpec } from "./types.js";
@@ -120,7 +122,9 @@ function composeInner(model: ComposeModel, report: ComposeReport): ComposeResult
   const unused = [...scales.keys()].filter(n => !usedScales.some(([u]) => u === n));
   if (unused.length) fail("E_SCHEMA", unused.map(n => `scale:${n}`), `Declared scale${unused.length > 1 ? "s" : ""} ${unused.map(n => `"${n}"`).join(", ")} ${unused.length > 1 ? "are" : "is"} not used by any arrow`, { path: "scales", suggestion: "Remove unused scales so the caption only states scales that appear in the diagram." });
   const scaleText = usedScales.length ? `Arrow scale: ${usedScales.map(([name, s]) => `1 unit = ${s.text} (${name})`).join("; ")}` : "";
-  const caption = [model.caption, scaleText].filter(Boolean).join(" · ") || undefined;
+  // The caption takes the same script markup as labels (T_H, m/s^2); text that is not valid markup stays literal.
+  const captionMarkup = [model.caption, scaleText].filter((x): x is string => !!x).map(captionText).join(" · ") || undefined;
+  const caption = captionMarkup === undefined ? undefined : plainLabelText(captionMarkup);
   report.caption = caption;
   const bodies: Body[] = [];
   for (const id of res.order) bodies.push(makeBody(id, "element", id, res.defs.get(id)!.collide(res.instances.get(id)!, ctx)));
@@ -128,7 +132,7 @@ function composeInner(model: ComposeModel, report: ComposeReport): ComposeResult
     const w = measureTitleWidth(model.title, TOOLKIT_TEXT.title.size), y = TOOLKIT_TEXT.title.y, s = TOOLKIT_TEXT.title.size;
     bodies.push(makeBody("title", "title", "title", [{ kind: "area", points: [{ x: c.width / 2 - w / 2, y: y - s * 0.95 }, { x: c.width / 2 + w / 2, y: y - s * 0.95 }, { x: c.width / 2 + w / 2, y: y + s * 0.25 }, { x: c.width / 2 - w / 2, y: y + s * 0.25 }] }]));
   }
-  if (caption) bodies.push(makeBody("caption", "caption", "caption", [{ kind: "area", points: textBoxPolygon(c.width / 2, c.height - TOOLKIT_TEXT.caption.bottomOffset, caption, TOOLKIT_TEXT.caption.size, "middle") }]));
+  if (caption) bodies.push(makeBody("caption", "caption", "caption", [{ kind: "area", points: textBoxPolygon(c.width / 2, c.height - TOOLKIT_TEXT.caption.bottomOffset, captionMarkup!, TOOLKIT_TEXT.caption.size, "middle") }]));
   const allow = { mayTouch: new Map(res.order.map(id => [id, new Set([...(res.instances.get(id)!.spec.mayTouch ?? []), ...(res.instances.get(id)!.touches ?? [])])])) };
   // Built-in contact rules of the parts themselves (no model mayTouch needed).
   const builtIn = new Map<string, string>();
@@ -165,7 +169,7 @@ function composeInner(model: ComposeModel, report: ComposeReport): ComposeResult
     const atCenter = !!outline && Math.hypot(anchorWorld.x - (def.anchor(inst, "center", undefined, ctx) ?? inst.origin).x, anchorWorld.y - (def.anchor(inst, "center", undefined, ctx) ?? inst.origin).y) < 1e-9;
     const extent = outline && atCenter
       ? { x0: Math.min(...outline.map(p => p.x)), y0: Math.min(...outline.map(p => p.y)), x1: Math.max(...outline.map(p => p.x)), y1: Math.max(...outline.map(p => p.y)) }
-      : smallOwnerExtent(anchor, bodies.find(b => b.key === id)!.box);
+      : smallOwnerExtent(anchor, bodies.find(b => b.key === id)!.box, spec.anchor ? 0 : base.clearPx ?? 0);
     const valid = (p: unknown): p is LabelPosition => ["right", "above-right", "above", "above-left", "left", "below-left", "below", "below-right", "center"].includes(p as string);
     if (spec.position !== undefined && !valid(spec.position)) fail("E_SCHEMA", [id], `label position ${JSON.stringify(spec.position)} of "${id}" is not a position`, { path: `elements[${id}].label.position`, suggestion: "Positions: right, above-right, above, above-left, left, below-left, below, below-right, center." });
     if (spec.candidates !== undefined && (!Array.isArray(spec.candidates) || !spec.candidates.every(valid))) fail("E_SCHEMA", [id], `label candidates of "${id}" must be a list of positions`, { path: `elements[${id}].label.candidates` });
@@ -186,20 +190,35 @@ function composeInner(model: ComposeModel, report: ComposeReport): ComposeResult
 
   // 6. Render through the template pipeline.
   report.stage = "render";
-  scene.caption = caption;
+  scene.caption = captionMarkup;
   for (const id of res.order) for (const sh of res.defs.get(id)!.draw(res.instances.get(id)!, ctx)) addShape(scene, sh);
   for (const p of placed) if (p.leader) addShape(scene, { kind: "segment", from: view.toWorld(p.leader.from), to: view.toWorld(p.leader.to), color: LEADER_COLOR, width: LEADER_WIDTH });
-  // A label over grid lines gets a white halo covering its whole collision box (glyphs and backdrop).
-  for (const p of placed) if (bodies.some(b => b.kind === "element" && overSoft(p.body, b))) {
-    const bx = p.body.box, lo = view.toWorld({ x: bx.x0, y: bx.y1 }), hi = view.toWorld({ x: bx.x1, y: bx.y0 });
-    addShape(scene, { kind: "rect", origin: lo, size: { w: hi.x - lo.x, h: hi.y - lo.y }, fill: "#fff", stroke: "none" });
+  // A label over grid lines gets a halo covering its whole collision box (glyphs and backdrop),
+  // drawn immediately before the label so tidyLabelBackdrops can pair the two.
+  const halos: Box[] = [];
+  for (const p of placed) {
+    if (bodies.some(b => b.kind === "element" && overSoft(p.body, b))) {
+      halos.push(p.body.box);
+      const bx = p.body.box, lo = view.toWorld({ x: bx.x0, y: bx.y1 }), hi = view.toWorld({ x: bx.x1, y: bx.y0 });
+      addShape(scene, { kind: "rect", origin: lo, size: { w: hi.x - lo.x, h: hi.y - lo.y }, fill: "#fff", stroke: "none" });
+    }
+    addShape(scene, { kind: "label", at: view.toWorld(p.baseline), text: p.request.text, color: p.request.color, size: p.request.size, anchor: "start" });
   }
-  for (const p of placed) addShape(scene, { kind: "label", at: view.toWorld(p.baseline), text: p.request.text, color: p.request.color, size: p.request.size, anchor: "start" });
-  const svg = renderScriptTspans(renderScene2D(scene));
+  const svg = renderScriptTspans(tidyLabelBackdrops(renderScene2D(scene), halos));
   const style = checkToolkitStyle(svg, { title: model.title, caption });
   if (style.length) fail("E_STYLE", [], `Rendered SVG violates the style contract: ${style.map(v => v.detail).join("; ")}`, { measured: { violations: style } });
   report.stage = "done";
   return { ok: true, svg, report };
+}
+
+/** Caption text as label markup; a caption that is not valid markup is kept as written. */
+function captionText(raw: string): string {
+  try {
+    return formatLabelMarkup(raw);
+  } catch (e) {
+    if (e instanceof ToolkitFailure) return raw;
+    throw e;
+  }
 }
 
 /**
@@ -207,8 +226,9 @@ function composeInner(model: ComposeModel, report: ComposeReport): ComposeResult
  * owner's own box when that box is marker-sized (at most 24 px each way) and
  * holds the anchor, so a label clears its own marker (circle, cross, x).
  */
-function smallOwnerExtent(anchor: Vec2, box: { x0: number; y0: number; x1: number; y1: number }) {
-  const e = { x0: anchor.x - 3, y0: anchor.y - 3, x1: anchor.x + 3, y1: anchor.y + 3 };
+function smallOwnerExtent(anchor: Vec2, box: { x0: number; y0: number; x1: number; y1: number }, clearPx = 0) {
+  const r = 3 + clearPx;
+  const e = { x0: anchor.x - r, y0: anchor.y - r, x1: anchor.x + r, y1: anchor.y + r };
   const small = box.x1 - box.x0 <= 24 && box.y1 - box.y0 <= 24;
   const holds = anchor.x >= box.x0 && anchor.x <= box.x1 && anchor.y >= box.y0 && anchor.y <= box.y1;
   return small && holds ? { x0: Math.min(e.x0, box.x0), y0: Math.min(e.y0, box.y0), x1: Math.max(e.x1, box.x1), y1: Math.max(e.y1, box.y1) } : e;

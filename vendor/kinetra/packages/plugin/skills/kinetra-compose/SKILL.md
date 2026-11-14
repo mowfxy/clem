@@ -64,7 +64,7 @@ From the shell: `npm run compose -- model.json out.svg` writes `out.svg` and
 - Model: `{ canvas: { width, height, world: { xMin, xMax, yMin, yMax }, worldUnit? }, title?, caption?, vars, scales?, elements, checks }`; world +y is up.
 - Points: `{"x", "y"}`, `"id"`, `"id.anchor"`, `"id.anchor(arg)"`, `{"ref": "id.anchor", "dx", "dy"}`.
 - Checks read `vars`, part refs (`F.magnitude`, `s.area`, `p.dataY`, `V.re`) and anchor coordinates (`T.surface.y`).
-- Labels: let the placer choose; `F_N`, `V_{CC}`, `x^2`, `\theta` render as real scripts. Titles and captions are plain text.
+- Labels: let the placer choose; `F_N`, `V_{CC}`, `x^2`, `\theta` render as real scripts. Captions take the same markup; titles are plain text. End reaction arrows at `<support>.under`.
 - The spring part is `coilSpring`. Units include kN, MPa, litre, eV and nm; `-3^2` is `-9`.
 - Allowed without `mayTouch`: parts joined by their named end points, series on their axes, phasors sharing the polar origin, cleanly crossing wires or connectors, current arrows on their conductor. Grid lines are low priority; filled media take `"background": true`.
 

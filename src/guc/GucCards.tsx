@@ -197,7 +197,7 @@ export function SetupDone({ subjectId, actions }: { subjectId: string; actions?:
   if (!v.data) return <Loading icon="check" />;
   const s = v.data.settings, rows: [string, string, string][] = [
     ["link", "CMS course", v.data.course ? `${v.data.course.code} ${v.data.course.name}` : "Not linked"],
-    ...(v.data.course ? [["save", "Saving", describeSaveRules(s.save)], ["check", "Checks", describeChecks(s.check)]] as [string, string, string][] : []),
+    ...(v.data.course ? [["save", "Saving", describeSaveRules(s.save)]] as [string, string, string][] : []),
     ["drive", "Google Drive", s.drive.enabled ? "Copying" : "Off"],
     ...(v.data.vps ? [["storage", "Files live", s.storage.location === "vps" ? "On your VPS" : "On this device"]] as [string, string, string][] : []),
   ];
@@ -221,7 +221,7 @@ function Updated({ card, subjectId, actions }: { card: SettingsUpdateCard; subje
 function NewCourses({ card, actions }: { card: NewCoursesCard; actions?: GucActions }) {
   const courses = useGuc<HubCourse[]>({ action: "gucCourses" }).data;
   const n = card.courses.length;
-  return <Frame icon="guc" title={`${n} new course${n === 1 ? "" : "s"} this semester`} sub="Set them up? Each gets its own subject and a short setup chat.">
+  return <Frame icon="guc" title={`${n} new course${n === 1 ? "" : "s"} this semester`} sub="Set up adds a course as a subject and starts watching it. Nothing to answer.">
     <ul className="guc-new">
       {card.courses.map((c) => {
         const linked = courses?.find((x) => x.key === c.key)?.subjectId, name = linked && actions?.spaceName(linked);

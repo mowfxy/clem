@@ -16,7 +16,7 @@ export type GucCoursework = { id: string; course: string; code: string; entries:
 /** An exam seat from ViewExamSeat_01.aspx. */
 export type GucExam = { id: string; course: string; code: string; day: string; date: string; start: string; end: string; hall: string; seat: string; type: string };
 /** A GUC Inbox message, read-only (Exchange Web Services). `id` is a hash of the EWS ItemId, never the id itself. */
-export type GucMail = { id: string; from: string; subject: string; received: string; preview: string; attachments: boolean; read: boolean; /** Its body was read once (an empty preview is then an empty message). */ previewed?: boolean };
+export type GucMail = { id: string; from: string; subject: string; received: string; preview: string; attachments: boolean; read: boolean; /** Who it was written to, as GUC shows it (names joined by ";", empty for a hidden list); absent on messages kept before this was read. */ to?: string; /** Its body was read once (an empty preview is then an empty message). */ previewed?: boolean };
 
 export type GucSnapshot = {
   courses: GucCourse[];

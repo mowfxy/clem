@@ -6,9 +6,9 @@ import { extname, join } from "node:path";
 import { gucNow, type FileText, type GucNow } from "../../core/guc/ai-tools.ts";
 import { cairo, materialFile, type HubFile, type HubOverview } from "../../core/guc/hub.ts";
 import { urls } from "../../core/guc/parse.ts";
-import { AUTH_RETRY_MS, PASSWORD_SAID } from "../../core/guc/password.ts";
+import { AUTH_RETRY_MS, PASSWORD_RECHECK_MS, PASSWORD_SAID } from "../../core/guc/password.ts";
 import { active, cronLines } from "../../core/guc/schedule-rules.ts";
-import type { InboxItem, SettingsPatch, SubjectView } from "../../core/guc/settings.ts";
+import { ALL_SUBJECTS, type InboxItem, type SettingsPatch, type SubjectView } from "../../core/guc/settings.ts";
 import { saveFiles, saveOne, type SaveStats } from "./check.ts";
 import { readMessage, type MailMessage } from "./guc-mail.ts";
 import { mirror, type MirrorResult } from "./drive-mirror.ts";
@@ -99,6 +99,7 @@ export class Engine {
     await this.telegram.stop();
     await this.jobs?.stop().catch(() => {});
     this.jobs = undefined;
+    if (this.rechecking) { clearInterval(this.rechecking); this.rechecking = undefined; }
   }
   get isRunner() { return this.runnerOn; }
 
@@ -118,11 +119,13 @@ export class Engine {
     if (await this.credentials() && !(await this.paused())) await this.jobs.schedule("guc.sync", GUC_SYNC_CRON);
     await this.organizer.start(this.jobs);
     this.telegram.start();
-    // First run: Clem asks how it should run (once), then, without Telegram paired, the pair card (once).
-    const setup = setTimeout(() => void this.organizer.offerSetup().catch(() => {}), 15_000);
+    // First run: the quiet defaults are saved, and nothing is posted (no hello, no questions, no Telegram card).
+    // A password GUC seemed to refuse is asked about again, quietly: at start, then every six hours (recheckPassword).
+    const again = () => void this.recheckPassword().catch((e) => this.host.log("warn", "[guc] password recheck: " + asGucError(e).kind));
+    const first = setTimeout(again, 25_000); first.unref?.();
+    this.rechecking = setInterval(again, PASSWORD_RECHECK_MS); this.rechecking.unref?.();
+    const setup = setTimeout(() => void this.organizer.quietStart().catch(() => {}), 15_000);
     setup.unref?.();
-    const offer = setTimeout(() => void this.organizer.offerTelegram("first").catch(() => {}), 30_000);
-    offer.unref?.();
   }
   /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card (all local rows; empty
    *  once GUC is disconnected). */
@@ -172,7 +175,13 @@ export class Engine {
       throw e instanceof GucError && e.kind === "auth" ? new GucError("auth", e.detail, "GUC didn't accept that password. Check it and try again.") : e;
     });
     await this.host.secrets.set(this.key(), { username: client.username, password, domain: client.domain } satisfies Credentials);
+    await this.resume(client, progress);
+    return this.status();
+  }
+  /** GUC takes the password: the flag cleared, the jobs back from the settings as they are now, then a catch-up. */
+  private async resume(client?: GucClient, progress?: (p: GucProgress) => void) {
     await this.db.query("update guc_account set password_needed = null, last_error = null where owner_id = $1", [this.owner]);
+    await this.db.query("delete from notify_queue where owner_id = $1 and event_key like 'guc-auth%'", [this.owner]);
     this.reader = undefined;
     await this.jobs?.schedule("guc.sync", GUC_SYNC_CRON);
     const linked = await this.links();
@@ -180,8 +189,20 @@ export class Engine {
     this.version++;
     this.host.changed?.();
     this.catchUp = this.sync(progress, false, client).then(async () => { for (const l of linked) await this.check(l.subjectId, "rules").catch(() => null); }, () => {}).finally(() => { this.catchUp = undefined; });
-    return this.status();
   }
+  /** While the password is flagged: one quiet request to the CMS home page with the saved password. If GUC takes it
+   *  (the flag was a false alarm, or the uni's hiccup passed), everything resumes without the person doing anything.
+   *  One request every six hours can't lock an account. Only a page GUC really served counts; anything else waits. */
+  async recheckPassword() {
+    const credentials = await this.credentials();
+    if (!credentials || !(await this.paused())) return false;
+    const works = await new GucClient(credentials, this.http, this.sleep).page(urls.home).then(() => true, () => false);
+    if (!works) return false;
+    this.host.log("info", "[guc] the saved password works: checks resumed");
+    await this.resume();
+    return true;
+  }
+  private rechecking?: ReturnType<typeof setInterval>;
   /** The catch-up after a new password (tests wait for it). */
   catchUp?: Promise<void>;
 
@@ -234,11 +255,15 @@ export class Engine {
     if (await this.paused()) throw new GucError("auth", "password needed", PASSWORD_SAID);
     client ||= new GucClient(credentials, this.http, this.sleep);
     try {
-      // A wrong password is tried once more after a short wait, to rule out a blip.
+      // A refused sign-in is the password only when the CMS home page refuses it too, asked once after a short wait.
+      // When the home page takes it, the sync is tried once more; a page that still refuses is that page's trouble
+      // (the portal or one course), never a reason to ask the person for a new password.
       const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader }).catch(async (e) => {
         if (asGucError(e).kind !== "auth") throw e;
-        await (this.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(AUTH_RETRY_MS);
-        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader });
+        if (!(await this.passwordWorks(credentials))) throw e;
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader }).catch((again) => {
+          throw asGucError(again).kind === "auth" ? new GucError("unavailable", "sign-in refused past the home page: " + (asGucError(again).detail || "")) : again;
+        });
       });
       if (out) out.result = result;
       this.version++;
@@ -334,7 +359,14 @@ export class Engine {
   async unlink(subjectId: string) { await subjects.unlink(this.db, this.owner, subjectId); await this.reschedule(subjectId); return this.subject(subjectId); }
   /** Changes settings. New save rules save what they now keep, and turning the Drive copy on (or a new folder) copies
    *  what is saved, once the taps settle; neither reads CMS pages again. */
-  async setSettings(subjectId: string, patch: SettingsPatch) {
+  async setSettings(subjectId: string, patch: SettingsPatch): Promise<SubjectView> {
+    // For every course: kept as what new subjects start from, and applied to each linked subject now.
+    if (subjectId === ALL_SUBJECTS) {
+      const all: SettingsPatch = { ...(patch.save ? { save: patch.save } : {}), ...(patch.drive ? { drive: { enabled: !!patch.drive.enabled } } : {}) };
+      await subjects.saveSettings(this.db, this.owner, ALL_SUBJECTS, all);
+      for (const l of await this.links()) await this.setSettings(l.subjectId, all);
+      return this.subject(ALL_SUBJECTS);
+    }
     const before = await subjects.settings(this.db, this.owner, subjectId);
     const after = await subjects.saveSettings(this.db, this.owner, subjectId, patch);
     if (patch.check) await this.reschedule(subjectId);
@@ -535,6 +567,7 @@ export class Engine {
   }
 
   async close() {
+    if (this.rechecking) clearInterval(this.rechecking);
     await this.catchUp;
     await this.organizer.close()?.catch(() => {});
     await this.telegram.stop();

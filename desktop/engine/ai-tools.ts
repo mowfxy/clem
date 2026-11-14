@@ -5,7 +5,7 @@ import { announcementsText, deadlinesText, deadlineWindow, fileTextPage, GUC_GUI
 import { settingsUpdateCard } from "../../core/guc/cards.ts";
 import { AI_RULES_FORMAT, describeSaveRules } from "../../core/guc/rules.ts";
 import { describeChecks } from "../../core/guc/schedule-rules.ts";
-import { settingsPatch, type SubjectView } from "../../core/guc/settings.ts";
+import { ALL_SUBJECTS, settingsPatch, type SubjectView } from "../../core/guc/settings.ts";
 import { updatePatch } from "../../core/guc/setup-flow.ts";
 import { asGucError, GucError } from "./errors.ts";
 import type { Engine } from "./index.ts";
@@ -87,7 +87,7 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
         ctx.changed?.();
         return `${r.already ? "Already saved" : "Saved"} ${r.name} to their files${r.subjectId ? " (under its subject)" : ""}${r.drive ? `, and uploaded it to Google Drive → ${r.drive.folder}` : ""}. Say so in one short sentence.`;
       }
-      case "guc.settings": return settings(ctx, a, need());
+      case "guc.settings": return settings(ctx, a, a.everywhere ? "all" : need());
     }
   } catch (error) {
     const g = asGucError(error);
@@ -124,7 +124,8 @@ async function readFile(ctx: GucToolContext, file: string, from: number | undefi
 
 /** guc.settings: the same converters and checks as a settings_update block (core/guc/setup-flow.ts updatePatch) and the
  *  same engine call a card makes. */
-async function settings(ctx: GucToolContext, a: Record<string, any>, c: Resolved | { error: string }) {
+async function settings(ctx: GucToolContext, a: Record<string, any>, c: Resolved | { error: string } | "all") {
+  if (c === "all") return settingsEverywhere(ctx, a);
   if ("error" in c) return c;
   if (!c.subjectId) return { error: `${label(c)} isn't linked to a subject; link it from the subject's CMS tab first.` };
   const { subject: _s, ...fields } = a;
@@ -141,6 +142,22 @@ async function settings(ctx: GucToolContext, a: Record<string, any>, c: Resolved
   ctx.changed?.();
   const s = after.settings;
   return `Updated ${label(c)}: saves ${describeSaveRules(s.save)}; checks ${describeChecks(s.check)} (Cairo); Drive copy ${s.drive.enabled ? "on" : "off"}.${unread.length ? ` Not changed (couldn't read): ${unread.join("; ")}.` : ""} Tell the person in one sentence.`;
+}
+
+/** guc.settings with "everywhere": what to keep and the Drive copy, for every linked subject and those linked later. */
+async function settingsEverywhere(ctx: GucToolContext, a: Record<string, any>) {
+  const { subject: _s, everywhere: _e, ...fields } = a;
+  const card = settingsUpdateCard.safeParse({ type: "settings_update", ...fields });
+  if (!card.success) return { error: `guc.settings: ${card.error.issues[0].path.join(".")} ${card.error.issues[0].message.toLowerCase()}.` };
+  const was: SubjectView = await ctx.engine.subject(ALL_SUBJECTS);
+  const { save, drive } = updatePatch(card.data, { save: was.settings.save });
+  if (card.data.saveText && !save) return { error: `Clem couldn't read what to save ("${card.data.saveText}"): send "rules" as ${AI_RULES_FORMAT}.` };
+  const checked = settingsPatch.safeParse({ ...(save ? { save } : {}), ...(drive ? { drive } : {}) });
+  if (!checked.success || !Object.keys(checked.data).length) return { error: "For every course, Clem can change what it saves (saveText, rules or save) and the Drive copy (drive). When to check is per subject." };
+  const after: SubjectView = await ctx.engine.setSettings(ALL_SUBJECTS, checked.data);
+  ctx.changed?.();
+  const n = (await ctx.engine.links()).length;
+  return `Updated all ${n} linked course${n === 1 ? "" : "s"}, and every course linked later: saves ${describeSaveRules(after.settings.save)}; Drive copy ${after.settings.drive.enabled ? "on" : "off"}. Tell the person in one sentence.`;
 }
 
 const PAIR_CARD = '```clem-card\n{"type":"telegram_pair"}\n```';

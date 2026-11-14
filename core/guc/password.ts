@@ -1,11 +1,15 @@
-// GUC password expiry (docs/GUC-VPS-ENGINE.md "Password expiry"): GUC can force a new password every 30 days. A
-// failed sign-in is retried once; then the connection is `password_needed`, its jobs pause, and the notifier tells the
-// person once and reminds them gently at most once a day. Pure, so the engine and its tests share it.
+// GUC password expiry (docs/GUC-VPS-ENGINE.md "Password expiry"): GUC can force a new password every 30 days. Only the
+// CMS home page refusing the saved password counts (a refusal anywhere else is that page's trouble); then the
+// connection is `password_needed`, its jobs pause, and the notifier tells the person once and reminds them gently at
+// most once a day. The saved password is tried again every six hours, so a false alarm clears without the person.
+// Pure, so the engine and its tests share it.
 import { cairo } from "./hub.ts";
 import { inQuiet, OUTWARD, type Channel, type ProSettings } from "../proactivity/settings.ts";
 
-/** The wait before the one retry, to rule out a blip. */
+/** The wait before the CMS home page is asked whether the password really stopped working. */
 export const AUTH_RETRY_MS = 8_000;
+/** While flagged, the saved password is tried again this often (one request): a false alarm clears by itself. */
+export const PASSWORD_RECHECK_MS = 6 * 3600_000;
 /** Settings → Connectors → GUC, on the "New password" field. */
 export const PASSWORD_ROUTE = "/app/connectors/guc";
 export const PASSWORD_SAID = "GUC isn't accepting your password. If the uni asked you to change it, enter the new one here.";

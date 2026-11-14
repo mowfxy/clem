@@ -13,6 +13,10 @@ export type StorageSettings = { location: "device" | "vps" };
 export type SubjectSettings = { save: SaveRules; check?: CheckSchedule; drive: DriveSettings; storage: StorageSettings; setup?: SetupState };
 export const defaultSettings = (): SubjectSettings => ({ save: defaultSaveRules(), drive: { enabled: false }, storage: { location: "device" } });
 
+/** Not a subject: the settings the person gave for all their courses ("keep everything from every course"). A subject
+ *  with none of its own starts from them. */
+export const ALL_SUBJECTS = "_all";
+
 export type SubjectLink = { subjectId: string; courseKey: string; code: string; name: string; season: string; linkedAt: number };
 /** Something a check found for a linked subject that the window hasn't shown yet: a saved file (added to the subject's
  *  Files) or news (a card in its Setup chat). Acknowledged once shown. */
