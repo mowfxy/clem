@@ -77,28 +77,9 @@ try {
       check(await page.locator(".sp-file-open", { hasText: "Lecture 1.pdf" }).count() === 0, `${theme}: week 1 was not saved`);
       await shot("files");
 
-      // The rule, schedule and Drive cards on the subject page.
+      // The subject page has no settings cards: what to save and the Drive copy are said in a chat (guc.settings).
       await page.getByRole("tab", { name: "CMS" }).click();
-      await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).click();
-      const rules = card("What Clem saves");
-      await rules.waitFor({ timeout: 6000 });
-      check(/PDFs only · week 2 onwards/.test(await rules.textContent()), `${theme}: the rule card describes the filters`);
-      check(await rules.getByRole("button", { name: "Clear filters" }).count() === 1, `${theme}: filters can be cleared`);
-      await shot("save-rules", ".guc-card:has-text('What Clem saves')");
-      const when = card("When Clem checks CMS");
-      check(/Every 2 hours, 08:00–22:00, Sat–Thu \(GUC week\)/.test(await when.textContent()), `${theme}: the schedule card says weekdays are Sat–Thu`);
-      check(await when.getByRole("radio", { name: "Custom" }).getAttribute("aria-checked") === "true", `${theme}: a schedule from words shows as Custom`);
-      check(/Coming up:/.test(await when.textContent()) && /Last checked/.test(await when.textContent()), `${theme}: next runs and the last check show`);
-      await shot("check-schedule", ".guc-card:has-text('When Clem checks CMS')");
-      const copy = card("Copy to Google Drive");
-      check(/Folder: Clem\/GUC\/CSEN 701 Embedded Systems Architecture/.test(await copy.textContent()) && /2 copied/.test(await copy.textContent()), `${theme}: the Drive card shows the folder and the copies`);
-      check(await copy.getByRole("button", { name: "Open" }).count() === 1 && await copy.getByRole("button", { name: "Change folder" }).count() === 1, `${theme}: the Drive card opens and changes the folder`);
-      await shot("drive", ".guc-card:has-text('Copy to Google Drive')");
-      drive.on = false;
-      await engine.copyToDrive("embedded");
-      await page.evaluate(() => window.fireGuc({ phase: "done", done: 1, total: 1, label: "Up to date" }));
-      await card("Copy to Google Drive").getByRole("button", { name: "Reconnect Drive" }).waitFor({ timeout: 6000 }).then(() => check(true, `${theme}: a disconnected Drive shows Reconnect Drive`), () => check(false, `${theme}: Reconnect Drive`));
-      await shot("drive-reconnect", ".guc-card:has-text('Copy to Google Drive')");
+      check(await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).count() === 0, `${theme}: the subject's CMS tab has no Settings (they are said in a chat: guc.settings)`);
 
       // Summarize: a new chat in the subject with the file attached and the request typed.
       await page.getByRole("tab", { name: "Chats" }).click();

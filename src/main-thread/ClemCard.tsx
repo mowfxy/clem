@@ -28,10 +28,10 @@ export function ClemCardBlock({ body, handlers = {} }: { body: string; handlers?
   if (card.type === "handoff") {
     const name = handlers.spaceName?.(card.spaceId) || card.spaceName;
     return (
-      <button type="button" className="edit-proposal clem-card clem-handoff" aria-label={`Continued in ${name}. Open the chat`} onClick={() => handlers.onOpenChat?.(card.chatId, card.spaceId)}>
+      <button type="button" className="edit-proposal clem-card clem-handoff" aria-label={`${card.back ? "Working in" : "Continued in"} ${name}. Open the chat`} onClick={() => handlers.onOpenChat?.(card.chatId, card.spaceId)}>
         <header>
           <Icon name={card.spaceKind === "project" ? "projects" : "subjects"} size={16} />
-          <div><strong>Continued in {name}</strong><small>{card.title || (card.reason === "mention" ? "You mentioned it, so the answer carries on there." : "The answer carries on in its chat.")}</small></div>
+          <div><strong>{card.back ? "Working in" : "Continued in"} {name}</strong><small>{card.back ? `${card.title ? card.title + " · " : ""}The answer comes back here.` : card.title || (card.reason === "mention" ? "You mentioned it, so the answer carries on there." : "The answer carries on in its chat.")}</small></div>
           <Icon name="arrow" size={15} />
         </header>
       </button>

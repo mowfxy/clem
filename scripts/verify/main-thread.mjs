@@ -1,6 +1,7 @@
 // Checks the main thread against the real App, in dark and light: home's box opens the main thread with what was typed;
 // the thread is virtualized and pages older messages in; @ offers subjects and projects; a mention (dark) or a confident
-// match (light) hands the message to the subject's chat and leaves a card; the sidebar lists subjects and projects only;
+// match (light), a PDF request and the AI's own clem.handoff go to a NEW chat in the subject, run in the background on the
+// AI used last, and come back to the main thread (a card, then the answer and files); the sidebar lists subjects and projects only;
 // Earlier chats are read-only with "Move to…"; Settings → Proactivity picks Clem's organizer.
 // Usage: node scripts/verify/main-thread.mjs [out-dir]
 import { chromium } from "playwright";
@@ -23,7 +24,7 @@ const extraChats = [
   { id: "c-old-1", title: "Travel checklist for the summer", spaceId: null, updated: now - 40 * day, messages: [said("o1", "user", "Make me a packing list.", now - 40 * day), said("o2", "assistant", "Passport, charger, adaptor, and a light jacket.", now - 40 * day)] },
   { id: "c-old-2", title: "Cover letter draft", spaceId: null, updated: now - 60 * day, messages: [said("o3", "user", "Draft a cover letter.", now - 60 * day)] },
   { id: "c-circ", title: "Thevenin equivalents", spaceId: "circ", updated: now - day, messages: [said("c1", "user", "Explain Thevenin.", now - day), said("c2", "assistant", "Replace the network with one source and one resistor.", now - day)] },
-  { id: "c-site", title: "Navbar layout", spaceId: "site", updated: now - 2 * day, messages: [said("s1", "user", "Fix the navbar.", now - 2 * day)] },
+  { id: "c-site", title: "Navbar layout", spaceId: "site", model: "claude:sonnet", updated: now - 2 * 3600e3, messages: [said("s1", "user", "Fix the navbar.", now - 2 * day)] },
 ];
 
 const browser = await chromium.launch();
@@ -34,7 +35,7 @@ try {
     const fixture = await openFixture(browser, { unfold: false,
       port: 5231, viewport: { width: 1360, height: 860 }, extraChats, extraSpaces,
       initScripts: [`try{localStorage.setItem("clem-theme",${JSON.stringify(theme)});localStorage.removeItem("clem-sidebar-open")}catch{}`],
-      replies: [theme === "dark" ? "Osmosis moves water toward the side with more solute, so the potato cells took water in." : "The Krebs cycle turns acetyl-CoA into CO2 and energy carriers.", "Here is a calm evening: one hour of review, then rest."],
+      replies: [theme === "dark" ? "Osmosis moves water toward the side with more solute, so the potato cells took water in." : "The Krebs cycle turns acetyl-CoA into CO2 and energy carriers.", "A Norton equivalent is one current source in parallel with one resistor.", "Here is a calm evening: one hour of review, then rest."],
     });
     const { page, errors } = fixture;
     const shot = async (name, opts = {}) => { await page.waitForTimeout(700); return page.screenshot({ path: `${out}/main-${name}-${theme}.png`, ...opts }); };
@@ -94,21 +95,41 @@ try {
         await box.pressSequentially("Walk me through the Krebs cycle again for Biology 101");
       }
       await box.press("Enter");
-      // Hand-off: the subject's latest chat answers; the main thread keeps a card.
-      await page.locator(".top-space", { hasText: "Biology 101" }).waitFor({ timeout: 4000 });
-      check(await page.locator(".top-title").textContent() === "Osmosis lab write-up", `${theme}: handed to the subject's most recent chat`);
-      await page.locator(".message.assistant.latest .message-text").filter({ hasText: theme === "dark" ? "Osmosis moves water" : "Krebs cycle turns" }).waitFor({ timeout: 8000 });
-      check(await page.locator(".message.user.latest, .message.user").last().locator(".carried-note").count() === 1, `${theme}: the question arrives with a carried note`);
-      await shot("handoff-chat");
-      await page.locator(".nav-item", { hasText: "Clem" }).click();
+      // Hand-off (core/main-thread/handoff.ts): a NEW chat in the subject answers in the background, on the AI used last;
+      // the person stays in the main thread, which gets a card now and the answer when it ends.
+      const task = theme === "dark" ? "why did the potato gain mass?" : "Walk me through the Krebs cycle again for Biology 101";
       const card = page.locator(".clem-handoff").last();
-      await card.waitFor({ timeout: 3000 });
-      check((await card.textContent())?.includes("Continued in Biology 101"), `${theme}: the main thread shows "Continued in Biology 101"`);
-      const sent = await page.evaluate(() => window.requests.filter((r) => r.action === "chat").at(-1));
-      check(sent?.scope === "subject:bio", `${theme}: the turn is scoped to the subject (${sent?.scope})`);
+      await card.waitFor({ timeout: 4000 });
+      check((await card.textContent())?.includes("Working in Biology 101"), `${theme}: the main thread shows "Working in Biology 101"`);
+      check(await page.locator(".chat-view.main-thread").count() === 1, `${theme}: the person stays in the main thread`);
+      const brought = page.locator(".mt-row", { has: page.locator(".brought-from", { hasText: "From Biology 101" }) }).last();
+      await brought.waitFor({ timeout: 10000 });
+      check((await brought.textContent())?.includes(theme === "dark" ? "Osmosis moves water" : "Krebs cycle turns"), `${theme}: the subject chat's answer comes back to the main thread`);
+      const sent = await page.evaluate(() => window.requests.filter((r) => r.action === "chat" && r.scope === "subject:bio").at(-1));
+      check(!!sent, `${theme}: the turn ran scoped to the subject`);
+      check(sent?.model === "claude:sonnet", `${theme}: it ran on the AI used last (${sent?.model})`);
+      check(await page.locator(".side-chat .history-title", { hasText: task.slice(0, 40) }).count() === 1 && await page.locator(".side-chat .history-title", { hasText: "Osmosis lab write-up" }).count() === 1, `${theme}: it is a new chat; the subject's latest chat is untouched`);
       await shot("handoff");
       await card.click();
-      check(await page.locator(".top-title").textContent() === "Osmosis lab write-up", `${theme}: the card opens the chat`);
+      check((await page.locator(".top-title").textContent())?.startsWith(task.slice(0, 30)), `${theme}: the card opens the new chat`);
+      check(await page.locator(".message.user").last().locator(".carried-note").count() === 1, `${theme}: the question arrives with a carried note`);
+      await shot("handoff-chat");
+      await page.locator(".nav-item", { hasText: "Clem" }).click();
+
+      // A PDF made in the subject chat comes back to the main thread attached.
+      await box.fill("Make me a worksheet PDF for Biology 101");
+      await box.press("Enter");
+      const pdf = page.locator(".mt-row", { has: page.locator(".brought-from") }).filter({ hasText: "Week 3 worksheet" }).last();
+      await pdf.waitFor({ timeout: 20000 }).then(() => check(true, `${theme}: the PDF made in Biology 101 comes back to the main thread`), () => check(false, `${theme}: the PDF made in Biology 101 comes back to the main thread`));
+      await shot("handoff-pdf");
+
+      // The main-thread AI hands off what the rules can't place (clem.handoff); its answer is one line.
+      await box.fill("HANDOFF-BY-AI help me with the network theorems");
+      await box.press("Enter");
+      await page.locator(".clem-handoff", { hasText: "Working in Circuits" }).last().waitFor({ timeout: 6000 }).then(() => check(true, `${theme}: the AI's clem.handoff opens a chat in Circuits`), () => check(false, `${theme}: the AI's clem.handoff opens a chat in Circuits`));
+      await page.locator(".brought-from", { hasText: "From Circuits" }).last().waitFor({ timeout: 10000 }).then(() => check(true, `${theme}: its answer comes back from Circuits`), () => check(false, `${theme}: its answer comes back from Circuits`));
+      check(await page.locator(".chat-view.main-thread").count() === 1, `${theme}: still in the main thread`);
+      await shot("handoff-ai");
 
       // A message for no one subject stays and is answered with the budgeted context.
       await page.locator(".nav-item", { hasText: "Clem" }).click();

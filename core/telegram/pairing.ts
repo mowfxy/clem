@@ -8,6 +8,8 @@ export const CODES_PER_HOUR = 5;
 export const TRIES_PER_MINUTE = 5;
 /** Telegram's own limit for a file a bot sends. */
 export const TG_FILE_LIMIT = 50 * 1024 * 1024;
+/** Telegram takes a photo (shown inline) up to 10 MB; anything larger goes as a file. */
+export const TG_PHOTO_LIMIT = 10 * 1024 * 1024;
 /** Telegram's limit for one message's text. */
 export const TG_TEXT_LIMIT = 4096;
 

@@ -16,6 +16,9 @@ export const scopeSchema = z
 const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.string().min(3).max(1000) }), z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })]);
 /** A CMS course key ("<courseId>:<seasonId>") and a GUC row id. */
 const proKey = z.string().min(1).max(300);
+/** What a Telegram answer carries: files Clem made (by id) and its visuals drawn as PNGs (base64), sent as photos. */
+const tgFiles = z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: z.string().min(1).max(300), type: z.string().max(200) })).max(5);
+const tgPhotos = z.array(z.object({ name: z.string().min(1).max(120), data: z.string().max(14_000_000) })).max(6);
 const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
@@ -107,7 +110,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("tgPair") }),
   z.object({ action: z.literal("tgUnpair") }),
   z.object({ action: z.literal("tgOffer") }),
-  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000), files: z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: z.string().min(1).max(300), type: z.string().max(200) })).max(5).optional() }),
+  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000), files: tgFiles.optional(), photos: tgPhotos.optional() }),
+  z.object({ action: z.literal("tgPost"), text: z.string().max(200_000), files: tgFiles.optional(), photos: tgPhotos.optional() }),
   z.object({ action: z.literal("driveConnect"), pick: z.enum(["files", "folder"]).optional(), request: z.string().regex(/^[\w-]{16,64}$/).optional() }),
   z.object({ action: z.literal("drivePicked"), request: z.string().regex(/^[\w-]{16,64}$/) }),
   z.object({ action: z.literal("driveAccess"), hide: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional(), show: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional() }),

@@ -144,7 +144,7 @@ export function turnText(content: string) {
   return content.replace(/```clem-card\s*([\s\S]*?)```/g, (_, body: string) => {
     try {
       const c = JSON.parse(body);
-      if (c.type === 'handoff') return `[Continued in ${c.spaceName}]`;
+      if (c.type === 'handoff') return c.back ? `[Handed to a new chat in ${c.spaceName}; its answer follows when done]` : `[Continued in ${c.spaceName}]`;
       if (c.type === 'organizer' && Array.isArray(c.lines)) {
         const lines = c.lines.slice(0, 14).map((l: { text?: unknown; time?: unknown; space?: unknown }) => `- ${l.time ? l.time + ' ' : ''}${String(l.text || '').slice(0, 220)}${l.space ? ' (' + l.space + ')' : ''}`);
         return `[You told them (${c.title || 'Clem'}):\n${lines.join('\n')}${c.lines.length > 14 ? '\n- …' : ''}]`;

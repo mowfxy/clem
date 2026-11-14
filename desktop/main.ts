@@ -1616,17 +1616,28 @@ void app.whenReady().then(async () => {
       if (request.action === "tgPair") return t.pair();
       if (request.action === "tgUnpair") return t.unpair();
       if (request.action === "tgOffer") return engine.organizer.offerTelegram("asked");
+      // Files an answer made go with it (each within Telegram's 50 MB); its visuals and figures, drawn by the window as
+      // PNGs, go as photos.
+      const outgoing = async (r: { files?: { id: string; name: string; type: string }[]; photos?: { name: string; data: string }[] }) => {
+        const files: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] = [];
+        for (const f of r.files || []) {
+          const bytes = await blobs.readFile(user.id, f.id).catch(() => null);
+          if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
+        }
+        for (const p of r.photos || []) files.push({ name: p.name, type: "image/png", bytes: new Uint8Array(Buffer.from(p.data, "base64")), photo: true });
+        return files;
+      };
       if (request.action === "tgAnswered") {
         const wait = telegramWaits.get(request.id);
         if (!wait || wait.owner !== user.id) return { ok: false };
         telegramWaits.delete(request.id);
-        // Files the answer made go with it (each within Telegram's 50 MB).
-        const files = [];
-        for (const f of request.files || []) {
-          const bytes = await blobs.readFile(user.id, f.id).catch(() => null);
-          if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
-        }
-        wait.resolve({ text: request.text, files });
+        wait.resolve({ text: request.text, files: await outgoing(request) });
+        return { ok: true };
+      }
+      // A hand-off asked from Telegram finished after its turn was answered: its result is sent as its own message.
+      if (request.action === "tgPost") {
+        if (!(await t.paired())) return { ok: false };
+        await t.post(request.text, await outgoing(request));
         return { ok: true };
       }
     }
@@ -2548,6 +2559,13 @@ void app.whenReady().then(async () => {
       };
       const renderPages = async (bytes: Uint8Array, pages: number[], name = "edited PDF", size?: number) => (await windowTask("render", { bytes, pages, name, size })).images.map((i) => ({ name: i.name, image: new Uint8Array(Buffer.from(i.data, "base64")) }));
       const tools = async (tool: any) => {
+        // The main thread hands subject and project work to a new chat there (core/main-thread/handoff.ts): the window
+        // opens it, runs it on the person's last AI, and brings the result back to the main thread when it is done.
+        if (tool?.action === "clem.handoff") {
+          if (typeof tool.space !== "string" || !tool.space.trim() || typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "space" (the subject or project, by name) and "task" (the request, complete).' };
+          try { return (await windowTask("handoff", { space: tool.space.slice(0, 200), task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
         // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
         if (isClemAction(tool?.action)) {

@@ -112,3 +112,10 @@ html:root body .home-pick .home-pick-chip:hover,html:root body .home-pick .home-
    to the desktop halfway through; the length and curve are the workspace's own (MORPH_MS/MORPH_EASE). */
 :root{--mt-fade:.26s;--mt-fade-ease:cubic-bezier(.4,0,.2,1)}
 ::view-transition-old(root),::view-transition-new(root){animation-duration:var(--mt-fade);animation-timing-function:var(--mt-fade-ease)}
+/* A hand-off's result, brought back from its subject or project chat: a quiet link to that chat above the answer. */
+button.brought-from{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px;padding:3px 10px 3px 8px;border:1px solid #ffffff1a;border-radius:999px;background:#ffffff08;color:#b9b8b1;font:400 13px/1.4 var(--sans);cursor:pointer;transition:background .16s,color .16s}
+button.brought-from:hover{background:#ffffff12;color:#ecebe4}
+button.brought-from .drawn-icon:last-child{opacity:.6}
+button.brought-from:focus-visible{outline:2px solid var(--focus,#9fb4ff);outline-offset:2px}
+html:root[data-theme=light] button.brought-from{border-color:#1b274017;background:#ffffff99;color:#4d5565}
+html:root[data-theme=light] button.brought-from:hover{background:#fff;color:#1b2740}

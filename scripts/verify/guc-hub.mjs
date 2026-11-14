@@ -162,6 +162,7 @@ try {
       check(drawn, `${theme}: the PDF preview draws its first page`);
       if (drawn) timings.push(`${theme}: PDF preview first page ${Date.now() - t0} ms`);
       check(await page.locator(".fp-crumb", { hasText: "GUC CMS" }).count() === 1, `${theme}: the CMS file opens in Clem's file viewer`);
+      check(await page.evaluate(() => { const d = getComputedStyle(document.querySelector("dialog.fp-dialog")); return d.backgroundColor === "rgba(0, 0, 0, 0)" && d.backdropFilter === "none"; }), `${theme}: the viewer's window-wide dialog stays clear, so the page shows dimmed behind it (only ::backdrop tints)`);
       await shot("preview");
       await page.keyboard.press("Escape");
       await page.locator(".fp-head").waitFor({ state: "detached" }).catch(() => {});

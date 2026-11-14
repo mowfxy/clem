@@ -52,12 +52,7 @@ try {
       check(await page.locator(".guc-course-bar").getByRole("button", { name: "Check now" }).count() === 1, `${theme}: Check now is on the course bar`);
       await shot("linked");
 
-      await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).click();
-      await page.locator(".guc-card", { hasText: "What Clem saves" }).waitFor({ timeout: 6000 });
-      check(await page.locator(".guc-card", { hasText: "When Clem checks CMS" }).count() === 0, `${theme}: no check schedule to set`);
-      check(await page.locator(".guc-card", { hasText: "Where files live" }).count() === 0, `${theme}: no storage choice without a VPS`);
-      check(await page.locator(".guc-card", { hasText: "Copy to Google Drive" }).count() === 1, `${theme}: the Drive copy is still there`);
-      await shot("settings");
+      check(await page.locator(".guc-subject").getByRole("tab", { name: "Settings" }).count() === 0, `${theme}: the subject's CMS tab has no Settings (they are said in a chat: guc.settings)`);
 
       // No Setup chat is made and nothing is written anywhere: linking is all that happened.
       await page.locator(".guc-subject").getByRole("tab", { name: "Files" }).click();

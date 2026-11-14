@@ -5,7 +5,7 @@
 // - /telegram/* (the person's Supabase sign-in): pair, unpair and status for the window; inbox, ack, send, typing and
 //   file for their engine (desktop now, a VPS later), which answers with Clem's own agent.
 import { Bot, InputFile } from "grammy";
-import { CODE_TTL_MS, TG_FILE_LIMIT, TG_TEXT_LIMIT, TRIES_PER_MINUTE, canIssue, codeHash, deepLink, keyboardOk, newCode, readCode } from "../core/telegram/pairing.ts";
+import { CODE_TTL_MS, TG_FILE_LIMIT, TG_PHOTO_LIMIT, TG_TEXT_LIMIT, TRIES_PER_MINUTE, canIssue, codeHash, deepLink, keyboardOk, newCode, readCode } from "../core/telegram/pairing.ts";
 import { HttpError, json, limit, readJson } from "./lib/http.js";
 import { key as vaultKey, open, seal } from "./provider-vault.js";
 
@@ -181,7 +181,14 @@ export async function handleTelegram(request, env, user, path, o = {}) {
       if (!file || typeof file === "string") return json({ error: "No file." }, 400);
       if (file.size > TG_FILE_LIMIT) return json({ error: "Telegram takes files up to 50 MB." }, 413);
       const name = String(file.name || "file").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").slice(0, 120) || "file";
-      const sent = await api.sendDocument(link.chat_id, new InputFile(new Uint8Array(await file.arrayBuffer()), name), caption ? { caption } : {});
+      const bytes = new Uint8Array(await file.arrayBuffer()), extra = caption ? { caption } : {};
+      // A visual Clem drew (as=photo) shows inline as a photo; Telegram takes photos up to 10 MB and refuses some
+      // shapes, so anything it won't take as a photo still arrives, as a file.
+      if (String(form.get("as") || "") === "photo" && file.size <= TG_PHOTO_LIMIT) {
+        const photo = await api.sendPhoto(link.chat_id, new InputFile(bytes, name), extra).catch(() => null);
+        if (photo) return json({ ok: true, messageId: photo.message_id });
+      }
+      const sent = await api.sendDocument(link.chat_id, new InputFile(bytes, name), extra);
       return json({ ok: true, messageId: sent?.message_id });
     }
     return json({ error: "Not found" }, 404);

@@ -169,7 +169,7 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
                 ...harderWorksheet.sections.slice(was).map((s) => `@@@ INSERT AFTER ${was}\n${block(s)}`)].join("\n"));
             }
             else if (system.includes("You edit an existing PDF in place")) stream(r.id, JSON.stringify(handoutEdits));
-            else if (/worksheet PDF/.test(all)) {
+            else if (/worksheet PDF/.test(all) && !/HANDOFF-BY-AI/.test(all)) {
               const id = crypto.randomUUID(), spec = { ...worksheetSpec, title: "Week 3 worksheet", subtitle: "Biology 101 · Cells and membranes" };
               stream(r.id, "Here is a worksheet on cells and membranes, with space for your answers. I saved it as a PDF.", async () => {
                 const bytes = new Uint8Array(await window.__renderSpec(JSON.stringify(spec)));
@@ -178,6 +178,10 @@ export async function openFixture(browser, { port = 5198, viewport = { width: 14
                 // Through the chat stream, as the real bridge receives it (src/desktop/bridge.ts).
                 for (const fn of chat) fn({ id: r.id, type: "artifact", file, scope: r.scope });
               });
+            } else if (!/^(subject|project):/.test(r.scope || "") && r.messages.filter((m) => m.role === "user" && !/^Source material/.test(m.content)).at(-1)?.content?.includes("HANDOFF-BY-AI")) {
+              // The main-thread AI hands the request off itself (clem.handoff), as desktop/main.ts asks the window to.
+              for (const fn of chat) fn({ id: r.id, type: "pdfTask", task: "handoff-1", op: "handoff", args: { space: "Circuits", task: "Explain Norton equivalents with one worked example." } });
+              stream(r.id, "On it in Circuits.");
             } else stream(r.id, replies.shift() || "Done.");
             return { started: true };
           }

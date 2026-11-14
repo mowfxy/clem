@@ -1,5 +1,6 @@
 // A subject's CMS tab (src/space/SpacePage.tsx). Linked: its course's files, announcements, deadlines, grades and
-// classes (the hub's own views, scoped to the course) and every GUC setting as the same cards the chat shows.
+// classes (the hub's own views, scoped to the course). Its GUC settings (what is saved, Drive copies, storage) have no
+// tab: the person says them in a chat and the AI changes them (guc.settings).
 // Not linked: a picker that puts the likeliest course first, and the setup chat.
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { hubPath, PERIOD_TIMES, type HubCourse } from "../../core/guc/hub";
@@ -7,7 +8,7 @@ import { matchCourse } from "../../core/guc/match";
 import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { EmptyState } from "../ui/Calm";
-import { DriveFolder, SaveRules, Storage, dayShort, type GucActions } from "./GucCards";
+import { dayShort, type GucActions } from "./GucCards";
 import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton, ThisTerm } from "./GucHub";
 import { checkSubjectNow, unlinkSubject, useSubject } from "./subject";
 import { confirmDialog } from "../dialogs";
@@ -17,7 +18,7 @@ import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
-const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Coming up"], ["grades", "Grades"], ["classes", "Classes"], ["settings", "Settings"]] as const;
+const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Coming up"], ["grades", "Grades"], ["classes", "Classes"]] as const;
 type Tab = (typeof TABS)[number][0];
 const ORDER = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"];
 
@@ -47,16 +48,9 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
         : tab === "announcements" ? <Announcements only={course.key} onConnect={connect} />
         : tab === "deadlines" ? <Deadlines courseKey={course.key} onConnect={connect} />
         : tab === "grades" ? <><ThisTerm code={course.code} onConnect={connect} /><Grades courseKey={course.key} onConnect={connect} /></>
-        : tab === "classes" ? (slots.length ? <ul className="guc-classes">{slots.map((s) => <li key={s.id}>
+        : slots.length ? <ul className="guc-classes">{slots.map((s) => <li key={s.id}>
             <b>{dayShort(s.day)}</b><span>{s.start || PERIOD_TIMES[s.period - 1]?.[0]}–{s.end || PERIOD_TIMES[s.period - 1]?.[1]}</span><span>{s.type || "Class"}</span><small>{[s.location, s.group].filter(Boolean).join(" · ")}</small>
-          </li>)}</ul> : <EmptyState scene="calendar" line={`No ${course.code} classes on your GUC schedule yet.`} />)
-        : <div className="guc-settings-cards">
-          {/* Clem looks at CMS every few minutes by itself, so there is no schedule to set; where files live is only a
-              choice once a VPS is connected. */}
-          <SaveRules subjectId={space.id} actions={actions} />
-          <DriveFolder subjectId={space.id} actions={actions} />
-          {v.data.vps && <Storage subjectId={space.id} actions={actions} />}
-        </div>}
+          </li>)}</ul> : <EmptyState scene="calendar" line={`No ${course.code} classes on your GUC schedule yet.`} />}
     </section>
   </div>;
 }
