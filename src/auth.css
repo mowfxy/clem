@@ -21,8 +21,11 @@
 .au-submit .clem-mark{color:#141413}
 .au-google{width:100%;display:flex;align-items:center;justify-content:center;gap:12px;padding:13px;border-radius:12px;border:1px solid #373733;background:#181817;color:#f0efeb;font-size:15px;transition:background .2s,border-color .2s}
 .au-google:hover{background:#1f1f1d;border-color:#4a4a45}
-.au-card .login-divider{margin:20px 0;border-top:1px solid #2a2a27;position:relative}
-.au-card .login-divider span{position:relative;top:-11px;padding:0 12px;background:#121211;color:#6f6e68;font-size:13px}
+/* Two rules either side of "or", with nothing painted behind the word: a patch of page colour over one long rule
+   became a see-through tint once the glass build pass converted it, and showed as a dark band across the line. */
+.au-card .login-divider{display:flex;align-items:center;gap:12px;margin:14px 0;border:0;color:#6f6e68;font-size:13px}
+.au-card .login-divider::before,.au-card .login-divider::after{content:"";flex:1;border-top:1px solid #2a2a27}
+.au-card .login-divider span{position:static;padding:0;background:none}
 .au-links{display:flex;justify-content:center;gap:4px 16px;flex-wrap:wrap;margin-top:16px}
 .au-card .login-text{font-size:13px;color:#a3a3a0;margin:8px auto 0;padding:6px 8px}
 .au-links .login-text{margin:0}
