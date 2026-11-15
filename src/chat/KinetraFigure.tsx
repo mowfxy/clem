@@ -13,15 +13,8 @@ import '../visuals/visuals.css';
  * section takes. The desktop app draws it in the Kinetra worker (desktop/main.ts "kinetraFigure"); the chat shows it on
  * paper like the ```visual textbook figures, with the same downloads.
  */
-export type KinetraBlock = { title: string; caption?: string; module: string; fn: string; args: unknown[] };
-
-export function readKinetraBlock(body: string): KinetraBlock | null {
-  let value: any;
-  try { value = parseModelJson(body); } catch { return null; }
-  const figure = value?.figure && typeof value.figure === 'object' ? { ...value.figure, ...value, figure: undefined } : value;
-  if (typeof figure?.module !== 'string' || typeof figure?.fn !== 'string' || !Array.isArray(figure?.args)) return null;
-  return { title: typeof figure.title === 'string' && figure.title.trim() ? figure.title.trim() : '', caption: typeof figure.caption === 'string' ? figure.caption : undefined, module: figure.module, fn: figure.fn, args: figure.args };
-}
+export { readKinetraBlock, type KinetraBlock };
+import { readKinetraBlock, type KinetraBlock } from '../../core/kinetra-block';
 
 /** What the card's eyebrow calls the figure, from the Kinetra function that draws it. */
 function kindOf(block: KinetraBlock) {

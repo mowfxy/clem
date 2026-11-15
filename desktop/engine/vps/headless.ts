@@ -7,18 +7,25 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
+/** `images`: pictures the agent looked at (pages, crops, the slides it made), base64 PNG or JPEG. An API key sends them
+ *  to the model; a CLI on the server gets the words only. */
+export type Complete = (r: { system: string; user: string; model?: string; images?: { name: string; data: string }[] }) => Promise<string>;
+/** Whether a Complete sees pictures (apiComplete does). */
+export const seesPictures = (c: Complete) => !!(c as { vision?: boolean }).vision;
 export type ModelKey = { provider: "anthropic"; key: string; model?: string };
 export const DEFAULT_MODEL = "claude-opus-5-5";
 /** One step of the agent on the server's CLI (a long answer, a deck from many pages). */
 const STEP_MS = 300_000;
 
 export function apiComplete(k: ModelKey, client = new Anthropic({ apiKey: k.key })): Complete {
-  return async ({ system, user }) => {
-    const r = await client.messages.create({ model: k.model || DEFAULT_MODEL, max_tokens: 16000, output_config: { effort: "low" }, system, messages: [{ role: "user", content: user }] } as Anthropic.MessageCreateParamsNonStreaming);
+  const complete: Complete = async ({ system, user, images }) => {
+    const pictures = (images || []).slice(-8).map((i) => ({ type: "image" as const, source: { type: "base64" as const, media_type: (i.data.startsWith("iVBOR") ? "image/png" : "image/jpeg") as "image/png" | "image/jpeg", data: i.data } }));
+    const content = pictures.length ? [...pictures.flatMap((p, n) => [{ type: "text" as const, text: `Picture: ${images![images!.length - pictures.length + n].name}` }, p]), { type: "text" as const, text: user }] : user;
+    const r = await client.messages.create({ model: k.model || DEFAULT_MODEL, max_tokens: 16000, output_config: { effort: "low" }, system, messages: [{ role: "user", content }] } as Anthropic.MessageCreateParamsNonStreaming);
     if (r.stop_reason === "refusal") throw Error("The model declined this request.");
     return r.content.map((b) => (b.type === "text" ? b.text : "")).join("");
   };
+  return Object.assign(complete, { vision: true });
 }
 
 const run = (cmd: string, args: string[], input: string, timeout = 180_000, env: NodeJS.ProcessEnv = process.env) => new Promise<string>((resolve, reject) => {

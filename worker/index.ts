@@ -21,13 +21,18 @@ import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
 import { WORKER_PROTOCOL } from "../core/vps/types.ts";
+import { setPageOpener } from "../desktop/draw-page.ts";
+import { chromiumPages } from "../desktop/chromium-page.ts";
+import { chromiumBinary } from "../desktop/engine/vps/chromium-install.ts";
+import { PageTasks } from "../desktop/engine/vps/page-tasks.ts";
+import { kinetraCall } from "../desktop/kinetra-runtime.ts";
 
 /** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
 export const WORKER_VERSION = WORKER_PROTOCOL;
 const here = typeof __filename === "string" ? dirname(__filename) : process.cwd();
 type Config = { owner: string; accountService: string; publicHost?: string };
 
-export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number; /** Tests: the disk's size. */ disk?: () => Promise<DiskSize> } = {}) {
+export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number; /** Tests: the disk's size. */ disk?: () => Promise<DiskSize>; /** Tests: no headless browser (files that need one say so in one sentence). */ noBrowser?: boolean } = {}) {
   const env = o.env || process.env;
   const config: Config = o.config || JSON.parse(readFileSync(join(process.cwd(), "config.json"), "utf8"));
   if (!/^[\w-]{1,100}$/.test(config.owner)) throw Error("Invalid owner in config.json");
@@ -51,6 +56,11 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // At most 75% of this server's disk full because of Clem (core/vps/limit.ts), measured on the files folder.
   await mkdir(files, { recursive: true });
   const limit = new DiskLimit({ measure: o.disk || localDisk(files), clock: o.clock });
+  // Files are drawn as the window draws them, in headless Chromium here (desktop/chromium-page.ts): the browser on the
+  // server, Clem's Docker image's, or a headless shell fetched once on first use (desktop/engine/vps/chromium-install.ts).
+  const browser = o.noBrowser ? undefined : chromiumPages({ binary: chromiumBinary({ data, env, log: (m) => log("warn", m) }), log: (m) => log("warn", m) });
+  setPageOpener(browser?.open);
+  const pages = browser ? new PageTasks({ open: browser.open, kinetra: (r) => kinetraCall(r) }) : undefined;
   const plainDisk = new DeviceStore(files, { location: "vps", sub: "" });
   const disk = new LimitedStore({ inner: plainDisk, limit, root: files });
   const workspaceFile = join(data, "workspace.json");
@@ -86,7 +96,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   const waiting = disk.waiting = new Waiting(engine.db, config.owner);
   const vpsTools = new VpsTools(async () => new LocalLink());
   if (complete) agent = new WorkerAgent({
-    owner: config.owner, complete, engine: () => engine!, ws, files, clock: o.clock, log: (m) => log("warn", m),
+    owner: config.owner, complete, engine: () => engine!, ws, files, data, pages, clock: o.clock, log: (m) => log("warn", m),
     // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
     save: async (bytes, ext) => {
       const hash = sha256(bytes);
@@ -152,7 +162,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // Routines' webhooks, reachable from outside (CLEM_HOOK_PORT=0 turns them off). Only the runner answers them.
   const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
     target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
-  const stop = async () => { clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
+  const stop = async () => { await browser?.shutdown(); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
   return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work };
 }
 

@@ -68,6 +68,10 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
     : `mkdir -p ~/.config/systemd/user && sed "s/OWNER/${owner}/g" ~/${dir}/clem-worker.service > ~/.config/systemd/user/clem-worker.service && systemctl --user daemon-reload && systemctl --user enable clem-worker >/dev/null 2>&1; systemctl --user restart clem-worker; (loginctl enable-linger "$(whoami)" >/dev/null 2>&1 || true); systemctl --user is-active clem-worker`;
   const r = await link.exec(start, { timeout: 600_000 });
   if (r.code !== 0) throw Error("The worker didn't start: " + (r.stdout + r.stderr).trim().split("\n").slice(-3).join(" ").slice(0, 300));
+  // The page drawer for files made here (docs/GUC-VPS-ENGINE.md "Files on the VPS"): Docker's image carries Chromium; a
+  // systemd worker gets the distribution's when this user may install software, else it fetches a headless shell
+  // itself on first use. Never fatal: without it the worker still runs and says so when a file needs it.
+  if (kind === "systemd") await ensureChromium(link, p).catch(() => {});
   return { kind: kind as "docker" | "systemd", port };
 }
 /** Run Clem on my VPS, first step: Docker's own install script (get.docker.com) as root or with
@@ -95,6 +99,15 @@ export async function installDocker(link: VpsLink, progress?: (label: string) =>
   const r = await link.exec("sh -s 2>&1", { stdin: script + "\n", timeout: 900_000 });
   if (r.code !== 0) throw Error("Docker didn't install: " + (r.stdout + r.stderr).trim().split("\n").slice(-3).join(" ").slice(0, 300));
   return true;
+}
+/** Chromium and print fonts for a systemd worker, from the distribution, when the SSH user may install software. */
+export async function ensureChromium(link: VpsLink, p: Probe) {
+  if (p.admin === "no") return false;
+  const sudo = p.admin === "root" ? "" : "sudo -n ";
+  const script = `if command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || command -v google-chrome >/dev/null 2>&1; then exit 0; fi
+(${sudo}apt-get install -y --no-install-recommends chromium fonts-liberation || ${sudo}dnf install -y chromium liberation-fonts || ${sudo}yum install -y chromium liberation-fonts) >/dev/null 2>&1`;
+  const r = await link.exec("sh -s 2>&1", { stdin: script + "\n", timeout: 600_000 });
+  return r.code === 0;
 }
 /** Sends one changed secret (a new GUC password) to an installed worker. */
 export async function sendSecret(link: VpsLink, owner: string, key: Uint8Array, name: string, value: unknown) {

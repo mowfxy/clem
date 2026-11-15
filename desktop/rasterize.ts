@@ -1,4 +1,3 @@
-import { BrowserWindow, nativeImage } from "electron";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,29 +5,13 @@ import { randomUUID } from "node:crypto";
 import { inflateSync } from "node:zlib";
 import { drawnArrows } from "./math-draw.ts";
 import { assetOf } from "./pdf-assets.ts";
+import { openPage } from "./draw-page.ts";
 
 /** No network and no files: a drawing may use only what is inside it (desktop/svg-safety.ts names what is refused). */
 const DRAWING_CSP = "default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:";
 
 /** The drawing set to exactly `width`×`height` CSS pixels (its viewBox scales the content). */
 const sized = (svg: string, width: number, height: number) => svg.replace(/<svg\b([^>]*)>/, (_, attrs: string) => `<svg${attrs.replace(/\s(width|height)\s*=\s*["'][^"']*["']/g, "")} width="${width}" height="${height}">`);
-
-/**
- * A capture of an offscreen page. Chromium's compositor occasionally fails a capture once ("UnknownVizError", seen
- * on the first capture after a restart); one failure should not fail the whole file, so it is tried three times.
- */
-export async function capturePage(contents: Electron.WebContents, rect: Electron.Rectangle, tries = 3): Promise<Electron.NativeImage> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const image = await contents.capturePage(rect);
-      if (!image.isEmpty() || attempt >= tries) return image;
-    } catch (error) {
-      if (attempt >= tries) throw error;
-    }
-    contents.invalidate();
-    await new Promise((done) => setTimeout(done, 150 * attempt));
-  }
-}
 
 /** A drawing's size in CSS pixels, from its width/height or viewBox. */
 export function svgSize(svg: string) {
@@ -43,35 +26,32 @@ export function svgSize(svg: string) {
  * script-free Chromium page draws each one and the pixels are captured. Open one per file being made and close it after.
  */
 export async function rasterizer() {
-  const page = new BrowserWindow({
-    show: false,
-    width: 800,
-    height: 600,
-    transparent: true,
-    frame: false,
-    backgroundColor: "#00000000",
-    webPreferences: { offscreen: true, sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: false },
-  });
+  // The drawing page (desktop/draw-page.ts): Electron's on the PC, headless Chromium's on the VPS.
+  const page = await openPage({ width: 800, height: 600, transparent: true, offscreen: true });
   const file = join(tmpdir(), "clem-raster-" + randomUUID() + ".html");
   // One page and one file: captures run one at a time (a docx table builds its cells concurrently).
   let queue: Promise<unknown> = Promise.resolve();
-  function capture(html: string, width: number, height: number, scale = 2) {
-    const run = queue.then(() => draw(html, width, height, scale));
+  function serial<T>(job: () => Promise<T>) {
+    const run = queue.then(job);
     queue = run.catch(() => {});
     return run;
   }
-  /** `html` is laid out in a box of `width`×`height` CSS pixels and captured at `scale`. */
-  async function draw(html: string, width: number, height: number, scale: number) {
-    width = Math.max(1, Math.ceil(width));
-    height = Math.max(1, Math.ceil(height));
+  /** `html` laid out in a box of `width`×`height` CSS pixels, drawn at `scale`. */
+  async function lay(html: string, width: number, height: number, scale: number) {
     const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${DRAWING_CSP}"><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}body{width:${width}px;height:${height}px;zoom:${scale}}</style></head><body>${html}</body></html>`;
-    page.setContentSize(Math.ceil(width * scale), Math.ceil(height * scale));
+    await page.size(Math.ceil(width * scale), Math.ceil(height * scale));
     await writeFile(file, doc, "utf8");
-    await page.loadFile(file);
+    await page.load(file);
     // One frame after load, so the offscreen surface holds the finished drawing.
     await new Promise((done) => setTimeout(done, 60));
-    const image = await capturePage(page.webContents, { x: 0, y: 0, width: Math.ceil(width * scale), height: Math.ceil(height * scale) });
-    return { png: new Uint8Array(image.toPNG()), width, height };
+  }
+  function capture(html: string, width: number, height: number, scale = 2) {
+    return serial(async () => {
+      width = Math.max(1, Math.ceil(width));
+      height = Math.max(1, Math.ceil(height));
+      await lay(html, width, height, scale);
+      return { png: await page.png({ x: 0, y: 0, width: Math.ceil(width * scale), height: Math.ceil(height * scale) }), width, height };
+    });
   }
   return {
     /** An SVG drawing on white (or transparent) paper, at most `maxWidth` CSS pixels wide. */
@@ -105,8 +85,11 @@ export async function rasterizer() {
           x += width + 2; row = Math.max(row, height);
         }
         const pageH = y + row, html = placed.map((p) => `<div style="position:absolute;left:${p.x}px;top:${p.y}px;width:${items[p.i].width}px;height:${items[p.i].height}px">${sized(items[p.i].svg, items[p.i].width, items[p.i].height)}</div>`).join("");
-        const shot = nativeImage.createFromBuffer(Buffer.from((await capture(html, SHEET, pageH, scale)).png));
-        for (const p of placed) out[p.i] = new Uint8Array(shot.crop({ x: Math.round(p.x * scale), y: Math.round(p.y * scale), width: Math.round(items[p.i].width * scale), height: Math.round(items[p.i].height * scale) }).toPNG());
+        // One page load for the batch; each picture is captured from its own place on it.
+        await serial(async () => {
+          await lay(html, SHEET, Math.max(1, Math.ceil(pageH)), scale);
+          for (const p of placed) out[p.i] = await page.png({ x: Math.round(p.x * scale), y: Math.round(p.y * scale), width: Math.round(items[p.i].width * scale), height: Math.round(items[p.i].height * scale) });
+        });
         start = i;
       }
       return out;
@@ -122,7 +105,7 @@ export async function rasterizer() {
       return bounds ? capture(box, bounds.right + 6, bounds.bottom + 6, 3) : capture(box, 200, size * 1.6, 3);
     },
     close() {
-      page.destroy();
+      page.close();
       void rm(file, { force: true }).catch(() => {});
     },
   };

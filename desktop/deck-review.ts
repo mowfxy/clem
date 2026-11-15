@@ -1,10 +1,9 @@
-import { BrowserWindow } from "electron";
+import { openPage } from "./draw-page.ts";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { contrast } from "./deck-design.ts";
-import { capturePage } from "./rasterize.ts";
 import { unmark } from "./deck-math.ts";
 
 /**
@@ -165,21 +164,19 @@ export function staticFindings(slides: SlideRecord[], W: number, H: number): Fin
 
 /** The hidden page the slides are measured and photographed in (scripts allowed only for measuring Clem's own markup). */
 export async function slideReviewer() {
-  const page = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { offscreen: true, sandbox: true, nodeIntegration: false, contextIsolation: true, javascript: true } });
-  page.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  page.webContents.on("will-navigate", (event) => event.preventDefault());
+  const page = await openPage({ width: 1000, height: 800, offscreen: true, script: true });
   const file = join(tmpdir(), "clem-deck-review-" + randomUUID() + ".html");
   const load = async (body: string, width: number, height: number) => {
-    page.setContentSize(Math.ceil(width), Math.ceil(height));
+    await page.size(Math.ceil(width), Math.ceil(height));
     await writeFile(file, `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>${PAGE_CSS}</style></head><body>${body}</body></html>`, "utf8");
-    await page.loadFile(file);
-    await page.webContents.executeJavaScript("document.fonts.ready.then(()=>true)");
+    await page.load(file);
+    await page.run("document.fonts.ready.then(()=>true)");
   };
   return {
     /** Text boxes whose text needs more room than the box has, measured with the real fonts, and tables that run off the slide. */
     async overflow(slides: SlideRecord[], W: number, H: number): Promise<Finding[]> {
       await load(slides.map((s, i) => slideHtml(s, i, W, H)).join(""), W * PT, H * PT);
-      const measured: { id: string; need: number; have: number; wide: boolean }[] = await page.webContents.executeJavaScript(`[...document.querySelectorAll(".t,table")].map(e=>{if(e.tagName==="TABLE"){const s=e.closest(".s").getBoundingClientRect(),r=e.getBoundingClientRect();return {id:e.id,need:r.bottom-s.top,have:${H * PT - 0.15 * PT},wide:false}}const c=e.firstElementChild;return {id:e.id,need:c.scrollHeight,have:e.clientHeight,wide:c.scrollWidth>e.clientWidth+2}})`);
+      const measured: { id: string; need: number; have: number; wide: boolean }[] = await page.run<{ id: string; need: number; have: number; wide: boolean }[]>(`[...document.querySelectorAll(".t,table")].map(e=>{if(e.tagName==="TABLE"){const s=e.closest(".s").getBoundingClientRect(),r=e.getBoundingClientRect();return {id:e.id,need:r.bottom-s.top,have:${H * PT - 0.15 * PT},wide:false}}const c=e.firstElementChild;return {id:e.id,need:c.scrollHeight,have:e.clientHeight,wide:c.scrollWidth>e.clientWidth+2}})`);
       const found: Finding[] = [];
       for (const m of measured) {
         if (m.id.startsWith("tb")) { if (m.need > m.have + 1) found.push({ slide: Number(m.id.slice(2).split("-")[0]) + 1, problem: "the table runs off the bottom of the slide: split it across two slides or shorten its cells" }); continue; }
@@ -201,13 +198,13 @@ export async function slideReviewer() {
         const width = perRow * cellW + (perRow + 1) * 14, height = rows * cellH + (rows + 1) * 14;
         await load(body, width, height);
         await new Promise((done) => setTimeout(done, 80));
-        const image = await capturePage(page.webContents, { x: 0, y: 0, width: Math.ceil(width), height: Math.ceil(height) });
-        out.push({ name: `slides ${start + 1}–${start + group.length}`, first: start + 1, last: start + group.length, jpeg: new Uint8Array(image.toJPEG(82)) });
+        const jpeg = await page.jpeg({ x: 0, y: 0, width: Math.ceil(width), height: Math.ceil(height) }, 82);
+        out.push({ name: `slides ${start + 1}–${start + group.length}`, first: start + 1, last: start + group.length, jpeg });
       }
       return out;
     },
     close() {
-      page.destroy();
+      page.close();
       void rm(file, { force: true }).catch(() => {});
     },
   };
