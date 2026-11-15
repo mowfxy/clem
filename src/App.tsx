@@ -57,8 +57,8 @@ import type {Ask} from '../core/coordinator';
 import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
-import {routeMessage,carriedNote} from '../core/main-thread/route';
-import {organizerAsk,workAsk,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtText} from '../core/main-thread/handoff';
+import {carriedNote} from '../core/main-thread/route';
+import {handsOff,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtMessage} from '../core/main-thread/handoff';
 import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
 import type {GucNow} from '../core/guc/ai-tools';
 // Recall (MiniSearch) loads with the first main-thread turn, not with the window.
@@ -1064,8 +1064,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!h) return;
     handoffRuns.current.delete(chatId);
     const last = stateRef.current.chats.find((c) => c.id === chatId)?.messages.at(-1), reply = last?.role === "assistant" ? last : undefined;
-    const content = broughtText(reply?.content, h.name), attachments = reply?.attachments || [], now = Date.now();
-    patch((s) => ({ ...s, chats: s.chats.map((c) => c.id === h.main ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "assistant" as const, content, at: now, ...(attachments.length ? { attachments } : {}), brought: { chat: chatId, space: h.space, name: h.name } }] } : c) }));
+    // Its files come as the message's attachments; its visuals stay in the chat (the message says so).
+    const brought = broughtMessage(reply, h.name), now = Date.now();
+    patch((s) => ({ ...s, chats: s.chats.map((c) => c.id === h.main ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "assistant" as const, ...brought, at: now, brought: { chat: chatId, space: h.space, name: h.name } }] } : c) }));
   }
   /** One at a time into `send`, whenever nothing else is waiting to be sent. */
   useEffect(() => { if (queued || !handoffQueue.current.length) return; setQueued(handoffQueue.current.shift()!); }, [queued, handoffTick]);
@@ -1298,14 +1299,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       setQueued({ prompt, chat: main.id, carry: { attachments: carry?.attachments ?? attachments, drive: carry?.drive ?? driveRefs }, turn: { ...turn, mentions: mentionIds } });
       return;
     }
-    // In the main thread a task on the material of one clearly named subject or project (or @mentioned) goes to a new chat
-    // there at once, as does anything @mentioning one. Plain questions and the organizer's own business (what a quiz covers, reminders, deadlines…) stay, and anything the rules
-    // can't place is the main-thread AI's call (clem.handoff, core/main-thread/handoff.ts).
+    // In the main thread a task on the material of one clearly named (or @mentioned) subject or project goes to a new
+    // chat there at once; anything the rules can't place is the main-thread AI's call (clem.handoff).
     if (activeChat?.kind === "main" && !long && !into) {
-      const route = routeMessage(expandCommand(prompt), stateRef.current.spaces.map(({ id, name, kind, description }) => ({ id, name, kind, description })), { mentions: mentionIds });
-      const space = route.kind === "handoff" && !organizerAsk(prompt) && (route.reason === "mention" || workAsk(prompt)) ? stateRef.current.spaces.find((x) => x.id === route.spaceId) : undefined;
-      if (space && route.kind === "handoff") {
-        startHandoff(activeChat, space, prompt, { carry: { attachments: files, drive: carry?.drive ?? driveRefs }, ask: { reason: route.reason } });
+      // Only work on a subject's material goes to its own chat (core/main-thread/handoff.ts handsOff); merely naming
+      // or @mentioning a subject, planning, deadlines, reminders, grades and what an exam covers stay here.
+      const to = handsOff(prompt, stateRef.current.spaces.map(({ id, name, kind, description }) => ({ id, name, kind, description })), mentionIds);
+      const space = to ? stateRef.current.spaces.find((x) => x.id === to) : undefined;
+      if (space) {
+        startHandoff(activeChat, space, prompt, { carry: { attachments: files, drive: carry?.drive ?? driveRefs }, ask: { reason: mentionIds.includes(space.id) ? "mention" : "match" } });
         if (override === undefined) { setDraft(""); drafts.current.delete(activeChat.id); }
         setMentions([]); setAttachments([]); setDriveRefs([]); setAttach(false);
         return;
