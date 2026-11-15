@@ -7,6 +7,10 @@ import { sha256, type FileStore } from "../storage.ts";
 import type { MigrationDirection, MigrationView } from "../../../core/vps/types.ts";
 import type { StorageRouter, LocalBlobs } from "./router.ts";
 import { ChecksumError, VpsStore } from "./store.ts";
+import type { DiskLimit } from "./limit.ts";
+
+/** The next file doesn't fit under the VPS's storage limit: the move up stops there, the rest stays on this PC. */
+class AtLimit extends Error {}
 
 const ATTEMPTS = 3;
 type Item = { item: string; size: number; sha256?: string };
@@ -14,17 +18,17 @@ type Item = { item: string; size: number; sha256?: string };
 export class Migrator {
   private db: Db; private owner: string; private router: StorageRouter; private local: LocalBlobs; private remote: () => VpsStore | undefined; private device: FileStore;
   private onProgress: (v: MigrationView | undefined) => void; private log: (m: string) => void;
-  private running?: Promise<void>; private stopping = false;
-  constructor(o: { db: Db; owner: string; router: StorageRouter; local: LocalBlobs; remote: () => VpsStore | undefined; device: FileStore; onProgress?: (v: MigrationView | undefined) => void; log?: (m: string) => void }) {
-    this.db = o.db; this.owner = o.owner; this.router = o.router; this.local = o.local; this.remote = o.remote; this.device = o.device; this.onProgress = o.onProgress || (() => {}); this.log = o.log || (() => {});
+  private running?: Promise<void>; private stopping = false; private limit?: DiskLimit;
+  constructor(o: { db: Db; owner: string; router: StorageRouter; local: LocalBlobs; remote: () => VpsStore | undefined; device: FileStore; onProgress?: (v: MigrationView | undefined) => void; log?: (m: string) => void; limit?: DiskLimit }) {
+    this.db = o.db; this.owner = o.owner; this.router = o.router; this.local = o.local; this.remote = o.remote; this.device = o.device; this.onProgress = o.onProgress || (() => {}); this.log = o.log || (() => {}); this.limit = o.limit;
   }
 
   async view(): Promise<MigrationView | undefined> {
-    const [run] = await this.db.query<{ direction: MigrationDirection; status: MigrationView["status"]; error: string | null; started_at: Date; finished_at: Date | null }>("select direction, status, error, started_at, finished_at from migration_runs where owner_id = $1", [this.owner]);
+    const [run] = await this.db.query<{ direction: MigrationDirection; status: MigrationView["status"]; error: string | null; started_at: Date; finished_at: Date | null; limit_left: number | null }>("select direction, status, error, started_at, finished_at, limit_left from migration_runs where owner_id = $1", [this.owner]);
     if (!run) return undefined;
     const [c] = await this.db.query<{ total: number; done: number; failed: number; bt: string; bd: string }>(
       "select count(*)::int as total, count(*) filter (where status = 'done')::int as done, count(*) filter (where status = 'failed')::int as failed, coalesce(sum(size), 0) as bt, coalesce(sum(size) filter (where status = 'done'), 0) as bd from migration_state where owner_id = $1", [this.owner]);
-    return { direction: run.direction, status: run.status, total: c.total, done: c.done, failed: c.failed, bytesTotal: Number(c.bt), bytesDone: Number(c.bd), ...(run.error ? { error: run.error } : {}), startedAt: new Date(run.started_at).getTime(), ...(run.finished_at ? { finishedAt: new Date(run.finished_at).getTime() } : {}) };
+    return { direction: run.direction, status: run.status, total: c.total, done: c.done, failed: c.failed, bytesTotal: Number(c.bt), bytesDone: Number(c.bd), ...(run.error ? { error: run.error } : {}), startedAt: new Date(run.started_at).getTime(), ...(run.finished_at ? { finishedAt: new Date(run.finished_at).getTime() } : {}), ...(run.limit_left ? { atLimit: run.limit_left } : {}) };
   }
   get busy() { return !!this.running; }
 
@@ -44,7 +48,7 @@ export class Migrator {
     const items = await this.items(direction);
     await this.db.tx(async (t) => {
       await t.query("delete from migration_state where owner_id = $1", [this.owner]);
-      await t.query("insert into migration_runs (owner_id, direction, status) values ($1, $2, 'running') on conflict (owner_id) do update set direction = excluded.direction, status = 'running', error = null, started_at = now(), finished_at = null", [this.owner, direction]);
+      await t.query("insert into migration_runs (owner_id, direction, status) values ($1, $2, 'running') on conflict (owner_id) do update set direction = excluded.direction, status = 'running', error = null, started_at = now(), finished_at = null, limit_left = null", [this.owner, direction]);
       for (const it of items) await t.query("insert into migration_state (owner_id, item, direction, status, size, sha256) values ($1, $2, $3, 'pending', $4, $5) on conflict do nothing", [this.owner, it.item, direction, it.size, it.sha256 || null]);
     });
     this.loop();
@@ -83,6 +87,15 @@ export class Migrator {
           await this.db.query("update migration_state set status = 'done', error = null, updated_at = now() where owner_id = $1 and item = $2", [this.owner, next.item]);
         } catch (e) {
           const msg = (e as Error).message;
+          if (e instanceof AtLimit) {
+            // The VPS is as full as Clem lets it get: the move is done; what's left stays on this PC, readable as ever.
+            await this.db.query("update migration_state set status = 'pending', error = null where owner_id = $1 and item = $2", [this.owner, next.item]);
+            const [left] = await this.db.query<{ n: number }>("select count(*)::int as n from migration_state where owner_id = $1 and status = 'pending'", [this.owner]);
+            await this.db.query("update migration_runs set status = 'done', error = null, limit_left = $2, finished_at = now() where owner_id = $1", [this.owner, left.n]);
+            this.log(`[vps] move stopped at the storage limit; ${left.n} file(s) stay on this PC`);
+            this.onProgress(await this.view());
+            return;
+          }
           if (!(e instanceof ChecksumError) && !(e as { item?: boolean }).item) {
             // Lost the server (or this device stopped): pause; resume() carries on from this file.
             await this.db.query("update migration_state set status = 'pending', error = $3 where owner_id = $1 and item = $2", [this.owner, next.item, msg]);
@@ -118,7 +131,8 @@ export class Migrator {
       const id = item.slice(3), bytes = await this.local.read(id);
       if (!bytes) return;
       const hash = sha256(bytes);
-      const path = await store.put(hash, "blob", bytes);
+      if (this.limit && !(await this.limit.reserve(bytes.length))) throw new AtLimit();
+      const path = await store.put(hash, "blob", bytes).catch((e) => { this.limit?.release(bytes.length); throw e; });
       // Checked on the VPS: the row moves; this copy becomes cache (the LRU frees it under the cap).
       await this.router.markVps(id, path, hash, bytes.length, true);
       return;
@@ -128,7 +142,8 @@ export class Migrator {
     const bytes = await this.device.read(r.path);
     if (sha256(bytes) !== r.sha256) throw this.itemError("This file changed on this device; it was left there.");
     const ext = r.path.match(/\.([a-z0-9]{1,5})$/)?.[1] || "";
-    const path = await store.put(r.sha256, ext, bytes);
+    if (this.limit && !(await this.limit.reserve(bytes.length))) throw new AtLimit();
+    const path = await store.put(r.sha256, ext, bytes).catch((e) => { this.limit?.release(bytes.length); throw e; });
     await this.db.query("update file_objects set location = 'vps', path = $3 where owner_id = $1 and file_id = $2", [this.owner, item, path]);
     const still = await this.db.query("select 1 from file_objects where owner_id = $1 and location = 'device' and path = $2 limit 1", [this.owner, r.path]);
     if (!still.length) await this.device.remove(r.path);

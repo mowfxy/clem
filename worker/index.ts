@@ -15,6 +15,8 @@ import { LocalLink } from "../desktop/engine/vps/local-link.ts";
 import { VpsTools } from "../desktop/engine/vps/tools.ts";
 import { WorkerWorkspace, type WsState } from "../desktop/engine/vps/workspace.ts";
 import { sha256 } from "../desktop/engine/storage.ts";
+import { DiskLimit, LimitedStore, Waiting, localDisk } from "../desktop/engine/vps/limit.ts";
+import type { DiskSize } from "../core/vps/limit.ts";
 import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
@@ -25,7 +27,7 @@ export const WORKER_VERSION = WORKER_PROTOCOL;
 const here = typeof __filename === "string" ? dirname(__filename) : process.cwd();
 type Config = { owner: string; accountService: string; publicHost?: string };
 
-export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number } = {}) {
+export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number; /** Tests: the disk's size. */ disk?: () => Promise<DiskSize> } = {}) {
   const env = o.env || process.env;
   const config: Config = o.config || JSON.parse(readFileSync(join(process.cwd(), "config.json"), "utf8"));
   if (!/^[\w-]{1,100}$/.test(config.owner)) throw Error("Invalid owner in config.json");
@@ -46,7 +48,11 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
 
   const notices: { key: string; title: string; body: string; open?: object }[] = [];
   const hookPort = Number(env.CLEM_HOOK_PORT || 7718);
-  const disk = new DeviceStore(files, { location: "vps", sub: "" });
+  // At most 75% of this server's disk full because of Clem (core/vps/limit.ts), measured on the files folder.
+  await mkdir(files, { recursive: true });
+  const limit = new DiskLimit({ measure: o.disk || localDisk(files), clock: o.clock });
+  const plainDisk = new DeviceStore(files, { location: "vps", sub: "" });
+  const disk = new LimitedStore({ inner: plainDisk, limit, root: files });
   const workspaceFile = join(data, "workspace.json");
   let engine: Engine | undefined, ws: WorkerWorkspace | undefined, agent: WorkerAgent | undefined;
   let draining = false, again = false, soonTimer: ReturnType<typeof setTimeout> | undefined;
@@ -77,10 +83,18 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   const backend = o.backend || (env.DATABASE_URL ? await openPostgres(env.DATABASE_URL) : (await openPglite(join(data, "db"))).backend);
   engine = await Engine.open(config.owner, host, { backend, jobs: false, store: disk });
   ws = new WorkerWorkspace({ db: engine.db, owner: config.owner, clock: o.clock, log: (m) => log("warn", m) });
+  const waiting = disk.waiting = new Waiting(engine.db, config.owner);
   const vpsTools = new VpsTools(async () => new LocalLink());
   if (complete) agent = new WorkerAgent({
     owner: config.owner, complete, engine: () => engine!, ws, files, clock: o.clock, log: (m) => log("warn", m),
-    save: async (bytes, ext) => { const hash = sha256(bytes); await disk.put(hash, ext, bytes); return { sha256: hash, ext, size: bytes.length }; },
+    // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
+    save: async (bytes, ext) => {
+      const hash = sha256(bytes);
+      if (!(await plainDisk.has(join(files, `${hash}.${ext}`))) && !(await limit.reserve(bytes.length))) return { waiting: "Your VPS is at Clem's storage limit (75% of its disk)." };
+      await plainDisk.put(hash, ext, bytes).catch((e) => { limit.release(bytes.length); throw e; });
+      return { sha256: hash, ext, size: bytes.length };
+    },
+    onWaiting: (item, name, bytes, said) => waiting.add(item, name, bytes, said),
     // On the server itself; anything that could change it isn't run from here (no one can tap a card): said in words.
     vps: async (tool) => { const r = await vpsTools.run(config.owner, tool) as { needsConfirm?: boolean; reason?: string }; return r?.needsConfirm ? { error: `That could change the server (${r.reason || "not read-only"}), so Clem runs it only from Clem on the person's PC.` } : r; },
   });
@@ -121,12 +135,16 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       workspace: async (snap) => {
         // An older desktop sends the organizer's compact snapshot; a current one its whole (lean) workspace.
         if ((snap as { __snapshot?: boolean })?.__snapshot) await writeFile(workspaceFile, JSON.stringify(snap));
-        else { await ws!.receive(snap as WsState); soon(); }
+        else {
+          await ws!.receive(snap as WsState); soon();
+          // Files the desktop now holds aren't waiting for it any more.
+          await waiting.clear(((snap as WsState).files || []).map((f) => "ws:" + f.id)).catch(() => {});
+        }
         void engine!.organizer.poke("workspace").catch(() => {});
       },
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
-      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null) }),
+      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null }),
       notices: () => notices.splice(0),
     },
   });

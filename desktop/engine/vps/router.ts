@@ -9,6 +9,8 @@ import { sha256 } from "../storage.ts";
 import type { StorageMode, StorageUsage } from "../../../core/vps/types.ts";
 import { DEFAULT_CACHE_CAP } from "../../../core/vps/types.ts";
 import type { VpsStore } from "./store.ts";
+import type { DiskLimit } from "./limit.ts";
+import { limitView } from "../../../core/vps/limit.ts";
 
 /** This device's Files folder for one owner (desktop: WorkspaceDisk). */
 export type LocalBlobs = {
@@ -28,8 +30,12 @@ export class StorageRouter {
   private cap: number;
   private fetching = new Map<string, Promise<Uint8Array | null>>();
   private queue: string[] = []; private prefetching = 0;
-  constructor(o: { db: Db; owner: string; local: LocalBlobs; remote: () => VpsStore | undefined; mode: () => StorageMode; cap?: number; log?: (m: string) => void }) {
-    this.db = o.db; this.owner = o.owner; this.local = o.local; this.remote = o.remote; this.mode = o.mode; this.log = o.log || (() => {});
+  /** The VPS's storage limit: a write that would pass it stays on this device (no error, no question). */
+  private limit?: DiskLimit;
+  /** Waiting for this PC on the worker (it reports them), shown with the limit. */
+  waiting: string[] = [];
+  constructor(o: { db: Db; owner: string; local: LocalBlobs; remote: () => VpsStore | undefined; mode: () => StorageMode; cap?: number; log?: (m: string) => void; limit?: DiskLimit }) {
+    this.db = o.db; this.owner = o.owner; this.local = o.local; this.remote = o.remote; this.mode = o.mode; this.log = o.log || (() => {}); this.limit = o.limit;
     this.cap = o.cap || DEFAULT_CACHE_CAP;
     this.makeLru();
   }
@@ -101,16 +107,20 @@ export class StorageRouter {
     const before = await this.row(id);
     await this.local.write(id, bytes);
     const store = this.mode() === "vps" ? this.remote() : undefined;
-    if (store) {
+    // Past the VPS's storage limit the file simply stays on this PC, like any device file (Settings says so).
+    const room = store ? !this.limit || await this.limit.reserve(bytes.length) : false;
+    if (store && room) {
       try {
         const hash = sha256(bytes), path = await store.put(hash, "blob", bytes);
         await this.markVps(id, path, hash, bytes.length, true);
       } catch (e) {
         // Kept on this device: the next "Move everything" (or the background mover) takes it.
+        this.limit?.release(bytes.length);
         this.log("[vps] write kept on device: " + (e as Error).message);
         await this.markDevice(id);
       }
-    } else if (before) await this.markDevice(id);
+    } else if (store) { this.log("[vps] at the storage limit: a file stays on this PC"); await this.markDevice(id); }
+    else if (before) await this.markDevice(id);
     if (before?.location === "vps" && before.path !== (await this.row(id))?.path && !(await this.used(before.path))) await this.remote()?.remove(before.path).catch(() => {});
   }
   async deleteFile(id: string) {
@@ -152,6 +162,8 @@ export class StorageRouter {
     let device = 0, cache = 0, pinned = 0, deviceFiles = 0;
     for (const f of local) { if (onVps.has(f.id)) { cache += f.size; if (onVps.get(f.id)!.pinned) pinned += f.size; } else { device += f.size; deviceFiles++; } }
     const vps = rows.reduce((n, r) => n + Number(r.size), 0);
-    return { mode: this.mode(), device: device + cache, vps, cache, cap: this.cap, pinned, files: { device: deviceFiles, vps: rows.length } };
+    const disk = this.limit?.last;
+    return { mode: this.mode(), device: device + cache, vps, cache, cap: this.cap, pinned, files: { device: deviceFiles, vps: rows.length },
+      ...(disk ? { vpsLimit: { ...limitView(disk, vps, disk.measuredAt), heldHere: this.mode() === "vps" ? deviceFiles : 0, heldBytes: this.mode() === "vps" ? device : 0, ...(this.waiting.length ? { waiting: this.waiting } : {}) } } : {}) };
   }
 }

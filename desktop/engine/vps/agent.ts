@@ -35,7 +35,8 @@ import type { WorkerWorkspace, WsState } from "./workspace.ts";
 
 /** Where a workspace file's bytes are on the VPS (the desktop says so in its push; the worker's own files too). */
 export type FileBlob = { sha256: string; ext: string; size: number };
-type AgentFile = StoredFile & { blob?: FileBlob };
+/** `inline`: a file the worker made past the VPS's storage limit, its bytes (base64) kept for the PC to save. */
+type AgentFile = StoredFile & { blob?: FileBlob; inline?: string };
 export type AgentDeps = {
   owner: string;
   complete: Complete;
@@ -45,6 +46,8 @@ export type AgentDeps = {
   files: string;
   /** Saves a new file's bytes here (the worker's store, under the storage limit: desktop/engine/vps/limit.ts). */
   save?: (bytes: Uint8Array, ext: string) => Promise<FileBlob | { waiting: string }>;
+  /** Notes what waits for the PC past the storage limit, in plain words (desktop/engine/vps/limit.ts Waiting). */
+  onWaiting?: (item: string, name: string, bytes: number, said: string) => Promise<void>;
   /** vps.* on this server itself (desktop/engine/vps/tools.ts over a local link). */
   vps?: (tool: Record<string, unknown>) => Promise<unknown>;
   log?: (m: string) => void;
@@ -78,6 +81,8 @@ export class WorkerAgent {
   // ---------- The person's files ----------
   /** A file's text from the VPS store, with "[name, page N]" markers like the window's sources. */
   private async text(f: AgentFile): Promise<string | null> {
+    // A note kept for the PC past the storage limit is read from its own bytes.
+    if (f.inline) return new TextDecoder().decode(Buffer.from(f.inline, "base64"));
     // A saved CMS file ("guc_<material>") is read through the worker's own engine (its copy here, else the CMS).
     if (!f.blob && !f.id.startsWith("guc_")) return null;
     const key = f.blob?.sha256 || f.id;
@@ -242,10 +247,15 @@ export class WorkerAgent {
       if (tool.subject && !space) return { error: `There’s no subject or project called “${tool.subject}”.` };
       const bytes = new TextEncoder().encode(content);
       const saved = this.d.save ? await this.d.save(bytes, "blob") : { waiting: "This server can't keep files." };
-      if ("waiting" in saved) return { error: saved.waiting };
-      const file: AgentFile = { id: randomUUID(), name, size: bytes.length, type: TEXT_TYPES[ext], created: this.clock(), spaceId: space?.id ?? null, made: true, blob: saved };
+      const id = randomUUID(), base: AgentFile = { id, name, size: bytes.length, type: TEXT_TYPES[ext], created: this.clock(), spaceId: space?.id ?? null, made: true };
+      // Past the storage limit the smallest thing is kept: the note's own text, saved as a file on the PC when it opens.
+      const file: AgentFile = "waiting" in saved ? { ...base, inline: Buffer.from(bytes).toString("base64") } : { ...base, blob: saved };
       await this.d.ws.change((w) => ({ ...w, files: [file, ...w.files] }));
       t.made.push({ name, type: file.type, bytes });
+      if ("waiting" in saved) {
+        await this.d.onWaiting?.("ws:" + id, name, bytes.length, `“${name}” waits for your PC: your VPS is at Clem's storage limit, so it's saved on your PC when Clem opens there.`).catch(() => {});
+        return { ok: true, file: name, where: space?.name || "the workspace", note: "Your VPS is at its storage limit, so this note is saved on the person's PC when Clem opens there; it is still sent with your answer. Say so in one short sentence." };
+      }
       return { ok: true, file: name, where: space?.name || "the workspace", note: "Saved; it is sent with your answer." };
     }
     return { error: "Unknown workspace action." };

@@ -17,6 +17,7 @@ import { StorageRouter, type LocalBlobs } from "./router.ts";
 import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
 import { VpsTools } from "./tools.ts";
+import { DiskLimit, sshDisk } from "./limit.ts";
 
 /** Everything kept in the Vault under vps-<owner>: the connection, its key or password, and the worker's secrets. */
 export type VpsVault = {
@@ -65,9 +66,12 @@ export class VpsManager {
   private lastTest?: VpsTest; private online?: boolean;
   private pushTimer?: ReturnType<typeof setTimeout>;
   readonly tools: VpsTools;
+  /** At most 75% of the VPS disk full because of Clem (core/vps/limit.ts): measured with df there, every 5 minutes. */
+  readonly limit: DiskLimit;
   constructor(d: ManagerDeps) {
     this.d = d; this.owner = d.owner;
     this.tools = new VpsTools(() => this.link());
+    this.limit = new DiskLimit({ measure: sshDisk(() => this.link(), vpsRoot(d.owner)), clock: d.clock });
   }
   private key() { return "vps-" + this.owner; }
   async vault(): Promise<VpsVault> { return (await this.d.secrets.get<VpsVault>(this.key())) || {}; }
@@ -165,7 +169,7 @@ export class VpsManager {
     this.routerJob ||= (async () => {
       const v = await this.vault(); this.modeNow = v.storage?.mode || "device";
       const engine = await this.d.engine();
-      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, cap: v.storage?.cap || DEFAULT_CACHE_CAP, log: (m) => this.log(m) }).init();
+      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, cap: v.storage?.cap || DEFAULT_CACHE_CAP, log: (m) => this.log(m), limit: this.limit }).init();
     })().catch((e) => { this.routerJob = undefined; throw e; });
     return this.routerJob;
   }
@@ -179,7 +183,7 @@ export class VpsManager {
   private async migratorFor() {
     if (!this.migrator) {
       const engine = await this.d.engine();
-      this.migrator = new Migrator({ db: engine.db, owner: this.owner, router: await this.router(), local: this.d.local, remote: () => this.vpsStore(), device: new DeviceStore(this.d.files), log: (m) => this.log(m),
+      this.migrator = new Migrator({ db: engine.db, owner: this.owner, router: await this.router(), local: this.d.local, remote: () => this.vpsStore(), device: new DeviceStore(this.d.files), log: (m) => this.log(m), limit: this.limit,
         onProgress: (m) => { this.d.changed?.("migration"); if (m && ["done", "failed"].includes(m.status)) void this.moved(m.direction, m.done, m.bytesDone, m.failed); } });
     }
     return this.migrator;
@@ -354,6 +358,8 @@ export class VpsManager {
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
       this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
+      // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
+      if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
       // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
       if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
       // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
@@ -438,6 +444,13 @@ export class VpsManager {
     if (!batch) return null;
     const r = await this.router();
     for (const op of batch.ops) {
+      // A file the worker couldn't keep on the VPS past its storage limit came with its bytes: kept on this PC now.
+      if (op.t === "put" && op.kind === "file" && typeof op.item.inline === "string") {
+        const { inline, blob: _b, ...file } = op.item as { id: string; inline: string; blob?: unknown };
+        await r.writeFile(file.id, new Uint8Array(Buffer.from(inline, "base64"))).catch((e) => this.log("[vps] pull: " + (e as Error).message));
+        (op as { item: unknown }).item = file;
+        continue;
+      }
       if (op.t !== "put" || op.kind !== "file" || !op.item.blob) continue;
       const { blob, ...file } = op.item as { id: string; blob: { sha256: string; ext: string; size: number } };
       const store = this.vpsStore();
@@ -468,6 +481,8 @@ export class VpsManager {
   async status(): Promise<VpsStatus> {
     const v = await this.vault();
     const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
+    // The disk is measured (again every 5 minutes) while the VPS answers; Settings shows Clem's share of it.
+    if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
     const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
