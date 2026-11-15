@@ -66,7 +66,7 @@ export class VpsManager {
   private lastTest?: VpsTest; private online?: boolean;
   private pushTimer?: ReturnType<typeof setTimeout>;
   readonly tools: VpsTools;
-  /** At most 75% of the VPS disk full because of Clem (core/vps/limit.ts): measured with df there, every 5 minutes. */
+  /** At most 82% of the VPS disk full because of Clem (core/vps/limit.ts): measured with df there, every 5 minutes. */
   readonly limit: DiskLimit;
   constructor(d: ManagerDeps) {
     this.d = d; this.owner = d.owner;

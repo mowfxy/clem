@@ -55,7 +55,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
 
   const notices: { key: string; title: string; body: string; open?: object }[] = [];
   const hookPort = Number(env.CLEM_HOOK_PORT || 7718);
-  // At most 75% of this server's disk full because of Clem (core/vps/limit.ts), measured on the files folder.
+  // At most 82% of this server's disk full because of Clem (core/vps/limit.ts), measured on the files folder.
   await mkdir(files, { recursive: true });
   const limit = new DiskLimit({ measure: o.disk || localDisk(files), clock: o.clock });
   // Files are drawn as the window draws them, in headless Chromium here (desktop/chromium-page.ts): the browser on the
@@ -113,7 +113,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
     save: async (bytes, ext) => {
       const hash = sha256(bytes);
-      if (!(await plainDisk.has(join(files, `${hash}.${ext}`))) && !(await limit.reserve(bytes.length))) return { waiting: "Your VPS is at Clem's storage limit (75% of its disk)." };
+      if (!(await plainDisk.has(join(files, `${hash}.${ext}`))) && !(await limit.reserve(bytes.length))) return { waiting: "Your VPS is at Clem's storage limit (82% of its disk)." };
       await plainDisk.put(hash, ext, bytes).catch((e) => { limit.release(bytes.length); throw e; });
       return { sha256: hash, ext, size: bytes.length };
     },

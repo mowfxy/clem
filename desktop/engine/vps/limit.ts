@@ -1,6 +1,6 @@
 // Clem's storage limit on the VPS (core/vps/limit.ts): the disk is measured with `df` on the store's filesystem (over
 // SSH from the desktop, or statfs on the worker itself), again every few minutes, and every write reserves its bytes
-// first, so the disk never passes 75% full because of Clem. A write that doesn't fit is told so and goes elsewhere
+// first, so the disk never passes 82% full because of Clem. A write that doesn't fit is told so and goes elsewhere
 // (the PC); nothing raises an error or asks.
 import { statfs } from "node:fs/promises";
 import { join } from "node:path";
