@@ -1369,7 +1369,8 @@ void app.whenReady().then(async () => {
     const o = (await engineFor(user.id)).organizer;
     return (id, key, payload) => o.hook(id, key, payload);
   } }).catch((e) => console.warn("[hooks] off: " + (e as Error).message));
-  const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
+  // While the VPS worker runs Clem's jobs it sends this reminder (to this PC as a notice, and to Telegram): never both.
+  const reminderTick = () => void auth.user(false).then((user) => user && !vpsManagers.get(user.id)?.workerRuns() ? reminders.tick(user.id) : null).catch((error) => console.warn("[reminders]", (error as Error)?.message));
   setTimeout(reminderTick, 90_000).unref();
   setInterval(reminderTick, 5 * 60_000).unref();
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
@@ -1964,7 +1965,13 @@ void app.whenReady().then(async () => {
         worker.once("error", () => { clearTimeout(timer); reject(Error("This deck couldn't be read. It may be too large or damaged.")); });
       });
     }
-    if (request.action === "reminders") return request.set ? reminders.configure(user.id, request.set) : reminders.settings(user.id);
+    if (request.action === "reminders") {
+      if (!request.set) return reminders.settings(user.id);
+      const next = await reminders.configure(user.id, request.set);
+      // The worker sends the same reminder while it runs Clem's jobs: it gets the person's choice (sealed, like a secret).
+      void vpsManagers.get(user.id)?.secretChanged("reminders-" + user.id, await vault.read("reminders-" + user.id, {})).catch(() => {});
+      return next;
+    }
     if (request.action === "backupStatus") return backups.status(user.id);
     if (request.action === "backupConfigure") {
       let destination: BackupDestination | null | undefined = request.destination;

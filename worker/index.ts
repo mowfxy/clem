@@ -24,6 +24,7 @@ import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
 import { WORKER_PROTOCOL } from "../core/vps/types.ts";
+import { StudyReminders } from "../desktop/study-reminders.ts";
 
 /** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
 export const WORKER_VERSION = WORKER_PROTOCOL;
@@ -120,12 +121,22 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
     state, full, waiting: () => waiting.items(),
   });
+  // The flashcards-due reminder (desktop/study-reminders.ts), as the laptop sends it, while this worker runs Clem's jobs:
+  // to the PC as a notice and to Telegram when paired. The person's time and switch come from the PC (a sealed secret).
+  const studyReminders = new StudyReminders({
+    vault: { read: async <T,>(k: string, fallback: T) => (await secrets.get<T>(k)) ?? fallback, write: (k, v) => secrets.set(k, v) },
+    workspace: async () => ws!.state(),
+    notify: ({ title, body, spaceId }) => {
+      host.notify({ key: "study-due:" + spaceId, title, body, open: { route: "#/app" } });
+      void engine!.organizer.push("study-due:" + new Date((o.clock || Date.now)()).toISOString().slice(0, 10), title, body, {}, undefined, { channels: ["telegram"] }).catch(() => {});
+    },
+  });
   // While this worker runs Clem: the organizer's decisions go into the workspace copy, and due routines run.
   async function work() {
     if (draining) { again = true; return; }
     draining = true;
     try {
-      do { again = false; if (engine!.isRunner && await ws!.ready()) { await ws!.drain(engine!.organizer); if (agent) while (await agent.routines()); await full.check(); } } while (again);
+      do { again = false; if (engine!.isRunner && await ws!.ready()) { await ws!.drain(engine!.organizer); if (agent) while (await agent.routines()); await full.check(); await studyReminders.tick(config.owner, cairoWall((o.clock || Date.now)())).catch((e) => log("warn", "[worker] reminders: " + (e as Error).message)); } } while (again);
     } catch (e) { log("warn", "[worker] workspace: " + (e as Error).message); } finally { draining = false; }
   }
 
@@ -200,7 +211,14 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
     target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
   const stop = async () => { await ssh?.close().catch(() => {}); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
-  return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work, full, waiting, limit, state };
+  return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work, full, waiting, limit, state, studyReminders, notices };
+}
+
+/** The time as Cairo's wall clock in this machine's local fields: the reminder's hour is the person's (a server often
+ *  runs on UTC), as on their laptop. */
+export function cairoWall(t: number) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(t).map((x) => [x.type, x.value]));
+  return new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute));
 }
 
 // Run directly (node index.cjs), not when imported by a test.
