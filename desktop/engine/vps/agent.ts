@@ -33,6 +33,8 @@ import type { TelegramTurn } from "../host.ts";
 import { seesPictures, type Complete } from "./headless.ts";
 import { WorkerFiles, type FileTurn, type Made, type WorkerFile } from "./files.ts";
 import type { PageTasks } from "./page-tasks.ts";
+import type { WorkerState } from "./state.ts";
+import { isYes, ranReport, type VpsAsk } from "../../../core/vps/ask.ts";
 import { kinetraBrief, kinetraInstructionsFor, needsKinetra, kinetraInstructions } from "../../kinetra-runtime.ts";
 import type { WorkerWorkspace, WsState } from "./workspace.ts";
 
@@ -55,8 +57,12 @@ export type AgentDeps = {
   save?: (bytes: Uint8Array, ext: string) => Promise<import("./files.ts").FileBlob | { waiting: string }>;
   /** Notes what waits for the PC past the storage limit, in plain words (desktop/engine/vps/limit.ts Waiting). */
   onWaiting?: (item: string, name: string, bytes: number, said: string) => Promise<void>;
-  /** vps.* on this server itself (desktop/engine/vps/tools.ts over a local link). */
+  /** vps.* on this server itself (desktop/engine/vps/tools.ts over a local link, asking in words). */
   vps?: (tool: Record<string, unknown>) => Promise<unknown>;
+  /** Runs a server change the person said yes to. */
+  vpsPerform?: (ask: VpsAsk) => Promise<unknown>;
+  /** The worker's standing state (a question waiting for its answer). */
+  state?: WorkerState;
   log?: (m: string) => void;
   clock?: () => number;
   /** How long one answer may take (Telegram waits ten minutes). */
@@ -71,7 +77,10 @@ const cairoDay = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Af
 const cairoWeekday = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", weekday: "long" }).format(t);
 const TEXT_TYPES: Record<string, string> = { md: "text/markdown", txt: "text/plain", csv: "text/csv", json: "application/json", html: "text/html", tex: "text/x-tex" };
 
-type Turn = { scope: string | null; chat: string; telegram: boolean; made: Made[]; library: LibraryFile[]; files?: FileTurn };
+/** `asked`: the question Clem puts in this answer for a server change (one plain message, core/vps/ask.ts). */
+type Turn = { scope: string | null; chat: string; telegram: boolean; made: Made[]; library: LibraryFile[]; files?: FileTurn; asked?: string };
+/** A question about a server change is answered within a day, or it lapses. */
+const ASK_MS = 24 * 3_600_000;
 
 export class WorkerAgent {
   private d: AgentDeps;
@@ -138,7 +147,22 @@ export class WorkerAgent {
   /** One Telegram message, or a tap that needs the workspace, answered here as the main thread would. */
   async converse(turn: TelegramTurn): Promise<{ text: string; files?: Made[] }> {
     if (!("text" in turn)) return this.tap(turn.tap);
-    return this.mainTurn(turn.text.slice(0, 4000), { telegram: true });
+    const text = turn.text.slice(0, 4000);
+    // A server change Clem asked about: "yes" runs it now; anything else drops it (and is answered as usual).
+    const ask = await this.d.state?.take<VpsAsk>("vps-ask").catch(() => undefined);
+    if (ask && this.clock() - ask.at < ASK_MS && isYes(text) && this.d.vpsPerform) return this.performAsked(ask, text);
+    return this.mainTurn(text, { telegram: true });
+  }
+  /** The person said yes: the change runs once and what it printed is the answer, in the main thread too. */
+  private async performAsked(ask: VpsAsk, said: string): Promise<{ text: string }> {
+    const r = await this.d.vpsPerform!(ask).catch((e: Error) => ({ error: e.message })) as { exitCode?: number; output?: string; error?: string };
+    const text = ranReport(ask, r);
+    const s = await this.d.ws.state(), main = s && mainThreadOf(s);
+    if (main) {
+      await this.d.ws.change((w) => putMessage(w, main.id, { id: randomUUID(), role: "user", content: said, at: this.clock(), via: "telegram" }));
+      await this.d.ws.change((w) => putMessage(w, main.id, { id: randomUUID(), role: "assistant", content: text, at: this.clock(), model: "vps" }));
+    }
+    return { text };
   }
   private async tap(tap: Extract<TelegramTurn, { tap: unknown }>["tap"]): Promise<{ text: string }> {
     const o = this.d.engine().organizer;
@@ -168,7 +192,10 @@ export class WorkerAgent {
     const system = [IDENTITY, MAIN_NOTE, plansPlaybook(), WORKSPACE_GUIDE, GUC_GUIDE, VPS_GUIDE, this.kinetraGuide(text), fileToolsGuide([])].filter(Boolean).join("\n\n");
     const context = await this.context(s, null);
     const prompt = `${context}${recent ? "\n\nThe conversation so far (newest last):\n" + recent : ""}\n\n${o.telegram ? "[From Telegram] " : ""}${text}`;
-    const answer = await this.loop(system, prompt, { scope: null, chat: main.id, telegram: !!o.telegram, made, library: [] });
+    const turn: Turn = { scope: null, chat: main.id, telegram: !!o.telegram, made, library: [] };
+    let answer = await this.loop(system, prompt, turn);
+    // A server change waits for the person's yes: Clem's question, with the exact command, ends the message.
+    if (turn.asked) answer = [answer.trim(), turn.asked].filter(Boolean).join("\n\n");
     const reply = await this.finish(main.id, null, answer, { model: "vps" });
     if (o.telegram) made.push(...await this.photos(answer));
     return { text: reply, ...(made.length ? { files: made } : {}) };
@@ -215,7 +242,15 @@ export class WorkerAgent {
     if (isClemAction(action)) return engine.organizer.tool(tool, { scope: t.scope ?? undefined }).catch((e: Error) => ({ error: e.message }));
     if (action.startsWith("telegram.")) return runTelegramTool({ engine, owner: this.d.owner, subjects, scope: t.scope ?? undefined }, tool);
     if (isGucAction(action)) return runGucTool({ engine, owner: this.d.owner, subjects, scope: t.scope ?? undefined }, tool);
-    if (isVpsAction(action)) return this.d.vps ? this.d.vps(tool).catch((e: Error) => ({ error: e.message })) : { error: "The VPS tools aren't available here." };
+    if (isVpsAction(action)) {
+      if (!this.d.vps) return { error: "The VPS tools aren't available here." };
+      const r = await this.d.vps(tool).catch((e: Error) => ({ error: e.message })) as { needsYes?: boolean; ask?: VpsAsk; question?: string };
+      if (!r?.needsYes || !r.ask) return r;
+      // Asked once, in words: kept until the person's next message, which runs it ("yes") or drops it.
+      await this.d.state?.set("vps-ask", r.ask);
+      t.asked = r.question;
+      return { asked: true, note: "This changes the server, so Clem asks the person first, itself, in your answer's last lines, with the exact command; it runs when they say yes. Don't ask again or repeat the command: write at most one short line before it, or nothing." };
+    }
     if (isWsAction(action)) return this.workspaceTool(tool, t);
     if (action === "find") return this.find(s, String(tool.query || ""));
     if (action === "attach") {

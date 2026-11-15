@@ -12,8 +12,10 @@ import { DeviceStore } from "../desktop/engine/storage.ts";
 import { apiComplete, cliComplete, type Complete, type ModelKey } from "../desktop/engine/vps/headless.ts";
 import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
 import { LocalLink } from "../desktop/engine/vps/local-link.ts";
+import { SshLink, type VpsLink } from "../desktop/engine/vps/link.ts";
 import { VpsTools } from "../desktop/engine/vps/tools.ts";
 import { WorkerWorkspace, type WsState } from "../desktop/engine/vps/workspace.ts";
+import { WorkerState } from "../desktop/engine/vps/state.ts";
 import { sha256 } from "../desktop/engine/storage.ts";
 import { DiskLimit, LimitedStore, Waiting, localDisk } from "../desktop/engine/vps/limit.ts";
 import type { DiskSize } from "../core/vps/limit.ts";
@@ -94,7 +96,18 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   engine = await Engine.open(config.owner, host, { backend, jobs: false, store: disk });
   ws = new WorkerWorkspace({ db: engine.db, owner: config.owner, clock: o.clock, log: (m) => log("warn", m) });
   const waiting = disk.waiting = new Waiting(engine.db, config.owner);
-  const vpsTools = new VpsTools(async () => new LocalLink());
+  // On the server itself; a change to it is asked in words, once (core/vps/ask.ts), and runs when the person says yes.
+  // Under systemd the worker is the person's user on the host already; in Docker it signs in to the host over SSH with
+  // its own key (install.ts authorizeWorker), so commands run on the server, not in the container.
+  const hostSsh = await secrets.get<{ user: string; port: number; fingerprint?: string; privateKey: string }>("host-ssh");
+  let ssh: SshLink | undefined;
+  const selfLink = async (): Promise<VpsLink> => {
+    if (!hostSsh || !env.DATABASE_URL) return new LocalLink();
+    if (!ssh || ssh.closed) ssh = await SshLink.connect({ host: env.CLEM_HOST_ADDR || "host.docker.internal", port: hostSsh.port || 22, user: hostSsh.user, privateKey: hostSsh.privateKey, fingerprint: hostSsh.fingerprint });
+    return ssh;
+  };
+  const vpsTools = new VpsTools(selfLink, { words: true });
+  const state = new WorkerState(engine.db, config.owner);
   if (complete) agent = new WorkerAgent({
     owner: config.owner, complete, engine: () => engine!, ws, files, data, pages, clock: o.clock, log: (m) => log("warn", m),
     // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
@@ -105,8 +118,9 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       return { sha256: hash, ext, size: bytes.length };
     },
     onWaiting: (item, name, bytes, said) => waiting.add(item, name, bytes, said),
-    // On the server itself; anything that could change it isn't run from here (no one can tap a card): said in words.
-    vps: async (tool) => { const r = await vpsTools.run(config.owner, tool) as { needsConfirm?: boolean; reason?: string }; return r?.needsConfirm ? { error: `That could change the server (${r.reason || "not read-only"}), so Clem runs it only from Clem on the person's PC.` } : r; },
+    vps: (tool) => vpsTools.run(config.owner, tool),
+    vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
+    state,
   });
   // While this worker runs Clem: the organizer's decisions go into the workspace copy, and due routines run.
   async function work() {
@@ -162,7 +176,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // Routines' webhooks, reachable from outside (CLEM_HOOK_PORT=0 turns them off). Only the runner answers them.
   const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
     target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
-  const stop = async () => { await browser?.shutdown(); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
+  const stop = async () => { await ssh?.close().catch(() => {}); await browser?.shutdown(); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
   return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work };
 }
 

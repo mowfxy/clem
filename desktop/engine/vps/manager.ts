@@ -238,7 +238,7 @@ export class VpsManager {
     const engineToken = await this.d.engineToken?.().catch(() => undefined);
     const guc = await this.d.secrets.get("guc-" + this.owner);
     const secrets: Record<string, unknown> = { rpc, ...(guc ? { ["guc-" + this.owner]: guc } : {}), ...(engineToken ? { "engine-token": engineToken } : {}), ...(v.modelKey ? { model: v.modelKey } : {}) };
-    const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress });
+    const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress, ...(v.config ? { hostAccess: { user: v.config.user, port: v.config.port, ...(v.config.fingerprint ? { fingerprint: v.config.fingerprint } : {}) } } : {}) });
     await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now(), ...(this.d.version ? { version: this.d.version } : {}) } });
   }
   /** A step over SSH that the connection dropping in the middle of shouldn't break: tried again once on a fresh
