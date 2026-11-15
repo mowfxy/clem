@@ -81,9 +81,9 @@ body .sidebar .profile-settings .drawn-icon{width:var(--icon);height:var(--icon)
 .st-dialog::backdrop{background:#02040a59;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 html:root[data-theme=light] .st-dialog::backdrop{background:#c7d3e459}
 html:root .st{--st-bg:transparent;--st-rail:#ffffff08;--st-card:transparent;--st-raise:#ffffff1a;--st-hover:#ffffff12;--st-line:#ffffff14;--st-line-2:#ffffff29;--st-ink:var(--ink);--st-soft:#c6d0df;--st-muted:var(--muted);
-  border-radius:24px;background:var(--glass-sheen),#08101f8c;-webkit-backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);box-shadow:var(--glass-rim),0 30px 80px -20px #000d}
+  border-radius:24px;background:#08101f8c;-webkit-backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);backdrop-filter:blur(40px) saturate(2.4) brightness(1.5);box-shadow:var(--sheet-edge),0 30px 80px -20px #000d}
 html:root[data-theme=light] .st{--st-rail:#ffffff4d;--st-raise:#ffffffa6;--st-hover:#ffffff73;--st-line:#1b274014;--st-line-2:#1b274029;--st-soft:#33415c;
-  background:var(--glass-sheen),#f2f6fbc7;-webkit-backdrop-filter:blur(40px) saturate(1.6);backdrop-filter:blur(40px) saturate(1.6);box-shadow:var(--glass-rim),0 30px 80px -24px #1b274066}
+  background:#f2f6fbc7;-webkit-backdrop-filter:blur(40px) saturate(1.6);backdrop-filter:blur(40px) saturate(1.6);box-shadow:var(--sheet-edge),0 30px 80px -24px #1b274066}
 /* The dialog itself never animates: while the full-window dialog fades, it cuts the glass inside off from the app behind
    it, so the window looked unfrosted for half a second and then snapped. The window has its own entrance. */
 html:root body dialog.st-dialog[open]{animation:none!important}
@@ -228,6 +228,8 @@ html:root[data-theme=light] .message.user .message-text{background:#ffffffa6;box
 /* ---------- What floats ---------- */
 html:root :is(.popover,.chapters-list,.cf-card,.review-menu,.slash-menu,.sp-menu-list,.gd-switch-list,.fp-menu,.unified-picker-panel,.visual-menu,.ag-tip,.history-filter-menu,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal,.fp-dialog)),
 html:root[data-theme=light] :is(.popover,.toast,dialog:not(.st-dialog,.settings-dialog,.app-modal,.fp-dialog)){border:0;background:var(--float-tint);-webkit-backdrop-filter:var(--float-filter);backdrop-filter:var(--float-filter);box-shadow:var(--glass-rim),var(--glass-drop)}
+/* The model picker is a large floating sheet: the same flat edge as the pop-ups, no brighter top/left. */
+html:root .unified-picker-panel{box-shadow:var(--sheet-edge),var(--glass-drop)}
 
 /* ---------- Notices: small glass slips above the account row, inside the sidebar's width ---------- */
 html:root .notice-stack,html:root .account-handoff{left:18px;bottom:64px;width:calc(var(--rail) - 16px)}
@@ -262,8 +264,13 @@ html:root .account-handoff button.primary{background:#ffffffeb;border:0;color:#0
 
 /* ---------- Pop-up windows: Memory and its kind ---------- */
 /* src/popups.css sets these with !important for every dialog, so they are answered the same way. */
-html:root body dialog:not(.st-dialog,.fp-dialog,.adm-modal){border:0!important;border-radius:24px!important;background:var(--glass-sheen),#0b1424f5!important;-webkit-backdrop-filter:blur(40px) saturate(2)!important;backdrop-filter:blur(40px) saturate(2)!important;box-shadow:var(--glass-rim),0 30px 80px -20px #000d!important}
-html:root[data-theme=light] body dialog:not(.st-dialog,.fp-dialog,.adm-modal){background:var(--glass-sheen),#f4f7fbf7!important;box-shadow:var(--glass-rim),0 30px 80px -24px #1b274066!important}
+/* Large pop-ups are flat, even glass with one quiet 1px edge: the sheen and the brighter top/left rim fade out partway
+   down a tall sheet, which read as a white light in its top-left corner. */
+html:root body dialog:not(.st-dialog,.fp-dialog,.adm-modal){border:0!important;border-radius:24px!important;background:var(--sheet-bg)!important;-webkit-backdrop-filter:blur(40px) saturate(2)!important;backdrop-filter:blur(40px) saturate(2)!important;box-shadow:var(--sheet-edge),0 30px 80px -20px #000d!important}
+html:root[data-theme=light] body dialog:not(.st-dialog,.fp-dialog,.adm-modal){background:var(--sheet-bg)!important;box-shadow:var(--sheet-edge),0 30px 80px -24px #1b274066!important}
+/* The small confirm keeps its finish: on a short card the sheen covers it evenly. */
+html:root body dialog.app-confirm{background:var(--glass-sheen),#0b1424f5!important;box-shadow:var(--glass-rim),0 30px 80px -20px #000d!important}
+html:root[data-theme=light] body dialog.app-confirm{background:var(--glass-sheen),#f4f7fbf7!important;box-shadow:var(--glass-rim),0 30px 80px -24px #1b274066!important}
 html:root body dialog::backdrop{background:#02040a99!important;-webkit-backdrop-filter:blur(8px)!important;backdrop-filter:blur(8px)!important}
 html:root body dialog.st-dialog::backdrop{background:#02040a59!important;-webkit-backdrop-filter:blur(3px)!important;backdrop-filter:blur(3px)!important}
 html:root[data-theme=light] body dialog::backdrop{background:#c7d3e499!important}

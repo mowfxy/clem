@@ -43,8 +43,8 @@ export function SettingRow({title,description,children,lead}:{title:ReactNode;de
  return <div className="st-row">{lead}<div className="st-row-text"><h4>{title}</h4>{description&&<p>{description}</p>}</div>{children&&<div className="st-row-control">{children}</div>}</div>;
 }
 
-export function Switch({checked,onChange,label}:{checked:boolean;onChange:(value:boolean)=>void;label:string}){
- return <label className="mw-switch"><input type="checkbox" role="switch" aria-label={label} checked={checked} onChange={e=>onChange(e.target.checked)}/><span aria-hidden="true"/></label>;
+export function Switch({checked,onChange,label,disabled}:{checked:boolean;onChange:(value:boolean)=>void;label:string;disabled?:boolean}){
+ return <label className="mw-switch"><input type="checkbox" role="switch" aria-label={label} checked={checked} disabled={disabled} onChange={e=>onChange(e.target.checked)}/><span aria-hidden="true"/></label>;
 }
 
 export function Keys({keys}:{keys:string[]}){return <span className="mw-keys">{keys.map(k=><kbd key={k}>{k}</kbd>)}</span>;}
