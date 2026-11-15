@@ -1573,6 +1573,8 @@ void app.whenReady().then(async () => {
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
     if (request.action === "gucDisconnect") { const remote = await vpsManagers.get(user.id)?.remote(); await remote?.call("disconnect").catch(() => {}); return (await rawEngineFor(user.id)).disconnect(); }
     // Settings → Connectors → VPS (desktop/engine/vps/manager.ts). The key and password never come back to the window.
+    // The window's routines wait while the VPS worker runs Clem's jobs (it runs them there, once).
+    if (request.action === "vpsRunsJobs") return vpsManagers.get(user.id)?.workerRuns() ?? false;
     if (request.action.startsWith("vps")) {
       const m = vpsFor(user.id), reset = () => { vpsSet.delete(user.id); return vpsConfigured(user.id); };
       if (request.action === "vpsStatus") { if (await vpsConfigured(user.id)) return m.status(); const v = await m.vault(); return { connected: false, ...(v.config ? { config: v.config } : {}), storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: !!v.allowPassword }; }
@@ -1597,7 +1599,13 @@ void app.whenReady().then(async () => {
     if (request.action.startsWith("pro")) {
       const o = (await engineFor(user.id)).organizer;
       if (request.action === "proSettings") return request.set ? o.setSettings(request.set) : o.settings();
-      if (request.action === "proInbox") return o.inbox();
+      // With a VPS worker, what it changed in the workspace (Telegram with the laptop off, its sweeps and routines)
+      // comes with the inbox, for the window to apply with the same function (core/workspace/ops.ts).
+      if (request.action === "proInbox") {
+        const inbox = await o.inbox(), m = vpsManagers.get(user.id);
+        const ws = m && await vpsConfigured(user.id) ? await m.pullOps(request.vpsSync).catch((e) => { console.warn("[vps] pull:", (e as Error).message); return null; }) : null;
+        return ws && (ws.ops.length || ws.id !== request.vpsSync?.id) ? { ...inbox, ws } : inbox;
+      }
       if (request.action === "proAck") return o.ack(request);
       if (request.action === "proLog") return o.log();
       if (request.action === "proStatus") return o.statuses(request.keys);

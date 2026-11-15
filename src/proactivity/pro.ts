@@ -4,6 +4,7 @@
 // Clem says by itself is plain messages, and the person answers in words. Line statuses are cached here for old cards.
 import { useEffect, useState } from "react";
 import { applyAction, proAction, undoAction, type Undo, type Workspace } from "../../core/proactivity/actions";
+import { applyPull, type WsBatch } from "../../core/workspace/ops";
 import { desktop } from "../desktop/bridge";
 import type { State } from "../store";
 
@@ -58,8 +59,11 @@ export function createPro(deps: ProDeps) {
     if (busy || !desktop) return;
     busy = true;
     try {
-      const inbox = await ask<{ posts: { id: string; content: string; at: number }[]; apply: { key: string; action: unknown }[]; revert?: { key: string; undo: Undo }[] }>({ action: "proInbox" });
+      const inbox = await ask<{ posts: { id: string; content: string; at: number }[]; apply: { key: string; action: unknown }[]; revert?: { key: string; undo: Undo }[]; ws?: WsBatch }>({ action: "proInbox", ...(deps.state().vpsSync ? { vpsSync: deps.state().vpsSync } : {}) });
       if (!Array.isArray(inbox?.apply) || !Array.isArray(inbox.posts)) return;
+      // What the VPS worker changed while it ran Clem (a Telegram conversation, decks, plans, files): applied item by
+      // item with the worker's own function, with the cursor saved in the same change, so nothing lands twice.
+      if (inbox.ws && Array.isArray(inbox.ws.ops)) { const batch = inbox.ws; deps.patch((s) => applyPull(s, batch)); }
       const results = inbox.apply.map((a) => apply(a.key, a.action));
       const reverted = (inbox.revert || []).map((r) => { deps.patch((s) => put(s, undoAction(pick(s), r.undo))); setStatus(r.key, "undone"); return r.key; });
       const main = deps.state().chats.find((c) => c.kind === "main");

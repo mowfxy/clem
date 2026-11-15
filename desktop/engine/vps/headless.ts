@@ -1,12 +1,11 @@
 // The model on the VPS worker (docs/GUC-VPS-ENGINE.md "Model on the VPS"), in order: an API key the person typed for
 // the worker (Clem never reads keys from their CLIs), else a CLI Clem installed and signed in to on the VPS from Settings
 // (or one they put there themselves: `claude` or `codex`), else none: sweeps run on rules alone and Telegram stays with the desktop.
-// Also the headless main-thread agent that answers Telegram on the worker when a model is there.
+// The agent that answers with it is desktop/engine/vps/agent.ts (the window's loop, actions and workspace).
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import type { TelegramTurn } from "../host.ts";
 
 export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
 export type ModelKey = { provider: "anthropic"; key: string; model?: string };
@@ -48,26 +47,4 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
       : { name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, 180_000, env) };
   }
   return undefined;
-}
-
-/** What the headless agent may call: GUC reads and Telegram's file send (same actions as the window's tools). */
-export type HeadlessTools = (tool: Record<string, unknown>) => Promise<unknown>;
-const SYSTEM = `You are Clem, the person's study assistant, answering a message from their Telegram while their computer may be off. Keep replies short and plain. You can use tools by replying with ONLY a JSON object {"kinetra":{"action":"…",…}} and nothing else; you will get the result and can answer or call again (at most 4 calls). Then answer normally in Markdown.`;
-
-/** One Telegram turn answered on the worker: the Now card for context, up to four tool calls, then the answer. */
-export function headlessConverse(o: { complete: Complete; tools: HeadlessTools; guide: string; context: () => Promise<string> }) {
-  return async (turn: TelegramTurn) => {
-    if (!("text" in turn)) throw Error("This button needs Clem on your computer.");
-    const system = SYSTEM + "\n\n" + o.guide;
-    let user = `${await o.context().catch(() => "")}\n\n[From Telegram] ${turn.text}`;
-    for (let i = 0; i < 5; i++) {
-      const reply = (await o.complete({ system, user })).trim();
-      const call = i < 4 && reply.match(/^\{\s*"kinetra"[\s\S]*\}$/);
-      if (!call) return { text: reply };
-      let result: unknown;
-      try { result = await o.tools(JSON.parse(reply).kinetra); } catch (e) { result = { error: (e as Error).message }; }
-      user += `\n\nYou called: ${reply}\nResult: ${JSON.stringify(result).slice(0, 12000)}`;
-    }
-    return { text: "I couldn't finish that here. Open Clem on your computer to carry on." };
-  };
 }

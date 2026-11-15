@@ -44,6 +44,9 @@ export type State = {
   organizer?: { model?: string; reasoning?: string };
   /** One-time workspace migrations already applied (core/main-thread/migrate.ts). */
   migrations?: string[];
+  /** How far this workspace has taken in the VPS worker's changes (core/workspace/ops.ts), saved with them, so a
+   *  change the worker made with the laptop off is applied here exactly once. Absent without a VPS worker. */
+  vpsSync?: { id: string; seq: number };
 };
 export const emptyState: State = {
   studySets: [],

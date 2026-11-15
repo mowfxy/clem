@@ -7,7 +7,7 @@ import type { Engine } from "../index.ts";
 import { DeviceStore } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
 import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
-import { snapshotOf } from "../../../core/proactivity/snapshot.ts";
+import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
 import { generateKey, publicOf } from "./keys.ts";
 import { SshLink, type LinkConfig, type VpsLink } from "./link.ts";
 import { installDocker, installWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
@@ -37,7 +37,7 @@ export type ManagerDeps = {
   engineToken?: () => Promise<string | undefined>;
   connect?: (c: LinkConfig) => Promise<VpsLink & { fingerprint?: string; firstTime?: boolean }>;
   log?: (m: string) => void;
-  changed?: (what: "status" | "migration" | "worker") => void;
+  changed?: (what: "status" | "migration" | "worker" | "workspace") => void;
   notify?: (n: { key: string; title: string; body: string; open?: object }) => void;
   /** A sign-in window on this PC for a CLI signing in on the server; `landed` hears each address it reaches. */
   openSignIn?: (url: string, landed: (url: string) => void) => () => void;
@@ -321,6 +321,11 @@ export class VpsManager {
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
       this.workerError = undefined;
+      // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
+      const head = health.ws as { id: string; seq: number } | null | undefined;
+      if (head && (head.seq > this.pulled || head.id !== this.wsHead?.id)) { this.wsHead = head; this.d.changed?.("workspace"); }
+      // Reached again after a while (the laptop woke): the worker gets this PC's workspace first.
+      if (Date.now() - this.pushedAt > 10 * 60_000) void this.pushWorkspace(true);
       desktopRuns = run;
       for (const n of await c.notices().catch(() => [])) this.d.notify?.(n);
     } catch (e) {
@@ -335,17 +340,58 @@ export class VpsManager {
   }
   startHeartbeat() { if (this.beat) return; void this.refreshWorker(); void this.heartbeat(); this.beat = setInterval(() => void this.heartbeat(), BEAT_MS); this.beat.unref?.(); }
   stopHeartbeat() { if (this.beat) clearInterval(this.beat); this.beat = undefined; }
-  /** The compact workspace snapshot the organizer reads, sent when the workspace changes (at most every 20 s). */
+  /** The workspace the worker's agent and organizer work on (core/workspace/ops.ts leanState: chats cut to their
+   *  latest messages, files as metadata with where their bytes are on the VPS), sent when it changes (at most every
+   *  20 s) and when the worker is reached again. The worker keeps its own changes the desktop hasn't saved on top. */
   async pushWorkspace(now = false, state?: unknown) {
     if (!(await this.vault()).worker?.enabled) return;
     const send = async () => {
       this.pushTimer = undefined;
-      try { await (await this.worker()).pushWorkspace({ __snapshot: true, ...snapshotOf(state ?? await this.workspaceState?.(), Date.now()) }); }
-      catch (e) { this.log("[vps] workspace push: " + (e as Error).message); }
+      try {
+        const lean = leanState(state ?? await this.workspaceState?.());
+        await (await this.worker()).pushWorkspace({ ...lean, files: await this.withBlobs(lean.files) });
+        this.pushedAt = Date.now();
+      } catch (e) { this.log("[vps] workspace push: " + (e as Error).message); }
     };
     if (now) return send();
     if (!this.pushTimer) { this.pushTimer = setTimeout(() => void send(), 20_000); this.pushTimer.unref?.(); }
   }
+  private pushedAt = 0;
+  /** Each file with where its bytes are on the VPS (content-addressed: the worker reads the same name on its disk). */
+  private async withBlobs(files: { id: string }[]) {
+    const engine = await this.d.engine();
+    const rows = await engine.db.query<{ file_id: string; path: string; size: string; sha256: string }>("select file_id, path, size, sha256 from file_objects where owner_id = $1 and location = 'vps' and (file_id like 'ws:%' or file_id like 'guc:%')", [this.owner]);
+    const at = new Map(rows.map((r) => [r.file_id, r]));
+    return files.map((f) => {
+      const r = at.get(f.id.startsWith("guc_") ? "guc:" + f.id.slice(4) : "ws:" + f.id);
+      if (!r) return f;
+      const ext = (r.path.split("/").pop() || "").split(".")[1] || "";
+      return { ...f, blob: { sha256: r.sha256, ext, size: Number(r.size) } };
+    });
+  }
+  /** What the worker changed in the workspace since `cursor` (the window's own `State.vpsSync`): files it made are
+   *  known to this PC's router as files on the VPS before the window sees them. Null without a worker copy. */
+  async pullOps(cursor?: WsCursor | null): Promise<WsBatch | null> {
+    const v = await this.vault();
+    if (!v.worker?.enabled) return null;
+    const batch = await (await this.worker()).ops(cursor);
+    if (!batch) return null;
+    const r = await this.router();
+    for (const op of batch.ops) {
+      if (op.t !== "put" || op.kind !== "file" || !op.item.blob) continue;
+      const { blob, ...file } = op.item as { id: string; blob: { sha256: string; ext: string; size: number } };
+      const store = this.vpsStore();
+      if (!/^[a-f0-9]{64}$/.test(blob.sha256)) continue;
+      const path = store ? store.pathOf(blob.sha256, blob.ext) : `${vpsRoot(this.owner)}/${blob.sha256}${blob.ext ? "." + blob.ext : ""}`;
+      if (!file.id.startsWith("guc_")) await r.markVps(file.id, path, blob.sha256, blob.size, false).catch((e) => this.log("[vps] pull: " + (e as Error).message));
+      (op as { item: unknown }).item = file;
+    }
+    this.pulled = Math.max(this.pulled, batch.last);
+    return batch;
+  }
+  private pulled = 0; private wsHead?: { id: string; seq: number };
+  /** The worker runs Clem's jobs (and the person's routines) right now: the window leaves them to it. */
+  workerRuns() { return this.workerRunner && Date.now() - this.lastWorker <= STALE_MS; }
   /** The saved workspace (main sets this to the window's state.json reader). */
   workspaceState?: () => Promise<unknown>;
   /** Copies what the worker's empty database needs from this engine's. */
