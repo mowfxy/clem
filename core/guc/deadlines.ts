@@ -13,7 +13,7 @@ import { stableId } from "./parse.ts";
 import type { GucDeadline, GucSlot } from "./types.ts";
 
 /** Bump when extraction changes: the sync re-reads course pages and takes the new deadlines as a baseline, not news. */
-export const DEADLINE_VERSION = 5;
+export const DEADLINE_VERSION = 6;
 
 const WORDS = /\b(deadlines?|due|submi(?:t|ts|tted|tting|ssions?)|hand(?:ed)?[- ]?in|quiz(?:zes)?|midterms?|final exams?|exams?|assignments?|projects?|milestones?|lab reports?|reports?|presentations?|evaluations?|deliverables?|homeworks?)\b/i;
 const MOVED = /\b(postpone[ds]?|moved?|reschedul\w*|delayed|extended|extension|instead|changed?|new date|now (?:on|due))\b/i;
@@ -200,9 +200,11 @@ function groupRow(text: string, slots: GucSlot[], ref: Date) {
   return undefined;
 }
 
-function fromText(text: string, courseKey: string, source: string, ref: Date, slots: GucSlot[] = []): Ranked[] {
+/** `ref`: when the text was written (a date with no year is the one nearest it); `now`: when it is read (what is long
+ *  past or too far off is left out). */
+function fromText(text: string, courseKey: string, source: string, ref: Date, slots: GucSlot[] = [], now = ref.getTime()): Ranked[] {
   // "[4/11/2026]: …" at a line's start is when the post was written, not a date in it.
-  const out: (Ranked & { at: number })[] = [], list = sentences(text.replace(/^[ \t]*[[(]\s*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*[\])]\s*:?\s*|^[ \t]*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*:\s*/gm, "")), now = ref.getTime();
+  const out: (Ranked & { at: number })[] = [], list = sentences(text.replace(/^[ \t]*[[(]\s*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*[\])]\s*:?\s*|^[ \t]*\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\s*:\s*/gm, ""));
   const covers = list.map(coversIn);
   list.forEach((sentence, i) => {
     if (!WORDS.test(sentence) || sentence.includes(" · ")) return;
@@ -267,9 +269,12 @@ function merge(list: Ranked[]): GucDeadline[] {
 export function extractDeadlines(text: string, courseKey: string, source: string, ref = new Date(), slots: GucSlot[] = []): GucDeadline[] {
   return merge(fromText(text, courseKey, source, ref, slots));
 }
-/** Deadlines across all of a course's texts, one per item. `slots`: the person's classes in this course. */
-export function courseDeadlines(texts: { text: string; source: string }[], courseKey: string, ref = new Date(), slots: GucSlot[] = []): GucDeadline[] {
-  return merge(texts.flatMap((t) => fromText(t.text, courseKey, t.source, ref, slots)));
+/** Deadlines across all of a course's texts, one per item. `slots`: the person's classes in this course. `ref`: now. A
+ *  text's own `sent` date (when known) is what a date with no year is read against, and each item keeps the text it
+ *  came from (`id` → `ref`) and when that was sent. */
+export function courseDeadlines(texts: { text: string; source: string; id?: string; sent?: string; around?: boolean }[], courseKey: string, ref = new Date(), slots: GucSlot[] = []): GucDeadline[] {
+  return merge(texts.flatMap((t) => fromText(t.text, courseKey, t.source, t.sent ? new Date(t.sent) : ref, slots, ref.getTime())
+    .map((d) => ({ ...d, ...(t.id ? { ref: t.id } : {}), ...(t.sent && !t.around ? { sent: t.sent } : {}) }))));
 }
 
 /** "Tue 24 Nov, 15:30" in Cairo time (no time when it is the end of the day). */

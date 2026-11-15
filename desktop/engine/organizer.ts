@@ -51,6 +51,8 @@ export class Organizer {
   private jobs?: Jobs;
   /** Telegram, when the host can reach the account service (set by the engine). */
   telegram?: TelegramChannel;
+  /** The engine's corrections of what Clem synced (desktop/engine/corrections.ts), so "undo that" reaches them too. */
+  corrections?: { recent(since: number): Promise<{ id: string; label: string; at: number }[]>; undo(id: string): Promise<unknown> };
   private timer?: ReturnType<typeof setTimeout>;
   private running?: Promise<unknown>;
   constructor(o: { db: Db; owner: string; host: EngineHost; guc: () => Promise<GucFacts>; clock?: () => number }) {
@@ -435,12 +437,21 @@ export class Organizer {
    *  is put back through the same path as applying it: marked `revert` here, undone by the window when it next pulls
    *  (src/proactivity/pro.ts), then `undone`. One not applied yet is simply dropped. */
   async undoByText(what?: string) {
-    const rows = await this.db.query<{ key: string; text: string; status: string }>(
-      "select key, text, status from organizer_actions where owner_id = $1 and created_at > $2 and ((status = 'applied' and undo is not null) or status = 'apply') order by updated_at desc, created_at desc limit 40", [this.owner, new Date(this.clock() - RECENT_UNDO_MS)]);
+    const since = this.clock() - RECENT_UNDO_MS;
+    const actions = await this.db.query<{ key: string; text: string; status: string; updated_at: Date }>(
+      "select key, text, status, updated_at from organizer_actions where owner_id = $1 and created_at > $2 and ((status = 'applied' and undo is not null) or status = 'apply') order by updated_at desc, created_at desc limit 40", [this.owner, new Date(since)]);
+    // The person's corrections of what Clem synced (guc.correct, guc.learn, guc.link) are undone the same way.
+    const fixes = this.corrections ? await this.corrections.recent(since).catch(() => []) : [];
+    const rows = [...actions.map((r) => ({ key: r.key, text: r.text, at: ms(r.updated_at), fix: undefined as string | undefined })), ...fixes.map((f) => ({ key: f.id, text: f.label, at: f.at, fix: f.id }))].sort((a, b) => b.at - a.at);
     if (!rows.length) return { error: "Clem hasn't changed anything in the last week that can be undone." };
     const words = norm(what || "").split(" ").filter((w) => w.length > 2), score = (t: string) => words.filter((w) => norm(t).includes(w)).length;
-    const pick = words.length ? rows.map((r) => ({ r, n: score(r.text) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n)[0]?.r : rows[0];
+    const pick = words.length ? rows.map((r) => ({ r, n: score(r.text) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n || b.r.at - a.r.at)[0]?.r : rows[0];
     if (!pick) return { error: `Nothing Clem did lately matches "${what}". Recent changes:\n` + rows.slice(0, 6).map((r) => "- " + r.text).join("\n") };
+    if (pick.fix) {
+      const c = await this.corrections!.undo(pick.fix);
+      if (!c) return { error: "That was already undone." };
+      return { ok: true, undone: pick.text, note: "Their correction is lifted: the item is back as Clem read it." };
+    }
     const [row] = await this.db.query<{ status: string }>("update organizer_actions set status = case when status = 'apply' then 'dismissed' else 'revert' end, updated_at = now() where owner_id = $1 and key = $2 and status in ('apply', 'applied') returning status", [this.owner, pick.key]);
     if (!row) return { error: "That was already undone." };
     this.host.changed?.();
