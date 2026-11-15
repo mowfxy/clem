@@ -172,7 +172,7 @@ function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; ref
         : busy === "worker-off" ? <Status spin>Turning off…</Status>
         : w.error ? <Status warn>{w.error}</Status>
         : w.enabled ? <Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
-        : <Status>Keeps Clem going while this PC is off.</Status>}
+        : <Status>GUC checks, reminders and your main thread on Telegram keep going while this PC is off.</Status>}
       {w.enabled && w.model !== "api" && <ServerAi w={w} />}
       <ModelKey has={w.model === "api"} busy={busy === "model"} disabled={!!busy} onSave={(key, model) => run("model", () => desktop!.invoke({ action: "vpsModelKey", ...(key ? { key } : {}), ...(model ? { model } : {}) }))} />
       <details className="vps-advanced"><summary>What Clem sends to your VPS</summary>
