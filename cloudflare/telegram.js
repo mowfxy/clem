@@ -10,7 +10,7 @@ import { HttpError, json, limit, readJson } from "./lib/http.js";
 import { key as vaultKey, open, seal } from "./provider-vault.js";
 
 export const NOT_PAIRED = "Hi! I only talk to paired Clem accounts. To pair this chat, open Clem and tap Connect Telegram (in your main thread or Settings → Channels → Telegram), then tap Start here.";
-export const PAIRED = "Paired. This chat now talks to your Clem: ask anything, and your updates can come here too. Send /unpair to stop.";
+export const PAIRED = "Paired. This chat now talks to your Clem, and your updates can come here too. Send /unpair to stop.";
 export const BAD_CODE = "That code didn't work. Codes work once and last 10 minutes; ask Clem for a new one.";
 export const OFFLINE = "Got it. Your Clem isn't online right now, so I'll answer as soon as it's back.";
 /** How long an engine may go without pulling before a message is answered with OFFLINE (at most once an hour). */
@@ -156,15 +156,30 @@ export async function handleTelegram(request, env, user, path, o = {}) {
       return json({ ok: true });
     }
     const link = await linkOf(env, user.id);
+    const inboxIds = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && /^[mt]\d{1,20}$/.test(x)).slice(0, 100) : []);
     if (path === "/telegram/ack") {
       const body = await readJson(request, 20_000);
-      const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string" && /^[mt]\d{1,20}$/.test(x)).slice(0, 100) : [];
+      const ids = inboxIds(body.ids);
       for (const id of ids) await env.DB.prepare("DELETE FROM telegram_inbox WHERE user_id=? AND id=?").bind(user.id, id).run();
       return json({ ok: true, acked: ids.length });
     }
+    // An engine that stops running Clem (the lease moved to the other side) gives back what it pulled and didn't
+    // start, so the other side answers it at once instead of after the lease runs out.
+    if (path === "/telegram/release") {
+      const ids = inboxIds((await readJson(request, 20_000)).ids);
+      for (const id of ids) await env.DB.prepare("UPDATE telegram_inbox SET lease_until=0 WHERE user_id=? AND id=?").bind(user.id, id).run();
+      return json({ ok: true, released: ids.length });
+    }
     if (!link) return json({ error: "Telegram isn't paired.", paired: false }, 409);
     const api = botFor(env, o.client).api;
-    if (path === "/telegram/typing") { await api.sendChatAction(link.chat_id, "typing").catch(() => {}); return json({ ok: true }); }
+    // "Typing…" while Clem answers; `hold` keeps the messages it is answering leased to this engine meanwhile, so the
+    // other side (the PC or the VPS) never answers them too, and gets them back within LEASE_MS if this one stops.
+    if (path === "/telegram/typing") {
+      const hold = inboxIds((await readJson(request, 20_000).catch(() => ({}))).hold);
+      for (const id of hold) await env.DB.prepare("UPDATE telegram_inbox SET lease_until=? WHERE user_id=? AND id=?").bind(now() + LEASE_MS, user.id, id).run();
+      await api.sendChatAction(link.chat_id, "typing").catch(() => {});
+      return json({ ok: true });
+    }
     if (path === "/telegram/send") {
       const body = await readJson(request, 40_000);
       const html = String(body.html || "");

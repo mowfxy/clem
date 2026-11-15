@@ -93,7 +93,7 @@ export class TelegramRelay {
   // ---------- The inbox ----------
   start() {
     if (!this.host.account || !this.stopped) return;
-    this.stopped = false;
+    this.stopped = false; this.leaving = false;
     this.loop = (async () => {
       let backoff = 15_000;
       while (!this.stopped) {
@@ -110,22 +110,33 @@ export class TelegramRelay {
       }
     })();
   }
-  async stop() { this.stopped = true; this.abort?.abort(); await this.loop?.catch(() => {}); }
+  /** Stops pulling. A message being answered is finished; what was pulled and not started goes back at once
+   *  (/telegram/release), so the other side (the PC or the VPS, whichever runs Clem now) answers it, never both. */
+  async stop() { this.stopped = true; this.leaving = true; this.abort?.abort(); await this.loop?.catch(() => {}); }
+  /** Pulled and not yet acknowledged: kept leased to this engine while it answers (the typing call holds them). */
+  private holding = new Set<string>();
+  private leaving = false;
   private nap(ms: number) {
     this.abort = new AbortController();
     const signal = this.abort.signal;
     return new Promise<void>((resolve) => { const t = setTimeout(resolve, ms); t.unref?.(); signal.addEventListener("abort", () => { clearTimeout(t); resolve(); }); });
   }
-  /** One pull: everything waiting is handled (each once, ever) and acknowledged. */
+  /** One pull: everything waiting is handled in order (each once, ever), each acknowledged as soon as it's answered. */
   async pullOnce(wait = 0) {
     this.abort = new AbortController();
     const { items, paired } = await this.call<{ items: InboxItem[]; paired: boolean }>(`/telegram/inbox?wait=${wait}`, undefined, { timeout: (wait + 15) * 1000, signal: this.abort.signal });
     if (!paired) { this.cached = undefined; return 0; }
-    for (const item of items) {
-      const fresh = await this.db.query("insert into telegram_seen (owner_id, id) values ($1, $2) on conflict do nothing returning 1", [this.owner, item.id]);
-      if (fresh.length) await this.handle(item).catch((e) => this.host.log("warn", "[telegram] " + errorText(e)));
-    }
-    if (items.length) await this.call("/telegram/ack", { ids: items.map((i) => i.id) });
+    for (const i of items) this.holding.add(i.id);
+    try {
+      for (let n = 0; n < items.length; n++) {
+        const item = items[n];
+        if (this.leaving) { await this.call("/telegram/release", { ids: items.slice(n).map((i) => i.id) }).catch(() => {}); break; }
+        const fresh = await this.db.query("insert into telegram_seen (owner_id, id) values ($1, $2) on conflict do nothing returning 1", [this.owner, item.id]);
+        if (fresh.length) await this.handle(item).catch((e) => this.host.log("warn", "[telegram] " + errorText(e)));
+        await this.call("/telegram/ack", { ids: [item.id] }).catch((e) => this.host.log("warn", "[telegram] ack: " + errorText(e)));
+        this.holding.delete(item.id);
+      }
+    } finally { for (const i of items) this.holding.delete(i.id); }
     await this.db.query("delete from telegram_seen where owner_id = $1 and seen_at < now() - interval '14 days'", [this.owner]);
     return items.length;
   }
@@ -142,7 +153,7 @@ export class TelegramRelay {
   private async answer(turn: TelegramTurn) {
     if (!this.host.converse) return this.say("Clem can't answer here right now. Open Clem on your PC and try again.");
     let done = false, wake = () => {};
-    const typing = (async () => { while (!done) { await this.call("/telegram/typing", {}).catch(() => {}); if (!done) await new Promise<void>((r) => { wake = r; const t = setTimeout(r, TYPING_MS); t.unref?.(); }); } })();
+    const typing = (async () => { while (!done) { await this.call("/telegram/typing", { hold: [...this.holding] }).catch(() => {}); if (!done) await new Promise<void>((r) => { wake = r; const t = setTimeout(r, TYPING_MS); t.unref?.(); }); } })();
     try {
       const reply = await Promise.race([this.host.converse(turn), new Promise<never>((_, no) => { const t = setTimeout(() => no(Error("timeout")), ANSWER_MS); t.unref?.(); })]);
       done = true;

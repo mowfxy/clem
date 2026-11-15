@@ -483,7 +483,9 @@ export class VpsManager {
    *  worker keeps it as the standing answer (desktop/engine/vps/full.ts). Its reply, or null when it wasn't that. */
   async fullReply(text: string): Promise<string | null> {
     if (!(await this.vault()).worker?.enabled) return null;
-    return (await this.worker()).call<string | null>("worker.fullReply", [text]).catch(() => null);
+    // Never holds the answer back for long: a worker out of reach is taken as "not that".
+    const asked = this.worker().then((c) => c.call<string | null>("worker.fullReply", [text])).catch(() => null);
+    return Promise.race([asked, new Promise<null>((r) => { const t = setTimeout(() => r(null), 10_000); t.unref?.(); })]);
   }
   async keep(fileId: string, where: "pc" | "vps" | "auto") { return (await this.router()).keepOn(fileId, where === "auto" ? undefined : where); }
 

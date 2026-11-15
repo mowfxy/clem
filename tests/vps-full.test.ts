@@ -155,3 +155,16 @@ test("the worker's guide and the window's both carry the rule that the AI comes 
   assert.ok(telegramGuide().includes(AI_FIRST));
   void writeFile;
 });
+
+test("answered on Telegram while the laptop's window answers it: the worker keeps the yes as the standing answer", { timeout: 120_000 }, async () => {
+  const p = await startPair({ disk: async () => ({ total: 1000 * KB, free: 150 * KB }), complete: async () => "Okay." });
+  try {
+    await p.m.pushWorkspace(true, baseDesk());
+    assert.equal(await p.m.fullReply("yes"), null, "nothing asked yet: not an answer");
+    await p.worker.waiting.add("ws:a", "A.md", 10, "“A.md” waits for your PC.");
+    await new Promise((r) => setTimeout(r, 200));
+    assert.match(String(await p.m.fullReply("yes")), /go to your PC whenever it's online/);
+    assert.equal(await p.worker.full.answer(), "send");
+    assert.equal(await p.m.fullReply("yes"), null, "asked once, answered once");
+  } finally { await p.stop(); }
+});

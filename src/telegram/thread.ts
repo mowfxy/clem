@@ -2,7 +2,7 @@
 // (desktop/telegram-thread.ts), on the window's workspace, with Clem's organizer model and the engine's actions in the
 // main process (desktop/engine/thread-tools.ts, the same as the worker's). It never goes through the app's chat
 // pipeline: no working folder, no hand-off, no file tools. Messages are answered one at a time, in the order they came.
-import { telegramTurn, type ThreadDeps } from '../../desktop/telegram-thread';
+import { telegramTurn, type ThreadDeps } from '../../desktop/telegram-thread.ts';
 import type { State } from '../store';
 import type { TelegramTurn } from '../../desktop/contracts';
 
