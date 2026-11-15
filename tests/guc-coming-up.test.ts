@@ -380,8 +380,8 @@ test("corrections hold: removed stays gone after syncs and re-reads, an edit hol
     await t.engine.sync();
     await t.engine.reread(csen);
     assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Wednesday 25 Nov at 10:00", "Final exam · Sunday 20 Dec at 12:00"]);
-    // The portal's exam seat can't be falsified: hidden or annotated only.
-    assert.match(String(await run({ action: "guc.correct", item: "Final exam", subject: "CSEN 301", do: "edit", date: "2026-12-21" })), /portal's own record/);
+    // The portal's exam seat: an edit changes Clem's copy (what it shows and reminds from), said plainly (the AI comes first).
+    assert.match(String(await run({ action: "guc.correct", item: "Final exam", subject: "CSEN 301", do: "edit", date: "2026-12-21" })), /in Clem's copy \(the portal's own record is unchanged/);
     assert.match(String(await run({ action: "guc.correct", item: "Final exam", subject: "CSEN 301", do: "note", note: "bring a calculator" })), /Added a note/);
     assert.match((await t.engine.deadlines()).find((d) => d.title === "Final exam")!.note!, /^Your note: bring a calculator/);
 
@@ -389,9 +389,9 @@ test("corrections hold: removed stays gone after syncs and re-reads, an edit hol
     assert.equal(((await t.engine.organizer.tool({ action: "clem.undo" })) as { ok?: boolean }).ok, true);
     assert.equal((await t.engine.deadlines()).find((d) => d.title === "Final exam")!.note, undefined);
     assert.deepEqual(await t.engine.organizer.tool({ action: "clem.undo", what: "quiz 2" }), { ok: true, undone: "Changed CSEN 301 Quiz 2 (was Tuesday 24 Nov at 15:45): now Wednesday 25 Nov at 10:00", note: "Their correction is lifted: the item is back as Clem read it." });
-    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Sunday 20 Dec at 12:00"]);
+    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Monday 21 Dec at 12:00"]);
     await t.engine.sync();
-    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Sunday 20 Dec at 12:00"], "and stays as read");
+    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Monday 21 Dec at 12:00"], "and stays as read; the exam seat keeps the person's date through the sync");
 
     // "Bring Quiz 3 back": restored; then done marks it done.
     assert.match(String(await run({ action: "guc.correct", item: "Quiz 3", subject: "MATH 301", do: "restore" })), /^Brought back: Removed MATH 301 Quiz 3/);

@@ -80,7 +80,16 @@ export function planSweep(kind: SweepKind, f: rules.Facts, o: { done: Set<string
   const plan: SweepPlan = { kind, changed, diff, actions: [], rated, hits: [], maybe: [], brief: [], rate: [] };
   if (!changed) return plan;
   // One move per task a sweep: the morning's hour for it wins over a plain roll to another day.
-  const add = (xs: ProAction[]) => { for (const a of xs) if (!o.done.has(actionKey(a)) && !plan.actions.some((b) => actionKey(b) === actionKey(a) || (a.type === "plan_move" && b.type === "plan_move" && b.spaceId === a.spaceId && b.taskId === a.taskId))) plan.actions.push(a); };
+  // What the person took away stays away (owner, 2026-11-15: the AI comes first): a deadline's tasks Clem added once and
+  // the person (or the AI on their word) removed are not added again when the deadline moves, nor revision sessions
+  // for an exam they removed when its date changes. Clem's earlier action keys say it added them before.
+  const keys = [...o.done];
+  const declined = (a: ProAction) => {
+    if (a.type === "plan_task") { const k = actionKey(a), base = k.slice(0, k.lastIndexOf(":") + 1); return keys.some((d) => d !== k && d.startsWith(base)); }
+    if (a.type === "revision_plan") return keys.some((d) => d.startsWith(`revision:${a.spaceId}:`));
+    return false;
+  };
+  const add = (xs: ProAction[]) => { for (const a of xs) if (!o.done.has(actionKey(a)) && !declined(a) && !plan.actions.some((b) => actionKey(b) === actionKey(a) || (a.type === "plan_move" && b.type === "plan_move" && b.spaceId === a.spaceId && b.taskId === a.taskId))) plan.actions.push(a); };
   const filed = rules.fileLoose(f.snap);
   if (kind === "morning") add([...rules.morningBlocks(f), ...rules.reschedule(f)]);
   if (kind === "midday" && c.time >= "12:00") add(rules.reschedule(f));

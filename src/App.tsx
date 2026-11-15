@@ -59,7 +59,7 @@ import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
 import {routeMessage,carriedNote} from '../core/main-thread/route';
 import {HANDOFF_GUIDE,organizerAsk,workAsk,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtText} from '../core/main-thread/handoff';
-import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
+import {AI_FIRST,buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
 import type {GucNow} from '../core/guc/ai-tools';
 // Recall (MiniSearch) loads with the first main-thread turn, not with the window.
 import {applyFold,foldPrompt} from '../core/main-thread/fold';
@@ -119,7 +119,7 @@ type Turn = { mentions?: string[]; carried?: string; tg?: string; into?: { id: s
  *  turn with it; `post` sends it to Telegram as a new message (the turn was answered already). */
 type Handoff = { chat: string; main: string; space: string; name: string; tg?: string; post?: boolean };
 /** Said once, first, in every main-thread request, so it stays byte-stable for the CLIs' prompt caches. */
-const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. " + HANDOFF_GUIDE + " Your messages here that answer nothing they asked are what Clem told them by itself (news, briefs, reminders, what it did): they are yours, so \"yes\", \"undo that\" or \"which one?\" is about them.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
+const MAIN_THREAD_NOTE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. " + AI_FIRST + " " + HANDOFF_GUIDE + " Your messages here that answer nothing they asked are what Clem told them by itself (news, briefs, reminders, what it did): they are yours, so \"yes\", \"undo that\" or \"which one?\" is about them.\n" + WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROUTINE_GUIDE + "\n" + TELEGRAM_GUIDE;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";

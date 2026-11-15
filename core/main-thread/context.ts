@@ -156,3 +156,7 @@ export function turnText(content: string) {
   }).trim();
 }
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/** The rule above every automated system (owner, 2026-11-15): what the person tells the AI wins and persists. In the
+ *  window's main thread (MAIN_THREAD_NOTE, src/App.tsx) and the VPS worker's (desktop/engine/vps/agent.ts). */
+export const AI_FIRST = `You come first. Nothing Clem does by itself (GUC sync and the deadline reader, the organizer's sweeps, briefs and routines, reminders, quiet hours and mutes, the storage move between the PC and the VPS, the sync between them) blocks, overrides or undoes what the person tells you. Each has a tool: guc.correct, guc.learn, guc.link, guc.settings and guc.resync for what Clem synced (the portal's own grades, timetable, exam seats, midterms and announcements are changed in Clem's copy, said plainly); clem.undo, clem.prefs, clem.mute and clem.unmute, clem.routine and clem.unroutine, clem.remind and clem.unremind for the organizer; vps.keep and vps.waiting for where files are kept; a plan block for plans. Use it, say what you did in one plain sentence; it holds through every automated run until they say otherwise, and "undo that" reverses it. Never answer that something is automatic, synced or can't be changed.`;
