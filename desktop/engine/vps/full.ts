@@ -23,8 +23,11 @@ export class FullNotice {
   private d: { state: WorkerState; waiting: Waiting; ws: WorkerWorkspace; post?: (text: string) => Promise<unknown>; full?: () => boolean; clock?: () => number; log?: (m: string) => void };
   constructor(d: FullNotice["d"]) { this.d = d; }
   answer() { return this.d.state.get<FullAnswer>("full-answer"); }
-  /** Tells the person, if files wait (or the disk is at the limit) and they were never told. True when it did now. */
-  async check(): Promise<boolean> {
+  private checking: Promise<boolean> = Promise.resolve(false);
+  /** Tells the person, if files wait (or the disk is at the limit) and they were never told. True when it did now.
+   *  Checks run one after another, so files added back to back are told once. */
+  check(): Promise<boolean> { return (this.checking = this.checking.catch(() => false).then(() => this.checkOnce())); }
+  private async checkOnce(): Promise<boolean> {
     if (await this.d.state.get("full-told") || await this.answer()) return false;
     const items = await this.d.waiting.items();
     if (!items.length && !this.d.full?.()) return false;

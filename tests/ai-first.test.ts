@@ -91,6 +91,9 @@ test("every setting of the automated systems has a tool, and no guide says somet
   assert.match(AI_FIRST, /Never answer that something is automatic, synced or can't be changed/);
   for (const guide of [GUC_GUIDE, CALENDAR_GUIDE]) assert.doesNotMatch(guide.replace(/[Nn]ever answer that something[^.]*\./g, ""), /can't be changed|cannot be changed|can't be falsified|synced automatically/);
   const app = await readFile("src/App.tsx", "utf8"), worker = await readFile("desktop/engine/vps/agent.ts", "utf8");
-  assert.match(app, /MAIN_THREAD_NOTE = [^\n]*AI_FIRST/, "the window's main thread carries the rule");
-  assert.match(worker, /MAIN_NOTE = [^\n]*AI_FIRST/, "the VPS worker's main thread carries it");
+  const { MAIN_THREAD_NOTE } = await import("../core/main-thread/guide.ts"), { telegramGuide } = await import("../core/telegram/thread.ts");
+  assert.match(app, /import \{MAIN_THREAD_NOTE\} from '\.\.\/core\/main-thread\/guide'/, "the window's main thread uses the shared guide");
+  assert.ok(MAIN_THREAD_NOTE.includes(AI_FIRST), "the window's main thread carries the rule");
+  assert.ok(telegramGuide().includes(AI_FIRST), "Telegram's main thread carries it, on the laptop and on the VPS");
+  assert.match(worker, /telegramTurn\(/, "the VPS worker answers with the shared Telegram main thread");
 });

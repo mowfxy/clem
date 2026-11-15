@@ -16,25 +16,25 @@ const req = (o: object) => JSON.stringify({ kinetra: o });
 const mainOf = (s: any) => s.chats.find((c: any) => c.kind === "main");
 
 test("the VPS full: told once with what waits, asked once; no, then a change of mind; the PC fetches skipped CMS files", { timeout: 120_000 }, async () => {
-  let note = 0;
   const p = await startPair({
     disk: async () => ({ total: 1000 * KB, free: 150 * KB }), // 85% full: past the 82% limit
     complete: async ({ user }) => {
       if (/Tool exchanges/.test(user)) return "Saved.";
-      if (/\[From Telegram\] save note/.test(user)) return req({ action: "ws.note", subject: "Math", name: `Note ${++note}.md`, content: "# n" + note });
       if (/\[From Telegram\] send waiting files/.test(user)) return req({ action: "vps.waiting", send: true });
       return "Okay.";
     },
   });
+  // Files the PC sent that the VPS couldn't keep past its limit wait for the PC (Telegram makes no files itself).
+  const wait = (n: number) => p.worker.waiting.add("ws:n" + n, `Note ${n}.md`, 10, `“Note ${n}.md” waits for your PC.`);
   try {
     await p.m.pushWorkspace(true, baseDesk());
-    await p.worker.host.converse!({ id: "1", text: "save note one" });
-    await p.worker.host.converse!({ id: "2", text: "save note two" });
+    await wait(1);
+    await wait(2);
     await new Promise((r) => setTimeout(r, 300));
     const told = mainOf(await p.worker.ws.state()).messages.filter((m: any) => /Your VPS is full/.test(m.content));
     assert.equal(told.length, 1, "said once, however many files wait");
     assert.match(told[0].content, /Clem keeps it at most 82% used/);
-    assert.match(told[0].content, /Waiting: Note 1\.md\./, "the files are named");
+    assert.match(told[0].content, /Waiting: Note 1\.md, Note 2\.md\./, "the files are named");
     assert.match(told[0].content, /Say yes or no/);
     assert.ok(!/```clem-card|button/i.test(told[0].content), "a plain message, no buttons");
 
@@ -42,7 +42,7 @@ test("the VPS full: told once with what waits, asked once; no, then a change of 
     const no = await p.worker.host.converse!({ id: "3", text: "no" });
     assert.match(no.text, /won't ask again/);
     assert.equal(await p.worker.full.answer(), "keep");
-    await p.worker.host.converse!({ id: "4", text: "save note three" });
+    await wait(3);
     assert.equal(mainOf(await p.worker.ws.state()).messages.filter((m: any) => /Your VPS is full/.test(m.content)).length, 1, "never asked twice");
 
     // A CMS file the worker couldn't keep at the limit waits too.
@@ -68,10 +68,10 @@ test("the VPS full: told once with what waits, asked once; no, then a change of 
 });
 
 test("yes to the question is the standing answer", { timeout: 120_000 }, async () => {
-  const p = await startPair({ disk: async () => ({ total: 1000 * KB, free: 150 * KB }), complete: async ({ user }) => (/Tool exchanges/.test(user) ? "Saved." : req({ action: "ws.note", name: "Plan.md", content: "x" })) });
+  const p = await startPair({ disk: async () => ({ total: 1000 * KB, free: 150 * KB }), complete: async () => "Okay." });
   try {
     await p.m.pushWorkspace(true, baseDesk());
-    await p.worker.host.converse!({ id: "1", text: "save a plan note" });
+    await p.worker.waiting.add("ws:plan", "Plan.md", 10, "“Plan.md” waits for your PC.");
     await new Promise((r) => setTimeout(r, 200));
     const yes = await p.worker.host.converse!({ id: "2", text: "yes" });
     assert.match(yes.text, /go to your PC whenever it's online/);
@@ -114,7 +114,7 @@ test("deleting in the app deletes on the VPS, after a reconnect too, once, never
   } finally { await p.stop(); }
 });
 
-test("the AI deletes on the VPS: gone there and, after the PC syncs, here; a file kept on the PC by the person's word", { timeout: 120_000 }, async () => {
+test("on Telegram a file is kept on the PC by the person's word; deleting stays in the app", { timeout: 120_000 }, async () => {
   const p = await startPair({
     complete: async ({ user }) => {
       if (/Tool exchanges/.test(user)) return "Done.";
@@ -132,16 +132,12 @@ test("the AI deletes on the VPS: gone there and, after the PC syncs, here; a fil
     const pathOld = (await r.row("old"))!.path;
     let desk = baseDesk({ files: [{ id: "old", name: "Old notes.md", size: old.length, type: "text/markdown", created: 1, spaceId: "math" }, { id: "keep", name: "Keep me.md", size: keep.length, type: "text/markdown", created: 1, spaceId: "math" }] });
     await p.m.pushWorkspace(true, desk);
-    const freeBefore = await p.worker.limit.room();
     await p.worker.host.converse!({ id: "1", text: "delete my old notes" });
-    assert.ok(!(await stat(join(p.files, pathOld.split("/").pop()!)).then(() => true, () => false)), "its bytes on the VPS are gone");
-    assert.ok(await p.worker.limit.room() >= freeBefore + old.length, "the freed room counts at once");
+    assert.ok(await stat(join(p.files, pathOld.split("/").pop()!)).then(() => true, () => false), "Telegram has no file deleting: the file stays");
     await p.worker.host.converse!({ id: "2", text: "keep Keep me on my PC" });
-    // The PC syncs: the deletion and the person's word on where the other file lives are carried out here, once.
+    // The PC syncs: the person's word on where the file lives is carried out here, once.
     desk = applyPull(desk, (await p.m.pullOps(desk.vpsSync))!);
-    assert.ok(!desk.files.some((f: any) => f.id === "old"));
-    assert.equal(await r.row("old"), undefined);
-    assert.equal(await p.local.read("old"), null, "this PC's copy is gone too");
+    assert.ok(desk.files.some((f: any) => f.id === "old"));
     for (let i = 0; i < 40 && (await r.row("keep")); i++) await new Promise((res) => setTimeout(res, 50));
     assert.equal(await r.row("keep"), undefined, "kept on the PC only");
     assert.deepEqual(await p.local.read("keep"), keep);
@@ -154,6 +150,8 @@ test("the AI deletes on the VPS: gone there and, after the PC syncs, here; a fil
 
 test("the worker's guide and the window's both carry the rule that the AI comes first", async () => {
   const worker = await readFile("desktop/engine/vps/agent.ts", "utf8");
-  assert.match(worker, /MAIN_NOTE = [^\n]*AI_FIRST/);
+  const { telegramGuide } = await import("../core/telegram/thread.ts"), { AI_FIRST } = await import("../core/main-thread/context.ts");
+  assert.match(worker, /telegramTurn\(/);
+  assert.ok(telegramGuide().includes(AI_FIRST));
   void writeFile;
 });

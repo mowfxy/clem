@@ -17,8 +17,6 @@ const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.stri
 /** A CMS course key ("<courseId>:<seasonId>") and a GUC row id. */
 const proKey = z.string().min(1).max(300);
 /** What a Telegram answer carries: files Clem made (by id) and its visuals drawn as PNGs (base64), sent as photos. */
-const tgFiles = z.array(z.object({ id: z.string().regex(/^[\w-]{1,100}$/), name: z.string().min(1).max(300), type: z.string().max(200) })).max(5);
-const tgPhotos = z.array(z.object({ name: z.string().min(1).max(120), data: z.string().max(14_000_000) })).max(6);
 const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
@@ -110,13 +108,16 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proReminders") }),
   z.object({ action: z.literal("proCancelReminder"), id: z.string().regex(/^r[\w-]{1,40}$/) }),
   // Telegram (desktop/engine/telegram.ts): status, a pairing code, unpair, the pair card in the main thread, and the
-  // window's answer to a Telegram message (its text and the files it made).
+  // Telegram main thread the window runs (src/telegram/thread.ts): its model, its engine actions, the step before the
+  // model, and its answer. Telegram makes no files.
   z.object({ action: z.literal("tgStatus"), fresh: z.boolean().optional() }),
   z.object({ action: z.literal("tgPair") }),
   z.object({ action: z.literal("tgUnpair") }),
   z.object({ action: z.literal("tgOffer") }),
-  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000), files: tgFiles.optional(), photos: tgPhotos.optional() }),
-  z.object({ action: z.literal("tgPost"), text: z.string().max(200_000), files: tgFiles.optional(), photos: tgPhotos.optional() }),
+  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000) }),
+  z.object({ action: z.literal("tgComplete"), system: z.string().max(400_000), user: z.string().max(3_000_000), model: z.string().max(200).optional(), reasoning: z.string().max(40).optional() }),
+  z.object({ action: z.literal("tgTool"), tool: z.record(z.string(), z.unknown()) }),
+  z.object({ action: z.literal("tgBefore"), text: z.string().max(8000) }),
   z.object({ action: z.literal("driveConnect"), pick: z.enum(["files", "folder"]).optional(), request: z.string().regex(/^[\w-]{16,64}$/).optional() }),
   z.object({ action: z.literal("drivePicked"), request: z.string().regex(/^[\w-]{16,64}$/) }),
   z.object({ action: z.literal("driveAccess"), hide: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional(), show: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional() }),

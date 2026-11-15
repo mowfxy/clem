@@ -82,8 +82,9 @@ import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool } from './engine/ai-tools';
+import { runThreadTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
+import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
-import { TG_FILE_LIMIT } from '../core/telegram/pairing';
 import { isGucAction } from '../core/guc/ai-tools';
 import { serveHooks } from './engine/hooks';
 /** Routines' webhooks on this PC (desktop/engine/hooks.ts). */
@@ -1317,6 +1318,36 @@ void app.whenReady().then(async () => {
     });
     return wrap(engine, "");
   };
+  /** What the Telegram main thread's actions need on this PC: the subjects, the person's files (their bytes here or on
+   *  the VPS), and the VPS with server changes asked in words, as on the worker. */
+  const threadCtx = async (owner: string, engine: Engine): Promise<ThreadToolCtx> => {
+    const state = await disk.readState(owner).catch(() => null) as { spaces?: { id: string; name: string; kind?: string; description?: string; examDate?: string }[]; files?: { id: string; name: string; type?: string }[] } | null;
+    const files = state?.files || [];
+    const named = (name: string) => { const want = name.trim().toLowerCase(), exact = files.filter((f) => f.id === name || f.name.toLowerCase() === want), near = exact.length ? exact : files.filter((f) => f.name.toLowerCase().includes(want)); return want ? near : []; };
+    const m = await vpsConfigured(owner) ? vpsFor(owner) : undefined;
+    return {
+      engine, owner, subjects: (state?.spaces || []).filter((s) => s.kind === "subject").map(({ id, name, description, examDate }) => ({ id, name, description, examDate })),
+      changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }),
+      workspaceFile: async (name) => {
+        const near = named(name);
+        if (!near.length) return null;
+        if (near.length > 1) return { error: `"${name}" matches ${near.length} files: ${near.slice(0, 8).map((f) => f.name).join(", ")}. Use the exact name.` };
+        const bytes = await blobs.readFile(owner, near[0].id).catch(() => null);
+        if (!bytes) return { error: `${near[0].name} isn't available on this PC right now.` };
+        return { name: near[0].name, type: near[0].type || "application/octet-stream", bytes: new Uint8Array(bytes) };
+      },
+      ...(m ? { vps: {
+        run: (tool: Record<string, unknown>) => m.wordTools.run(owner, tool),
+        hold: (ask: VpsAsk) => vault.write("tg-vps-ask-" + owner, ask),
+        waiting: (send?: boolean) => m.waiting(send),
+        keep: async (file: string, where: "pc" | "vps" | "auto") => {
+          const near = named(file);
+          if (near.length !== 1) return { error: near.length ? `"${file}" matches ${near.length} files. Use the exact name.` : `No file named "${file}".` };
+          return { ok: true, file: near[0].name, done: await m.keep(near[0].id, where), note: "Say so in one plain sentence." };
+        },
+      } } : {}),
+    };
+  };
   closeEngines = async () => { const open = [...engines.values()]; engines.clear(); await Promise.all([...vpsManagers.values()].map((m) => m.close().catch(() => {}))); await Promise.all(open.map((e) => e.then((x) => x.close()).catch(() => {}))); };
   // A VPS set up earlier: carry on a move that was interrupted, and the worker's heartbeat.
   void authReady.then(async () => {
@@ -1638,29 +1669,25 @@ void app.whenReady().then(async () => {
       if (request.action === "tgPair") return t.pair();
       if (request.action === "tgUnpair") return t.unpair();
       if (request.action === "tgOffer") return engine.organizer.offerTelegram("asked");
-      // Files an answer made go with it (each within Telegram's 50 MB); its visuals and figures, drawn by the window as
-      // PNGs, go as photos.
-      const outgoing = async (r: { files?: { id: string; name: string; type: string }[]; photos?: { name: string; data: string }[] }) => {
-        const files: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] = [];
-        for (const f of r.files || []) {
-          const bytes = await blobs.readFile(user.id, f.id).catch(() => null);
-          if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
-        }
-        for (const p of r.photos || []) files.push({ name: p.name, type: "image/png", bytes: new Uint8Array(Buffer.from(p.data, "base64")), photo: true });
-        return files;
-      };
       if (request.action === "tgAnswered") {
         const wait = telegramWaits.get(request.id);
         if (!wait || wait.owner !== user.id) return { ok: false };
         telegramWaits.delete(request.id);
-        wait.resolve({ text: request.text, files: await outgoing(request) });
+        wait.resolve({ text: request.text });
         return { ok: true };
       }
-      // A hand-off asked from Telegram finished after its turn was answered: its result is sent as its own message.
-      if (request.action === "tgPost") {
-        if (!(await t.paired())) return { ok: false };
-        await t.post(request.text, await outgoing(request));
-        return { ok: true };
+      // The Telegram main thread the window runs (src/telegram/thread.ts, desktop/telegram-thread.ts): one step of its
+      // model (no tools, no working folder: Telegram makes no files), the engine's actions (desktop/engine/thread-tools.ts,
+      // the same as the VPS worker's), and the step before the model (a "yes" to a server change, the VPS-full answer).
+      if (request.action === "tgComplete") return engineHost(user.id).complete!({ system: request.system, user: request.user, model: request.model, reasoning: request.reasoning });
+      if (request.action === "tgTool") return runThreadTool(await threadCtx(user.id, engine), request.tool);
+      if (request.action === "tgBefore") {
+        const vps = await vpsConfigured(user.id) ? vpsFor(user.id) : undefined, askKey = "tg-vps-ask-" + user.id;
+        return threadBefore({
+          take: async () => { const a = await vault.read<VpsAsk | undefined>(askKey, undefined); if (a) await vault.remove(askKey); return a; },
+          perform: async (ask) => vps ? vps.wordTools.perform(user.id, ask) : { error: "No VPS is connected." },
+          ...(vps ? { fullReply: (text: string) => vps.fullReply(text) } : {}),
+        }, request.text);
       }
     }
     if (request.action.startsWith("guc")) {

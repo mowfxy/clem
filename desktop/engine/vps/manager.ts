@@ -66,11 +66,14 @@ export class VpsManager {
   private lastTest?: VpsTest; private online?: boolean;
   private pushTimer?: ReturnType<typeof setTimeout>;
   readonly tools: VpsTools;
+  /** The same tools for the Telegram main thread: a server change is asked in words, as on the worker (core/vps/ask.ts). */
+  readonly wordTools: VpsTools;
   /** At most 82% of the VPS disk full because of Clem (core/vps/limit.ts): measured with df there, every 5 minutes. */
   readonly limit: DiskLimit;
   constructor(d: ManagerDeps) {
     this.d = d; this.owner = d.owner;
     this.tools = new VpsTools(() => this.link());
+    this.wordTools = new VpsTools(() => this.link(), { words: true });
     this.limit = new DiskLimit({ measure: sshDisk(() => this.link(), vpsRoot(d.owner)), clock: d.clock });
   }
   private key() { return "vps-" + this.owner; }
@@ -476,6 +479,12 @@ export class VpsManager {
     })().finally(() => { this.fetching = undefined; }));
   }
   /** vps.keep from the window's AI: where one file is kept (router.keepOn). */
+  /** The person's answer on Telegram to the worker's VPS-full question, while this PC's window answers Telegram: the
+   *  worker keeps it as the standing answer (desktop/engine/vps/full.ts). Its reply, or null when it wasn't that. */
+  async fullReply(text: string): Promise<string | null> {
+    if (!(await this.vault()).worker?.enabled) return null;
+    return (await this.worker()).call<string | null>("worker.fullReply", [text]).catch(() => null);
+  }
   async keep(fileId: string, where: "pc" | "vps" | "auto") { return (await this.router()).keepOn(fileId, where === "auto" ? undefined : where); }
 
   /** What the worker changed in the workspace since `cursor` (the window's own `State.vpsSync`): files it made are

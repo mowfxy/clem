@@ -30,14 +30,14 @@ export function baseDesk(extra: Record<string, unknown> = {}): any {
   };
 }
 
-export async function startPair(o: { complete?: Complete; noBrowser?: boolean; disk?: () => Promise<DiskSize>; clock?: () => number; manager?: Partial<ConstructorParameters<typeof VpsManager>[0]> } = {}) {
+export async function startPair(o: { complete?: Complete; disk?: () => Promise<DiskSize>; clock?: () => number; manager?: Partial<ConstructorParameters<typeof VpsManager>[0]> } = {}) {
   const root = await mkdtemp(join(tmpdir(), "clem-pair-"));
   const data = join(root, "worker", "state"), files = join(root, "files");
   await mkdir(join(data, "secrets"), { recursive: true }); await mkdir(files, { recursive: true });
   const key = randomBytes(32), rpc = randomBytes(16).toString("hex"), port = await freePort();
   await writeFile(join(data, "secrets", secretFile("rpc")), seal(key, "rpc", rpc));
   const { backend: wb } = await openPglite();
-  const worker = await startWorker({ config: { owner: OWNER, accountService: "http://127.0.0.1:9" }, key, env: { CLEM_DATA: data, CLEM_FILES: files, CLEM_PORT: String(port), CLEM_HOOK_PORT: "0", PATH: process.env.PATH, ...(process.env.CLEM_CHROMIUM ? { CLEM_CHROMIUM: process.env.CLEM_CHROMIUM } : {}) }, migrations: "desktop/engine/migrations", backend: wb, beat: 3_600_000, complete: o.complete, noBrowser: o.noBrowser, disk: o.disk, clock: o.clock });
+  const worker = await startWorker({ config: { owner: OWNER, accountService: "http://127.0.0.1:9" }, key, env: { CLEM_DATA: data, CLEM_FILES: files, CLEM_PORT: String(port), CLEM_HOOK_PORT: "0", PATH: process.env.PATH }, migrations: "desktop/engine/migrations", backend: wb, beat: 3_600_000, complete: o.complete, disk: o.disk, clock: o.clock });
   const { backend: db0, db } = await openPglite();
   await migrate(db0, "desktop/engine/migrations");
   const engine = { db, runner: async () => {}, telegram: { start() {}, post: async () => {} }, organizer: { announce: async () => {} } } as unknown as Engine;

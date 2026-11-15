@@ -18,25 +18,19 @@ import { WorkerWorkspace, type WsState } from "../desktop/engine/vps/workspace.t
 import { WorkerState } from "../desktop/engine/vps/state.ts";
 import { FullNotice } from "../desktop/engine/vps/full.ts";
 import { roomOn } from "../core/vps/limit.ts";
-import { sha256 } from "../desktop/engine/storage.ts";
 import { DiskLimit, LimitedStore, Waiting, localDisk } from "../desktop/engine/vps/limit.ts";
 import type { DiskSize } from "../core/vps/limit.ts";
 import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
 import { WORKER_PROTOCOL } from "../core/vps/types.ts";
-import { setPageOpener } from "../desktop/draw-page.ts";
-import { chromiumPages } from "../desktop/chromium-page.ts";
-import { chromiumBinary } from "../desktop/engine/vps/chromium-install.ts";
-import { PageTasks } from "../desktop/engine/vps/page-tasks.ts";
-import { kinetraCall } from "../desktop/kinetra-runtime.ts";
 
 /** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
 export const WORKER_VERSION = WORKER_PROTOCOL;
 const here = typeof __filename === "string" ? dirname(__filename) : process.cwd();
 type Config = { owner: string; accountService: string; publicHost?: string };
 
-export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number; /** Tests: the disk's size. */ disk?: () => Promise<DiskSize>; /** Tests: no headless browser (files that need one say so in one sentence). */ noBrowser?: boolean } = {}) {
+export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: NodeJS.ProcessEnv; migrations?: string; backend?: Backend; beat?: number; /** Tests: the model. */ complete?: Complete; clock?: () => number; /** Tests: the disk's size. */ disk?: () => Promise<DiskSize> } = {}) {
   const env = o.env || process.env;
   const config: Config = o.config || JSON.parse(readFileSync(join(process.cwd(), "config.json"), "utf8"));
   if (!/^[\w-]{1,100}$/.test(config.owner)) throw Error("Invalid owner in config.json");
@@ -60,11 +54,6 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // At most 82% of this server's disk full because of Clem (core/vps/limit.ts), measured on the files folder.
   await mkdir(files, { recursive: true });
   const limit = new DiskLimit({ measure: o.disk || localDisk(files), clock: o.clock });
-  // Files are drawn as the window draws them, in headless Chromium here (desktop/chromium-page.ts): the browser on the
-  // server, Clem's Docker image's, or a headless shell fetched once on first use (desktop/engine/vps/chromium-install.ts).
-  const browser = o.noBrowser ? undefined : chromiumPages({ binary: chromiumBinary({ data, env, log: (m) => log("warn", m) }), log: (m) => log("warn", m) });
-  setPageOpener(browser?.open);
-  const pages = browser ? new PageTasks({ open: browser.open, kinetra: (r) => kinetraCall(r) }) : undefined;
   const plainDisk = new DeviceStore(files, { location: "vps", sub: "" });
   const disk = new LimitedStore({ inner: plainDisk, limit, root: files });
   const workspaceFile = join(data, "workspace.json");
@@ -87,7 +76,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       if (!t) throw Error("No relay token yet.");
       return fetch(config.accountService + path, { ...init, headers: { ...(init?.headers || {}), authorization: "Engine " + t }, signal: signal || AbortSignal.timeout(timeout) });
     },
-    // A Telegram message answered here the way the window's main thread answers it (desktop/engine/vps/agent.ts).
+    // A Telegram message answered here by the Telegram main thread, as the window answers it (desktop/engine/vps/agent.ts).
     ...(complete ? { converse: (turn) => agent!.converse(turn) } : {}),
     fileStore: () => disk,
     fileStores: () => ({ vps: disk }),
@@ -124,19 +113,12 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     limit.freed(blob.size);
     return blob.size;
   };
+  // Telegram's main thread here (no study answers, no files: those are done in the app on the PC).
   if (complete) agent = new WorkerAgent({
-    owner: config.owner, complete, engine: () => engine!, ws, files, data, pages, clock: o.clock, log: (m) => log("warn", m),
-    // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
-    save: async (bytes, ext) => {
-      const hash = sha256(bytes);
-      if (!(await plainDisk.has(join(files, `${hash}.${ext}`))) && !(await limit.reserve(bytes.length))) return { waiting: "Your VPS is at Clem's storage limit (82% of its disk)." };
-      await plainDisk.put(hash, ext, bytes).catch((e) => { limit.release(bytes.length); throw e; });
-      return { sha256: hash, ext, size: bytes.length };
-    },
-    onWaiting: (item, name, bytes, said) => waiting.add(item, name, bytes, said),
+    owner: config.owner, complete, engine: () => engine!, ws, files, clock: o.clock, log: (m) => log("warn", m),
     vps: (tool) => vpsTools.run(config.owner, tool),
     vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
-    state, full, dropBytes, waiting: () => waiting.items(),
+    state, full, waiting: () => waiting.items(),
   });
   // While this worker runs Clem: the organizer's decisions go into the workspace copy, and due routines run.
   async function work() {
@@ -183,6 +165,8 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
           return { ok: true };
         }
         // The content this worker's copy still uses, so a delete the PC made offline never removes bytes re-added since.
+        // The person answered the VPS-full question on Telegram while the laptop's window answers it: the standing answer.
+        if (path === "worker.fullReply") return (await full.reply(String(args[0] || "")).catch(() => undefined)) || null;
         if (path === "worker.blobs") return (((await ws!.state())?.files || []) as { blob?: { sha256: string } }[]).map((f) => f.blob?.sha256).filter(Boolean);
         return callPath(engine!, path, args);
       },
@@ -215,7 +199,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // Routines' webhooks, reachable from outside (CLEM_HOOK_PORT=0 turns them off). Only the runner answers them.
   const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
     target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
-  const stop = async () => { await ssh?.close().catch(() => {}); await browser?.shutdown(); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
+  const stop = async () => { await ssh?.close().catch(() => {}); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
   return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work, full, waiting, limit, state };
 }
 
