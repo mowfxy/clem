@@ -1,6 +1,5 @@
 // The Image download of a visual or figure (the visual's download menu, src/visuals/SpecVisual.tsx and
-// src/chat/KinetraFigure.tsx), as one function each, so Telegram's photos (src/telegram/figure-draw.ts), from the
-// laptop or from the VPS worker's headless page, are pixel for pixel the image the download gives.
+// src/chat/KinetraFigure.tsx), as one function each.
 import { standardFonts, exportFonts } from '../../core/print-fonts';
 import { CanvasPen, C, H, W, type Ink, type Pen } from './pen';
 import { paintSvg } from './record';

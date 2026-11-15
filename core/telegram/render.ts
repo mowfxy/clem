@@ -144,8 +144,8 @@ function chunks(md: string) {
   push();
   return out;
 }
-/** The visuals and textbook figures in an answer (```visual and ```kinetra blocks). The window draws each as a PNG and
- *  sends it as a photo (src/telegram/figures.ts), so their JSON is never sent as text. */
+/** The visuals and textbook figures in an answer (```visual and ```kinetra blocks). Telegram draws nothing (it is the
+ *  main thread for the day and term), so a stray one is left out of the text rather than sent as JSON. */
 const FIGURE_FENCE = /```(visual|kinetra)[^\S\n]*\n([\s\S]*?)```/g;
 export function figureBlocks(content: string) { return [...content.matchAll(FIGURE_FENCE)].map((m) => ({ lang: m[1] as "visual" | "kinetra", body: m[2] })); }
 export function withoutFigures(content: string) { return content.replace(FIGURE_FENCE, "").replace(/\n{3,}/g, "\n\n"); }

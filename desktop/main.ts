@@ -1,8 +1,6 @@
 import { submitSupport } from "./support";
 import { collectDiagnostics, noteEvent, startMainLog } from "./diagnostics";
 import {illustratedPdf} from "./illustrated-pdf";
-import { setPageOpener } from "./draw-page";
-import { electronPage } from "./electron-page";
 import { pageCount } from "./pdf-structure";
 import { makeFile, FILE_ACTIONS, partsKey, patchParts, sameFormat, MIME } from "./file-maker";
 import { DRAFTS, LIBRARY, TEXT, laneFolders, mirrorFor, mirroredId, newOutputs, removeOldFolders, spaceFolders, syncMirror, workspaceLane, workspaceNote, workspacePath, workspaceRelative, type MirrorFile } from "./ai-workspace";
@@ -246,8 +244,6 @@ const localBlobs = (owner: string): LocalBlobs => ({
   write: (id, b) => disk.writeFile(owner, id, b), remove: (id) => disk.deleteFile(owner, id), has: (id) => disk.hasFile(owner, id),
   path: (id) => disk.blobPath(owner, id), list: () => disk.listFiles(owner),
 });
-// Files are drawn in a hidden Electron window here (desktop/draw-page.ts); the VPS worker draws them in headless Chromium.
-setPageOpener(electronPage);
 void app.whenReady().then(async () => {
   if (!primaryInstance) return;
   startMainLog(join(app.getPath("userData"), "logs"));

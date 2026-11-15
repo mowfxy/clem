@@ -2,7 +2,3 @@
 declare module "pdfjs-dist/legacy/build/pdf.worker.mjs" {
   export const WorkerMessageHandler: unknown;
 }
-// The same worker, bundled into the VPS worker's headless page (worker/page-tasks.ts).
-declare module "pdfjs-dist/build/pdf.worker.min.mjs" {
-  export const WorkerMessageHandler: unknown;
-}

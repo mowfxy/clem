@@ -1,8 +1,8 @@
-import { openPage } from "./draw-page.ts";
-import { markContent } from "../core/provenance.ts";
-import { renderFigures, documentHtml, specSize, type DocumentSpec } from "./pdf-document.ts";
-import { destinationPages, addOutline, outlineEntries } from "./pdf-structure.ts";
-import { stampVectors, type CropSpot } from "./pdf-assets.ts";
+import { BrowserWindow } from "electron";
+import { markContent } from "../core/provenance";
+import { renderFigures, documentHtml, specSize, type DocumentSpec } from "./pdf-document";
+import { destinationPages, addOutline, outlineEntries } from "./pdf-structure";
+import { stampVectors, type CropSpot } from "./pdf-assets";
 import { writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,8 +15,15 @@ import { randomUUID } from "node:crypto";
 export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vectors = new Map(), placed }: { checkVoice?: boolean; drawn?: (figures: (string | undefined)[]) => void; vectors?: Map<string, Uint8Array>; placed?: (spots: CropSpot[]) => void } = {}) {
   const figures = await renderFigures(spec, { checkVoice });
   drawn?.(figures);
-  // The drawing page (desktop/draw-page.ts): a hidden Electron window on the PC, headless Chromium on the VPS.
-  const page = await openPage({});
+  const page = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      sandbox: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+      javascript: false,
+    },
+  });
   // Loaded from a temporary file: a data: URL is limited to 2 MB, which a long document or one with many figures exceeds.
   const file = join(tmpdir(), "clem-print-" + randomUUID() + ".html");
   // Accessibility tags are written for documents up to about a hundred pages. Chromium stores each tag as a separate
@@ -25,8 +32,8 @@ export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vect
   // Running heads and page numbers come from the page's own @page rules, so the template is off.
   const print = async (html: string) => {
     await writeFile(file, html, "utf8");
-    await page.load(file);
-    return page.pdf({ background: true, tagged, outline: true });
+    await page.loadFile(file);
+    return new Uint8Array(await page.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true, displayHeaderFooter: false, generateTaggedPDF: tagged, generateDocumentOutline: true }));
   };
   try {
     const html = documentHtml(spec as DocumentSpec, figures);
@@ -54,7 +61,7 @@ export async function illustratedPdf(spec: any, { checkVoice = true, drawn, vect
     if (!tagged) bytes = await addOutline(bytes, outlineEntries(html)).catch(() => bytes);
     return new Uint8Array(await (await markContent(new Blob([new Uint8Array(bytes)]), "document.pdf")).arrayBuffer());
   } finally {
-    page.close();
+    page.destroy();
     await rm(file, { force: true }).catch(() => {});
   }
 }
