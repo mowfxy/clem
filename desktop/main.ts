@@ -2618,7 +2618,17 @@ void app.whenReady().then(async () => {
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
         // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
         if (isClemAction(tool?.action)) {
-          return (await engineFor(user.id)).organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
+          const engine = await engineFor(user.id);
+          // A routine run by hand from a chat here is thought by this PC's AI (the chat's model), even while the VPS
+          // worker keeps the routines: the worker builds the prompt and records the run, the laptop writes the words.
+          if (tool.action === "clem.run_routine" && typeof tool.id === "string" && await vpsManagers.get(user.id)?.remote()) {
+            try {
+              const prompt = await engine.organizer.routinePrompt(tool.id);
+              const reply = prompt ? await engineHost(user.id).complete!({ ...prompt, model: request.model, reasoning: request.reasoning }) : undefined;
+              return await engine.organizer.runRoutine(tool.id, { kind: "manual" }, reply === undefined ? {} : { reply });
+            } catch (e) { return { error: (e as Error).message }; }
+          }
+          return engine.organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
         }
         // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {

@@ -117,6 +117,8 @@ type Turn = { mentions?: string[]; carried?: string; into?: { id: string; spaceI
 type Handoff = { chat: string; main: string; space: string; name: string };
 // MAIN_THREAD_NOTE (core/main-thread/guide.ts) is said once, first, in every main-thread request, so it stays
 // byte-stable for the CLIs' prompt caches; Telegram's main thread builds its guide from the same parts.
+/** The longest a message typed in the main thread waits for GUC's Now card (src/App.tsx gucNowQuick). */
+const GUC_NOW_WAIT_MS = 1200;
 const CONTINUE_AFTER_LIMIT = "Continue the task from where you stopped when the usage limit was reached.";
 /** Whose plan a model runs on, for the usage-limit notice. */
 const planOf = (model?: string) => model?.startsWith("claude:") ? "Claude" : model?.startsWith("grok") ? "Grok" : model?.startsWith("antigravity:") ? "Gemini" : "ChatGPT";
@@ -1078,6 +1080,13 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }
   /** The main thread's request: its layers within the budget (core/main-thread/context.ts), never the whole thread.
    *  Recall searches the thread, folded notes and the summaries of subject and project chats. */
+  /** GUC's part of the Now card for a message typed here. While the VPS worker runs Clem's jobs it comes from there,
+   *  so a slow connection never holds the message back: after a moment the last one known goes (or none). */
+  const lastGucNow = useRef<GucNow | null>(null);
+  async function gucNowQuick(): Promise<GucNow | null> {
+    const asked = desktop!.invoke({ action: "gucNow" }).then((g) => (lastGucNow.current = g as GucNow | null), () => lastGucNow.current);
+    return Promise.race([asked, new Promise<GucNow | null>((r) => setTimeout(() => r(lastGucNow.current), GUC_NOW_WAIT_MS))]);
+  }
   async function mainRequest(chat: Chat, current: string, { prefix, instructions, memory, guc }: { prefix: string[]; instructions: string; memory: string; guc?: GucNow | null }) {
     const s = stateRef.current, earlier = chat.messages.slice(0, -1).filter((m) => !m.trim);
     const docs = [
@@ -1732,7 +1741,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
         instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote].filter(Boolean).join("\n\n"),
         memory,
         // Today's classes, deadlines and unread from the engine (cached there until a sync changes them).
-        guc: desktop && gucConnected ? (await desktop.invoke({ action: "gucNow" }).catch(() => null)) as GucNow | null : null,
+        guc: desktop && gucConnected ? await gucNowQuick() : null,
       }) : [...systems, ...sentTurns];
       const reply = await streamChat(
         [
