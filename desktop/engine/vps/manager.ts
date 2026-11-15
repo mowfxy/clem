@@ -46,6 +46,9 @@ export type ManagerDeps = {
   preferredCli?: () => Promise<ServerCli | undefined>;
   /** Tests: the time. */
   clock?: () => number;
+  /** Sends one of the person's files on this PC to their Telegram (a file asked for there while the PC was off):
+   *  "sent", "gone" (deleted since, or never this PC's) or "later" (Telegram couldn't be reached). */
+  sendToTelegram?: (fileId: string) => Promise<"sent" | "gone" | "later">;
 };
 /** Reconnecting after a failure waits one beat, then two, four, eight, at most ten minutes (any action tries at once). */
 export const RETRY_MAX_MS = 10 * 60_000;
@@ -367,6 +370,8 @@ export class VpsManager {
       void this.sweepDeletes(c).catch((e) => this.log("[vps] deletes: " + (e as Error).message));
       // The person's standing answer is "send them to my PC": CMS files the worker skipped at the limit are fetched here.
       if (health.fullAnswer === "send" && Number(health.waitingCms) > 0) void this.fetchWaiting(c).catch((e) => this.log("[vps] waiting: " + (e as Error).message));
+      // Files asked for on Telegram while only on this PC: sent now that the PC is online, each once, no question.
+      if (Number(health.pendingSends) > 0 && this.d.sendToTelegram) void this.sendPending(c).catch((e) => this.log("[vps] telegram: " + (e as Error).message));
       // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
       if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
       // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
@@ -479,6 +484,16 @@ export class VpsManager {
     })().finally(() => { this.fetching = undefined; }));
   }
   /** vps.keep from the window's AI: where one file is kept (router.keepOn). */
+  private sending?: Promise<void>;
+  /** Files asked for on Telegram while the PC was off and only here: sent from this PC, then cleared on the worker. */
+  sendPending(c: WorkerClient) {
+    return (this.sending ||= (async () => {
+      const list = await c.call<{ id: string; name: string }[]>("worker.pendingSends");
+      const done: string[] = [];
+      for (const f of list) { const r = await this.d.sendToTelegram!(f.id).catch(() => "later" as const); if (r !== "later") done.push(f.id); }
+      if (done.length) await c.call("worker.sendsDone", [done]);
+    })().finally(() => { this.sending = undefined; }));
+  }
   /** The person's answer on Telegram to the worker's VPS-full question, while this PC's window answers Telegram: the
    *  worker keeps it as the standing answer (desktop/engine/vps/full.ts). Its reply, or null when it wasn't that. */
   async fullReply(text: string): Promise<string | null> {

@@ -80,7 +80,7 @@ import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool } from './engine/ai-tools';
-import { runThreadTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
+import { runThreadTool, sendFileTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
 import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
 import { isGucAction } from '../core/guc/ai-tools';
@@ -1273,6 +1273,15 @@ void app.whenReady().then(async () => {
         bundle: join(__dirname, "worker"), accountService: config.service, version: app.isPackaged ? app.getVersion() : undefined,
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
+        // A file asked for on Telegram while this PC was off: sent from here now that it's on (once, no question).
+        sendToTelegram: async (fileId) => {
+          const state = await disk.readState(owner).catch(() => null) as { files?: { id: string; name: string; type?: string }[] } | null;
+          const f = state?.files?.find((x) => x.id === fileId);
+          const bytes = f ? await blobs.readFile(owner, f.id).catch(() => null) : null;
+          if (!f || !bytes) return "gone";
+          try { await (await rawEngineFor(owner)).telegram.sendBytes(f.name, f.type || "application/octet-stream", new Uint8Array(bytes)); return "sent"; }
+          catch { return "later"; }
+        },
         openSignIn: claudeSignInPage,
         preferredCli: async () => (await (await claudeFor(owner)).status().catch(() => null))?.connected ? "claude" : (await codex.status().catch(() => false)) ? "codex" : undefined,
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },
@@ -2634,6 +2643,8 @@ void app.whenReady().then(async () => {
           return engine.organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
         }
         // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
+        // telegram.sendFile: one of their files in Clem or a CMS file, the same tool as Telegram's main thread uses.
+        if (tool?.action === "telegram.sendFile") return sendFileTool(await threadCtx(user.id, await engineFor(user.id)), tool);
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
           return runTelegramTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);

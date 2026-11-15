@@ -46,6 +46,10 @@ export type AgentDeps = {
   deadline?: number;
 };
 
+/** worker_state key: files asked for on Telegram while only on the PC (desktop/engine/vps/manager.ts sends them). */
+export const PENDING_SENDS = "tg-pending-sends";
+export type PendingSend = { id: string; name: string; at: number };
+
 export class WorkerAgent {
   private d: AgentDeps;
   private clock: () => number;
@@ -98,6 +102,8 @@ export class WorkerAgent {
           workspaceFile: async (name) => {
             const st = await this.d.ws.state(), f = st && this.fileNamed(st, name);
             if (!f || "error" in f) return f || null;
+            // Only on the PC, which is off: the PC sends it by itself when it is next online (pendingSends).
+            if (!f.blob && !f.inline && !f.id.startsWith("guc_")) { await this.pendingSend(f); return { pending: f.name }; }
             return { name: f.name, type: f.type || "application/octet-stream", bytes: await this.bytes(f) };
           } }, tool);
       },
@@ -120,6 +126,11 @@ export class WorkerAgent {
     // An older lecture message's Summarize or Make flashcards: study, done in the app (declined like the words would be).
     if (tap.t === "summarize" || tap.t === "flashcards") return telegramTurn(this.deps(), tap.t === "summarize" ? `Summarize ${tap.name} in 3 lines, then what I should remember for the exam.` : `Make flashcards from ${tap.name} for this subject.`);
     return { text: "Done." };
+  }
+  /** Files asked for on Telegram that are only on the PC: the PC sends each when it is next online, once. */
+  private async pendingSend(f: WorkerFile) {
+    const list = (await this.d.state?.get<PendingSend[]>(PENDING_SENDS)) || [];
+    if (!list.some((x) => x.id === f.id)) await this.d.state?.set(PENDING_SENDS, [...list, { id: f.id, name: f.name, at: this.clock() }].slice(-20));
   }
   /** vps.keep: where one file is kept, recorded on the file (the PC moves it when it next syncs). */
   private async keepFile(file: string, where: "pc" | "vps" | "auto") {

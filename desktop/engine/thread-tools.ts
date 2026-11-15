@@ -30,7 +30,7 @@ export type ThreadToolCtx = {
   subjects: ToolSubject[];
   changed?: () => void;
   /** One of the person's files in Clem by name or id, with its bytes; null when none is called that. */
-  workspaceFile?(file: string): Promise<{ name: string; type: string; bytes: Uint8Array } | { error: string } | null>;
+  workspaceFile?(file: string): Promise<FileToSend>;
   /** The person's VPS, when one is connected. */
   vps?: ThreadVps;
 };
@@ -48,7 +48,7 @@ export async function runThreadTool(ctx: ThreadToolCtx, tool: Record<string, any
   const { engine, owner, subjects } = ctx;
   if (clemAction(action)) return engine.organizer.tool(tool, {}).catch((e: Error) => ({ error: e.message }));
   if (gucAction(action)) return runGucTool({ engine, owner, subjects, changed: ctx.changed }, tool);
-  if (action === "telegram.sendFile") return sendFile(ctx, tool);
+  if (action === "telegram.sendFile") return sendFileTool(ctx, tool);
   if (isVpsAction(action)) {
     if (!ctx.vps) return { error: "No VPS is connected. The person can add one in Clem on their PC: Settings → Connectors → VPS." };
     try {
@@ -63,18 +63,28 @@ export async function runThreadTool(ctx: ThreadToolCtx, tool: Record<string, any
   return NOT_ON_TELEGRAM;
 }
 
-/** telegram.sendFile: a CMS file (as the app sends it), else one of the person's own files in Clem. */
-async function sendFile(ctx: ThreadToolCtx, tool: Record<string, any>) {
-  const cms = await runTelegramTool({ engine: ctx.engine, owner: ctx.owner, subjects: ctx.subjects }, tool);
-  if (typeof cms === "string" || !ctx.workspaceFile || !/^No CMS file/.test(cms.error)) return cms;
+/** A file of the person's to send: its bytes, or `pending` when it is only on their PC and the PC is off (the worker
+ *  keeps it and the PC sends it by itself when it is next online). */
+export type FileToSend = { name: string; type: string; bytes: Uint8Array } | { pending: string } | { error: string } | null;
+/** telegram.sendFile, the same in the app's main thread and on Telegram from either side: one of the person's own files
+ *  in Clem when one is called that, else a CMS file (fetched from CMS when it isn't saved). Sending only, never making.
+ *  Telegram's 50 MB limit holds for both. */
+export async function sendFileTool(ctx: Pick<ThreadToolCtx, "engine" | "owner" | "subjects" | "workspaceFile">, tool: Record<string, any>) {
   const name = typeof tool.file === "string" ? tool.file.trim().slice(0, 300) : "";
-  const f = await ctx.workspaceFile(name).catch((e: Error) => ({ error: e.message }));
-  if (!f) return { error: `No file called "${name}", in CMS or in their files in Clem. List a subject's CMS files with {"action":"guc.materials","subject":…}.` };
-  if ("error" in f) return f;
-  try {
-    const r = await ctx.engine.telegram.sendBytes(f.name, f.type, f.bytes);
-    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB, so it stays in Clem on their PC. Say so briefly.`;
-  } catch (e) { return { error: (e as Error).message || "Telegram couldn't be reached right now." }; }
+  if (!name) return { error: `telegram.sendFile needs "file": a CMS file's id or name, or the name of one of their files in Clem.` };
+  const t = ctx.engine.telegram;
+  if (!(await t.paired().catch(() => false))) return { error: `Telegram isn't paired. Offer {"action":"telegram.pair"} so they can pair it.` };
+  const own: FileToSend = ctx.workspaceFile ? await ctx.workspaceFile(name).catch((e: Error) => ({ error: e.message })) : null;
+  if (own && "pending" in own) return `${own.pending} is only on their PC, which is off right now: it goes to their Telegram by itself when the PC is next online. Say so in one plain sentence; don't ask anything.`;
+  if (own && "bytes" in own) {
+    try {
+      const r = await t.sendBytes(own.name, own.type, own.bytes);
+      return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB, so it stays in Clem. Say so briefly.`;
+    } catch (e) { return { error: (e as Error).message || "Telegram couldn't be reached right now." }; }
+  }
+  const cms = await runTelegramTool({ engine: ctx.engine, owner: ctx.owner, subjects: ctx.subjects }, tool);
+  if (typeof cms !== "string" && /^No CMS file/.test(cms.error)) return own && "error" in own ? own : { error: `No file called "${name}", in CMS or in their files in Clem. List a subject's CMS files with {"action":"guc.materials","subject":…}.` };
+  return cms;
 }
 
 /** Before the model: a "yes" to the server change Clem asked about runs it (anything else drops it), and the answer to

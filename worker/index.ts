@@ -10,7 +10,7 @@ import type { EngineHost } from "../desktop/engine/host.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { DeviceStore } from "../desktop/engine/storage.ts";
 import { apiComplete, cliComplete, type Complete, type ModelKey } from "../desktop/engine/vps/headless.ts";
-import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
+import { PENDING_SENDS, WorkerAgent, type PendingSend } from "../desktop/engine/vps/agent.ts";
 import { LocalLink } from "../desktop/engine/vps/local-link.ts";
 import { SshLink, type VpsLink } from "../desktop/engine/vps/link.ts";
 import { VpsTools } from "../desktop/engine/vps/tools.ts";
@@ -178,6 +178,9 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
         // The content this worker's copy still uses, so a delete the PC made offline never removes bytes re-added since.
         // The person answered the VPS-full question on Telegram while the laptop's window answers it: the standing answer.
         if (path === "worker.fullReply") return (await full.reply(String(args[0] || "")).catch(() => undefined)) || null;
+        // Files asked for on Telegram while only on the PC: the PC sends them when it is online, then says so here.
+        if (path === "worker.pendingSends") return (await state.get<PendingSend[]>(PENDING_SENDS)) || [];
+        if (path === "worker.sendsDone") { const done = new Set((Array.isArray(args[0]) ? args[0] : []).map(String)); await state.set(PENDING_SENDS, ((await state.get<PendingSend[]>(PENDING_SENDS)) || []).filter((x) => !done.has(x.id))); return { ok: true }; }
         if (path === "worker.blobs") return (((await ws!.state())?.files || []) as { blob?: { sha256: string } }[]).map((f) => f.blob?.sha256).filter(Boolean);
         return callPath(engine!, path, args);
       },
@@ -202,7 +205,8 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
       health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
-        fullAnswer: (await full.answer().catch(() => undefined)) || null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:")).length }),
+        fullAnswer: (await full.answer().catch(() => undefined)) || null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:")).length,
+        pendingSends: ((await state.get<PendingSend[]>(PENDING_SENDS).catch(() => undefined)) || []).length }),
       notices: () => notices.splice(0),
     },
   });
