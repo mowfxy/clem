@@ -18,9 +18,10 @@ import { sha256 } from "../desktop/engine/storage.ts";
 import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
+import { WORKER_PROTOCOL } from "../core/vps/types.ts";
 
-/** Bumped when the worker's endpoint or behaviour changes in a way the desktop must know about (it refreshes an older one). */
-export const WORKER_VERSION = 2;
+/** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
+export const WORKER_VERSION = WORKER_PROTOCOL;
 const here = typeof __filename === "string" ? dirname(__filename) : process.cwd();
 type Config = { owner: string; accountService: string; publicHost?: string };
 

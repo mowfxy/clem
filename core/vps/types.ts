@@ -13,6 +13,9 @@ export type WorkerView = { enabled: boolean; installed: boolean; kind?: "docker"
   signIn?: { cli: "claude" | "codex"; step: "installing" | "waiting" | "finishing" | "failed"; url?: string; code?: string; error?: string } };
 export type VpsStatus = { connected: boolean; config?: VpsConfig; online?: boolean; lastTest?: VpsTest; storage: StorageUsage; migration?: MigrationView; worker: WorkerView; passwordAllowed: boolean };
 
+/** The worker's endpoint and behaviour, as this desktop expects them (its health says which it runs). A worker that
+ *  answers with another number is refreshed with this desktop's bundle, whatever the app versions say. */
+export const WORKER_PROTOCOL = 2;
 export const DEFAULT_CACHE_CAP = 2 * 1024 ** 3;
 export const MIN_CACHE_CAP = 256 * 1024 ** 2;
 export const vpsHostOk = (h: string) => /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(h) || /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || /^\[?[0-9a-f:]+\]?$/i.test(h);

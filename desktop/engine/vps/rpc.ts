@@ -58,6 +58,8 @@ export function serveWorker(o: { token: string; port: number; host?: string; han
       send(400, { error: (e as Error).message });
     }
   });
+  // A request that never finishes doesn't hold the endpoint: long agent calls get 10 minutes, headers 30 seconds.
+  server.requestTimeout = 600_000; server.headersTimeout = 30_000; server.keepAliveTimeout = 5_000;
   return new Promise((resolve, reject) => { server.on("error", reject); server.listen(o.port, o.host || "127.0.0.1", () => resolve(server)); });
 }
 
@@ -65,10 +67,17 @@ export function serveWorker(o: { token: string; port: number; host?: string; han
 export class WorkerClient {
   private base: string; private token: string; private fetcher: typeof fetch;
   constructor(base: string, token: string, fetcher: typeof fetch = fetch) { this.base = base; this.token = token; this.fetcher = fetcher; }
+  /** Every call has a time limit, and every failure is one plain sentence (the manager reconnects on its next beat). */
   private async req<T>(path: string, init: { method?: string; body?: unknown; timeout?: number } = {}): Promise<T> {
-    const r = await this.fetcher(this.base + path, { method: init.method || "GET", headers: { authorization: "Bearer " + this.token, "content-type": "application/json" }, ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}), signal: AbortSignal.timeout(init.timeout ?? 60_000) });
+    let r: Response;
+    try {
+      r = await this.fetcher(this.base + path, { method: init.method || "GET", headers: { authorization: "Bearer " + this.token, "content-type": "application/json" }, ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}), signal: AbortSignal.timeout(init.timeout ?? 60_000) });
+    } catch (e) {
+      const name = (e as Error)?.name;
+      throw Object.assign(Error(name === "TimeoutError" || name === "AbortError" ? "Clem's worker on your VPS didn't answer in time." : "Clem's worker on your VPS isn't answering."), { unreachable: true });
+    }
     const json = await r.json().catch(() => ({})) as { error?: string };
-    if (!r.ok) throw Error(json.error || "The worker didn't answer.");
+    if (!r.ok) throw Error(json.error || "Clem's worker on your VPS didn't answer.");
     return json as T;
   }
   async call<T = unknown>(path: string, args: unknown[] = []) { return (await this.req<{ result: T }>("/rpc", { method: "POST", body: { path, args: JSON.parse(JSON.stringify(args, (_k, v) => (typeof v === "function" ? undefined : v))) }, timeout: 180_000 })).result; }

@@ -6,11 +6,11 @@ import type { Db } from "../db.ts";
 import type { Engine } from "../index.ts";
 import { DeviceStore } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
-import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
+import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
 import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
 import { generateKey, publicOf } from "./keys.ts";
-import { SshLink, type LinkConfig, type VpsLink } from "./link.ts";
-import { installDocker, installWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
+import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
+import { installDocker, installWorker, reviveWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
 import { Migrator } from "./migrate.ts";
 import { claudeSignIn, cliSignedIn, codexSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
 import { StorageRouter, type LocalBlobs } from "./router.ts";
@@ -43,7 +43,15 @@ export type ManagerDeps = {
   openSignIn?: (url: string, landed: (url: string) => void) => () => void;
   /** The AI this PC uses (its signed-in CLI), so the VPS gets the same one. */
   preferredCli?: () => Promise<ServerCli | undefined>;
+  /** Tests: the time. */
+  clock?: () => number;
 };
+/** Reconnecting after a failure waits one beat, then two, four, eight, at most ten minutes (any action tries at once). */
+export const RETRY_MAX_MS = 10 * 60_000;
+/** Beats in a row the worker didn't answer while SSH did, before Clem starts it again (at most once in 10 minutes). */
+export const REVIVE_AFTER = 3;
+/** What the person reads when the connection drops during the switch and a second try didn't help either. */
+export const INSTALL_DROPPED = "The connection to your VPS dropped while Clem was setting it up. Nothing was left half-done: turn it on again and Clem picks up where it stopped.";
 
 export class VpsManager {
   readonly owner: string;
@@ -71,7 +79,10 @@ export class VpsManager {
     if (!v.config) throw Error("Set up the VPS first.");
     return { host: v.config.host, port: v.config.port, user: v.config.user, fingerprint: v.config.fingerprint, ...(v.privateKey ? { privateKey: v.privateKey, passphrase: v.passphrase } : {}), ...(v.allowPassword && v.password ? { password: v.password } : {}) };
   }
+  private now() { return (this.d.clock || Date.now)(); }
   link(): Promise<VpsLink> {
+    // A connection that died (the server closed it, the PC slept) is never handed out again.
+    if (this.current?.closed) { this.linkJob = undefined; this.current = undefined; this.tunnel?.close(); this.tunnel = undefined; this.client = undefined; }
     this.linkJob ||= (async () => {
       const c = this.linkConfig(await this.vault());
       const l = await (this.d.connect || SshLink.connect)(c);
@@ -205,7 +216,7 @@ export class VpsManager {
     // One switch does it all: Docker first when the server can take it (else systemd with Node, as before)…
     const installed = await installDocker(await this.link(), progress).catch((e) => { this.log("[vps] docker: " + (e as Error).message); return false; });
     if (installed) await this.drop(); // the docker group counts only on a new SSH session
-    await this.install(progress);
+    await this.retryDropped(() => this.install(progress));
     // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
     await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
     this.startHeartbeat();
@@ -226,19 +237,32 @@ export class VpsManager {
     const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress });
     await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now(), ...(this.d.version ? { version: this.d.version } : {}) } });
   }
-  private refreshing?: Promise<void>;
-  /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs): it is
-   *  refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
-   *  lease meanwhile as usual (an unreachable worker is covered by desktopRunsOffline). */
-  refreshWorker() {
+  /** A step over SSH that the connection dropping in the middle of shouldn't break: tried again once on a fresh
+   *  connection (every step of the install can run twice), then one plain sentence. */
+  private async retryDropped<T>(fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); } catch (e) {
+      if (!isDrop(e) && !this.current?.closed) throw Error(plain(e));
+      this.log("[vps] connection dropped; trying once more");
+      await this.drop();
+      try { return await fn(); } catch (e2) { throw Error(isDrop(e2) || this.current?.closed ? INSTALL_DROPPED : plain(e2)); }
+    }
+  }
+  private refreshing?: Promise<void>; private refreshFailed = 0;
+  /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs), and a
+   *  worker whose health names another protocol than this desktop's (WORKER_PROTOCOL) may not understand it: either
+   *  is refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
+   *  lease meanwhile as usual (an unreachable worker is covered by desktopRunsOffline). A failed refresh waits 30 minutes. */
+  refreshWorker(force = false) {
+    if (!this.refreshing && this.now() - this.refreshFailed < 30 * 60_000) return Promise.resolve();
     this.refreshing ||= (async () => {
       const v = await this.vault();
-      if (!v.worker?.enabled || !this.d.version || v.worker.version === this.d.version) return;
-      this.log("[vps] refreshing the worker to " + this.d.version);
-      await this.install();
+      if (!v.worker?.enabled) return;
+      if (!force && (!this.d.version || v.worker.version === this.d.version)) return;
+      this.log("[vps] refreshing the worker" + (this.d.version ? " to " + this.d.version : ""));
+      await this.retryDropped(() => this.install());
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       await this.pushWorkspace(true);
-    })().catch((e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; });
+    })().then(() => { this.refreshing = undefined; }, (e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; this.refreshFailed = this.now(); });
     return this.refreshing;
   }
   async disableWorker() {
@@ -306,21 +330,32 @@ export class VpsManager {
   }
   /** The worker's engine, while it is the one running jobs (the window's requests go there). */
   async remote(): Promise<WorkerClient | undefined> {
-    if (!this.workerRunner || Date.now() - this.lastWorker > STALE_MS) return undefined;
+    if (!this.workerRunner || this.now() - this.lastWorker > STALE_MS) return undefined;
     return this.worker().catch(() => undefined);
   }
+  private beating?: Promise<void>; private lastBeat = 0; private awakeSince = 0; private failures = 0; private retryAt = 0; private workerDown = 0; private revivedAt = 0;
   /** One beat: step the lease on the worker; this engine runs jobs only when the lease says so, or when the worker
-   *  has been unreachable for longer than STALE_MS. Pulls the worker's notices; Telegram stays here without its model. */
-  async heartbeat() {
-    const engine = await this.d.engine();
+   *  has been unreachable for longer than STALE_MS. Pulls the worker's notices; Telegram stays here without its model.
+   *  Beats never overlap; after a failure the next tries back off (RETRY_MAX_MS); the first beat after the PC slept
+   *  reconnects before deciding anything, so a laptop that wakes never runs jobs the worker is already running. */
+  heartbeat() { return (this.beating ||= this.beatOnce().finally(() => { this.beating = undefined; })); }
+  private async beatOnce() {
+    const engine = await this.d.engine(), now = this.now();
+    const slept = this.lastBeat > 0 && now - this.lastBeat > 3 * BEAT_MS;
+    this.lastBeat = now;
+    // Time asleep doesn't count as the worker being out of reach: only time awake without reaching it does.
+    if (slept) { this.log("[vps] back after a pause: reconnecting"); this.retryAt = 0; this.awakeSince = now; await this.drop(); }
     let desktopRuns: boolean;
     try {
-      const c = await this.worker();
-      const [{ lease, run }, health] = await Promise.all([c.lease(), c.health()]);
+      if (now < this.retryAt) throw Error(this.workerError || DROPPED);
+      const { c, health } = await this.connected();
+      const { lease, run } = await c.lease();
       this.lastWorker = lease.seen.worker || 0;
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
-      this.workerError = undefined;
+      this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
+      // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
+      if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
       // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
       const head = health.ws as { id: string; seq: number } | null | undefined;
       if (head && (head.seq > this.pulled || head.id !== this.wsHead?.id)) { this.wsHead = head; this.d.changed?.("workspace"); }
@@ -329,16 +364,41 @@ export class VpsManager {
       desktopRuns = run;
       for (const n of await c.notices().catch(() => [])) this.d.notify?.(n);
     } catch (e) {
-      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined; this.linkJob = undefined;
+      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       this.workerError = (e as Error).message;
-      desktopRuns = desktopRunsOffline(this.lastWorker, Date.now());
+      if (now >= this.retryAt) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
+      // Just woke and still can't reach it: decide on the next beat, not on a connection the sleep broke.
+      desktopRuns = slept ? engine.isRunner : desktopRunsOffline(Math.max(this.lastWorker, this.awakeSince), now);
       if (desktopRuns) this.workerRunner = false;
     }
     await engine.runner(desktopRuns);
     if (!desktopRuns && this.workerModel === "none") engine.telegram.start();
     this.d.changed?.("worker");
   }
+  /** The worker's client through a live connection. SSH answering while the worker doesn't, beat after beat, means
+   *  the worker is down (stopped, crashed, hung): Clem starts it again, at most once in ten minutes. */
+  private async connected(): Promise<{ c: WorkerClient; health: Record<string, unknown> }> {
+    const l = await this.link();
+    try {
+      const c = await this.worker();
+      return { c, health: await c.health() };
+    } catch (e) {
+      const unreachable = (e as { unreachable?: boolean }).unreachable || /Not allowed|refused|isn't answering|didn't answer/i.test((e as Error).message);
+      if (!unreachable || l.closed) throw e;
+      this.workerDown++;
+      const v = await this.vault();
+      if (this.workerDown >= REVIVE_AFTER && v.worker?.kind && this.now() - this.revivedAt > 10 * 60_000) {
+        this.revivedAt = this.now();
+        this.log("[vps] the worker isn't answering; starting it again");
+        await reviveWorker(l, this.owner, v.worker.kind).catch((err) => this.log("[vps] revive: " + (err as Error).message));
+        this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
+      }
+      throw e;
+    }
+  }
   startHeartbeat() { if (this.beat) return; void this.refreshWorker(); void this.heartbeat(); this.beat = setInterval(() => void this.heartbeat(), BEAT_MS); this.beat.unref?.(); }
+  /** The PC woke from sleep or came back online (main hears powerMonitor): beat now instead of within the minute. */
+  wake() { if (this.beat) { this.lastBeat = 1; void this.heartbeat(); } }
   stopHeartbeat() { if (this.beat) clearInterval(this.beat); this.beat = undefined; }
   /** The workspace the worker's agent and organizer work on (core/workspace/ops.ts leanState: chats cut to their
    *  latest messages, files as metadata with where their bytes are on the VPS), sent when it changes (at most every

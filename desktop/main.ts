@@ -43,6 +43,7 @@ import {
   nativeTheme,
   Tray,
   Notification,
+  powerMonitor,
 } from "electron";
 import { captureRegion } from "./capture";
 import { clipboardFiles } from "./clipboard-files";
@@ -1321,6 +1322,9 @@ void app.whenReady().then(async () => {
     await m.resumeMove().catch(() => {});
     if ((await m.vault()).worker?.enabled) m.startHeartbeat();
   }).catch(() => {});
+  // The laptop woke (or was unlocked): the worker's connection is checked now, and the lease hands over cleanly.
+  const wakeVps = () => { for (const m of vpsManagers.values()) m.wake(); };
+  powerMonitor.on("resume", wakeVps); powerMonitor.on("unlock-screen", wakeVps);
   const gucProgress = (progress: unknown) => { if (!window.isDestroyed()) window.webContents.send("clem:guc", progress); };
   const gucStatus = async (owner: string) => engines.has(owner) || await vault.read("guc-" + owner, undefined) ? (await engineFor(owner)).status() : { connected: false, syncing: false, courses: 0, linked: 0 };
   // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.

@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { VpsTest } from "../../../core/vps/types.ts";
+import { createHash } from "node:crypto";
 import type { SshLink, VpsLink } from "./link.ts";
 import { seal, secretFile } from "./secrets.ts";
 
@@ -39,13 +40,19 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
   o.progress?.("Sending Clem's worker…");
   for (const sub of ["", "/migrations", "/state", "/state/secrets", "/state/tmp"]) await link.mkdir(dir + sub);
   await link.mkdir(`clem/${owner}/files`);
+  // Each file under a temporary name first, then renamed: a connection that drops part-way never leaves a half-written
+  // index.cjs for a restarting worker to load. Sending again (the switch, or the next refresh) finishes the job.
   const send = async (from: string, to: string) => {
     for (const e of await readdir(from, { withFileTypes: true })) {
-      if (e.isDirectory()) { await link.mkdir(`${to}/${e.name}`); await send(join(from, e.name), `${to}/${e.name}`); }
-      else await link.put(`${to}/${e.name}`, new Uint8Array(await readFile(join(from, e.name))));
+      if (e.isDirectory()) { await link.mkdir(`${to}/${e.name}`); await send(join(from, e.name), `${to}/${e.name}`); continue; }
+      const bytes = new Uint8Array(await readFile(join(from, e.name))), part = `${to}/${e.name}.part-${randomBytes(3).toString("hex")}`;
+      await link.put(part, bytes);
+      await link.rename(part, `${to}/${e.name}`).catch(async (err) => { await link.remove(part).catch(() => {}); throw err; });
     }
   };
   await send(o.bundle, dir);
+  const main = await readFile(join(o.bundle, "index.cjs")).catch(() => null);
+  if (main && await link.hash(`${dir}/index.cjs`).catch(() => "") !== createHash("sha256").update(main).digest("hex")) throw Error("Clem's worker didn't arrive whole on your VPS. Turn it on again to send it once more.");
   const text = (s: string) => new TextEncoder().encode(s);
   await link.put(`${dir}/.key`, text(Buffer.from(o.key).toString("base64")), 0o600);
   await link.put(`${dir}/config.json`, text(JSON.stringify({ owner, accountService: o.accountService, ...(o.publicHost ? { publicHost: o.publicHost } : {}) })));
@@ -93,6 +100,12 @@ export async function installDocker(link: VpsLink, progress?: (label: string) =>
 export async function sendSecret(link: VpsLink, owner: string, key: Uint8Array, name: string, value: unknown) {
   const path = `${workerDir(owner)}/state/secrets/${secretFile(name)}`;
   if (value === undefined) await link.remove(path); else await link.put(path, seal(key, name, value), 0o600);
+}
+/** Starts a worker that stopped answering (its container down after a reboot, a hung process): Docker brings its
+ *  services up and restarts the worker; systemd restarts the unit. Its database and files are kept. */
+export async function reviveWorker(link: VpsLink, owner: string, kind: "docker" | "systemd") {
+  const r = await link.exec(kind === "docker" ? `cd ~/${workerDir(owner)} && docker compose up -d 2>&1 | tail -5 && docker compose restart worker 2>&1 | tail -2` : "systemctl --user restart clem-worker && systemctl --user is-active clem-worker", { timeout: 180_000 });
+  if (r.code !== 0) throw Error("Clem's worker on your VPS didn't start again: " + (r.stdout + r.stderr).trim().split("\n").slice(-2).join(" ").slice(0, 200));
 }
 export async function stopWorker(link: VpsLink, owner: string, kind: "docker" | "systemd") {
   await link.exec(kind === "docker" ? `cd ~/${workerDir(owner)} && docker compose down` : "systemctl --user disable --now clem-worker", { timeout: 120_000 });

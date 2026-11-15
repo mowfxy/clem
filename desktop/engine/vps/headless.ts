@@ -10,6 +10,8 @@ import { delimiter, join } from "node:path";
 export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
 export type ModelKey = { provider: "anthropic"; key: string; model?: string };
 export const DEFAULT_MODEL = "claude-opus-5-5";
+/** One step of the agent on the server's CLI (a long answer, a deck from many pages). */
+const STEP_MS = 300_000;
 
 export function apiComplete(k: ModelKey, client = new Anthropic({ apiKey: k.key })): Complete {
   return async ({ system, user }) => {
@@ -43,8 +45,9 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env))) continue;
     return name === "claude"
-      ? { name, complete: ({ system, user }) => run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, 180_000, env) }
-      : { name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, 180_000, env) };
+      // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
+      ? { name, complete: ({ system, user }) => system.length > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) }
+      : { name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, STEP_MS, env) };
   }
   return undefined;
 }
