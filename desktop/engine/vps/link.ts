@@ -20,7 +20,11 @@ export interface VpsLink {
   /** A local port that reaches 127.0.0.1:`remotePort` on the server through this connection. */
   tunnel(remotePort: number): Promise<{ port: number; close(): void }>;
   close(): Promise<void>;
+  /** A command that keeps running, printing as it goes and reading what is typed (a CLI's sign-in). `pty`: give it a
+   *  terminal, very wide so a long sign-in link is never wrapped. */
+  interactive?(cmd: string, o?: { pty?: boolean }): Promise<LiveCommand>;
 }
+export type LiveCommand = { write(s: string): void; onData(f: (s: string) => void): void; done: Promise<number>; close(): void };
 export type LinkConfig = { host: string; port: number; user: string; privateKey?: string; passphrase?: string; password?: string; fingerprint?: string };
 
 /** Single-quoted for the remote shell. */
@@ -72,6 +76,19 @@ export class SshLink implements VpsLink {
         stream.stderr.on("data", (b: Buffer) => { errs = add(errs, b); });
         stream.on("close", (code: number | null) => { clearTimeout(timer); resolve({ code: code ?? -1, stdout: out.slice(0, cap), stderr: errs.slice(0, cap), truncated }); });
         if (o.stdin !== undefined) stream.end(o.stdin); else stream.end();
+      });
+    });
+  }
+  interactive(cmd: string, o: { pty?: boolean } = {}): Promise<LiveCommand> {
+    return new Promise((resolve, reject) => {
+      const opts = o.pty ? { pty: { cols: 4000, rows: 40, term: "xterm" } } : {};
+      this.client.exec(cmd, opts, (err, stream) => {
+        if (err) return reject(Error(plain(err)));
+        const listeners: ((s: string) => void)[] = [];
+        const emit = (b: Buffer) => { const t = b.toString("utf8"); for (const f of listeners) f(t); };
+        stream.on("data", emit); stream.stderr.on("data", emit);
+        const done = new Promise<number>((res) => stream.on("close", (code: number | null) => res(code ?? -1)));
+        resolve({ write: (t) => { stream.write(t); }, onData: (f) => { listeners.push(f); }, done, close: () => stream.close() });
       });
     });
   }

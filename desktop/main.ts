@@ -383,14 +383,16 @@ void app.whenReady().then(async () => {
    *  sign-in over (the person was signed in to that app, and Claude Code was never authorised). Its own saved session
    *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
   const signInDenied=new Set(["media","geolocation","notifications","display-capture","midi","midiSysex","idle-detection","clipboard-read","openExternal","window-management","fileSystem"]);
-  const claudeSignInPage=(url:string)=>{
+  const claudeSignInPage=(url:string,landed?:(target:string)=>void)=>{
     const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#1f1f1f",icon:join(__dirname,"../desktop/icon.ico"),
       webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
     // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
     page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Clem)\/\S+/g,""));
     const allowed=(target:string)=>{try{const u=new URL(target);return u.protocol==="https:"||(u.protocol==="http:"&&["localhost","127.0.0.1"].includes(u.hostname));}catch{return false;}};
-    page.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});
-    page.webContents.on("will-redirect",(event,target)=>{if(!allowed(target))event.preventDefault();});
+    page.webContents.on("will-navigate",(event,target)=>{landed?.(target);if(!allowed(target))event.preventDefault();});
+    page.webContents.on("will-redirect",(event,target)=>{landed?.(target);if(!allowed(target))event.preventDefault();});
+    // A CLI signing in on the VPS (desktop/engine/vps/cli.ts) hears where the page lands, to pass its code to the server.
+    if(landed)page.webContents.on("did-navigate",(_event,target)=>landed(target));
     // Google and Apple sign-in may open a pop-up; it shares the window's session and rules.
     page.webContents.setWindowOpenHandler(({url:target})=>allowed(target)?{action:"allow",overrideBrowserWindowOptions:{parent:page,autoHideMenuBar:true,webPreferences:{partition:"persist:claude-signin",sandbox:true,contextIsolation:true,nodeIntegration:false}}}:{action:"deny"});
     page.webContents.on("did-create-window",(child)=>{child.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});});
@@ -1269,6 +1271,8 @@ void app.whenReady().then(async () => {
         bundle: join(__dirname, "worker"), accountService: config.service, version: app.isPackaged ? app.getVersion() : undefined,
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
+        openSignIn: claudeSignInPage,
+        preferredCli: async () => (await (await claudeFor(owner)).status().catch(() => null))?.connected ? "claude" : (await codex.status().catch(() => false)) ? "codex" : undefined,
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },
         notify: (n) => engineHost(owner).notify(n as Parameters<EngineHost["notify"]>[0]),
       });
@@ -1576,6 +1580,8 @@ void app.whenReady().then(async () => {
       if (request.action === "vpsGenerateKey") return m.generate();
       if (request.action === "vpsPasteKey") return m.pasteKey(request.privateKey, request.passphrase);
       if (request.action === "vpsTest") { const t = await m.test(); await reset(); return t; }
+      if (request.action === "vpsCli") return m.connectCli(request.cli);
+      if (request.action === "vpsCliCode") return m.pasteCliCode(request.code);
       if (request.action === "vpsForget") { const r = await m.forget(); vpsManagers.delete(user.id); await reset(); return r; }
       if (request.action === "vpsMove") { const r = await m.move(request.direction); vpsModes.set(user.id, request.direction === "up" ? "vps" : "device"); return r; }
       if (request.action === "vpsAbortMove") { const r = await m.abortMove(); vpsModes.set(user.id, await m.mode()); return r; }

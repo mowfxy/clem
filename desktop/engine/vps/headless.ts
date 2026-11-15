@@ -1,9 +1,11 @@
 // The model on the VPS worker (docs/GUC-VPS-ENGINE.md "Model on the VPS"), in order: an API key the person typed for
-// the worker (Clem never reads keys from their CLIs), else a CLI they installed and signed in to on the VPS themselves
-// (`claude` or `codex`), else none: sweeps run on rules alone and Telegram stays with the desktop.
+// the worker (Clem never reads keys from their CLIs), else a CLI Clem installed and signed in to on the VPS from Settings
+// (or one they put there themselves: `claude` or `codex`), else none: sweeps run on rules alone and Telegram stays with the desktop.
 // Also the headless main-thread agent that answers Telegram on the worker when a model is there.
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import type { TelegramTurn } from "../host.ts";
 
 export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
@@ -18,8 +20,8 @@ export function apiComplete(k: ModelKey, client = new Anthropic({ apiKey: k.key 
   };
 }
 
-const run = (cmd: string, args: string[], input: string, timeout = 180_000) => new Promise<string>((resolve, reject) => {
-  const p = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env } });
+const run = (cmd: string, args: string[], input: string, timeout = 180_000, env: NodeJS.ProcessEnv = process.env) => new Promise<string>((resolve, reject) => {
+  const p = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], env: { ...env } });
   let out = "", err = "";
   const t = setTimeout(() => { p.kill(); reject(Error("The model took too long.")); }, timeout);
   p.stdout.on("data", (b) => { out += b; }); p.stderr.on("data", (b) => { err += b; });
@@ -27,10 +29,24 @@ const run = (cmd: string, args: string[], input: string, timeout = 180_000) => n
   p.on("close", (code) => { clearTimeout(t); code === 0 ? resolve(out.trim()) : reject(Error(err.trim().slice(0, 300) || "The model CLI failed.")); });
   p.stdin.end(input);
 });
-/** A CLI on the VPS's PATH that answers one prompt on stdin: Claude Code (`claude -p`), else Codex (`codex exec -`). */
-export async function cliComplete(probe = (cmd: string) => run(cmd, ["--version"], "", 10_000).then(() => true, () => false)): Promise<{ name: string; complete: Complete } | undefined> {
-  if (await probe("claude")) return { name: "claude", complete: ({ system, user }) => run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user) };
-  if (await probe("codex")) return { name: "codex", complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user) };
+/** The environment of the CLIs Clem installed and signed in to on the server itself (desktop/engine/vps/cli.ts):
+ *  under the worker's data folder, with their own sign-in folders, never the server user's own ~/.claude or ~/.codex. */
+export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...base, HOME: join(data, "home"), CLAUDE_CONFIG_DIR: join(data, "claude"), CODEX_HOME: join(data, "codex"), PATH: join(data, "cli", "node_modules", ".bin") + delimiter + (base.PATH || "") };
+}
+/** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), else Codex (`codex exec -`). The one Clem
+ *  installed under `data` (and signed in to from Settings) first, else one the person put on the server's PATH. */
+export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; complete: Complete } | undefined> {
+  const probe = o.probe || ((cmd: string, env: NodeJS.ProcessEnv) => run(cmd, ["--version"], "", 10_000, env).then(() => true, () => false));
+  const own = o.data ? ownCliEnv(o.data) : undefined;
+  const has = (cmd: string) => (own ? existsSync(join(o.data!, "cli", "node_modules", ".bin", cmd)) : false);
+  for (const name of ["claude", "codex"] as const) {
+    const env = has(name) ? own! : process.env;
+    if (!(await probe(name, env))) continue;
+    return name === "claude"
+      ? { name, complete: ({ system, user }) => run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, 180_000, env) }
+      : { name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, 180_000, env) };
+  }
   return undefined;
 }
 

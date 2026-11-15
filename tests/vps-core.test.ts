@@ -159,3 +159,31 @@ test("vps.* tools: reads run at once with capped output; destructive commands an
   assert.deepEqual(await tools.run("o1", { action: "vps.read_file", path: "notes.txt" }), { path: "notes.txt", text: "bye" });
   assert.match(String(((await tools.run("o1", { action: "vps.service_status" })) as { output: string }).output), /## worker/);
 });
+
+test("Install Docker runs Docker's installer with sudo, adds the user to the group, and refuses without admin", async () => {
+  const { installDocker, testServer } = await import("../desktop/engine/vps/install.ts");
+  class Server extends FakeVps {
+    admin = "sudo"; docker = false; stdins: string[] = [];
+    override async exec(cmd: string, o: { cap?: number; stdin?: string | Uint8Array } = {}) {
+      if (cmd.includes("echo \"os=")) return { code: 0, stdout: `os=Ubuntu 24.04\ndocker=${this.docker ? "yes" : "no"}\nsystemd=yes\nuid=1000 gid=1000\nadmin=${this.admin}\n`, stderr: "" };
+      if (cmd.startsWith("sh -s")) { this.stdins.push(String(o.stdin)); this.docker = true; return { code: 0, stdout: "", stderr: "" }; }
+      return super.exec(cmd, o);
+    }
+  }
+  const s = new Server();
+  const before = await testServer(s);
+  assert.ok(before.ok && before.canInstallDocker);
+  await installDocker(s);
+  assert.equal(s.stdins.length, 1);
+  assert.match(s.stdins[0], /get\.docker\.com/);
+  assert.match(s.stdins[0], /sudo -n sh "\$f"/);
+  assert.match(s.stdins[0], /sudo -n usermod -aG docker/);
+  const after = await testServer(s);
+  assert.ok(after.ok && after.docker && !after.canInstallDocker);
+  await installDocker(s); // already there: nothing runs
+  assert.equal(s.stdins.length, 1);
+  const plain = new Server(); plain.admin = "no";
+  const t = await testServer(plain);
+  assert.ok(t.ok && !t.canInstallDocker);
+  await assert.rejects(installDocker(plain), /root, or sudo without a password/);
+});

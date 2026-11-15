@@ -38,7 +38,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
 
   // The model: an API key typed for the worker, else a CLI signed in on this server, else rules only.
   const modelKey = await secrets.get<ModelKey>("model");
-  const cli = modelKey ? undefined : await cliComplete();
+  const cli = modelKey ? undefined : await cliComplete({ data });
   const complete: Complete | undefined = modelKey ? apiComplete(modelKey) : cli?.complete;
   const model = modelKey ? "api" : cli ? "cli" : "none";
   log("info", `[worker] model: ${model}${cli ? " (" + cli.name + ")" : ""}`);

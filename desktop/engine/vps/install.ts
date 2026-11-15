@@ -9,21 +9,21 @@ import { seal, secretFile } from "./secrets.ts";
 
 export const WORKER_PORT = 7717;
 export const workerDir = (owner: string) => `clem/${owner}/worker`;
-const PROBE = `echo "os=$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || uname -sr)"; echo "df=$(df -Pk ~ | tail -1 | awk '{print $2" "$4}')"; echo "docker=$(docker compose version >/dev/null 2>&1 && docker ps >/dev/null 2>&1 && echo yes || echo no)"; echo "systemd=$(systemctl --user show-environment >/dev/null 2>&1 && echo yes || echo no)"; echo "node=$(node -v 2>/dev/null)"; echo "uid=$(id -u) gid=$(id -g)"`;
+const PROBE = `echo "os=$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || uname -sr)"; echo "df=$(df -Pk ~ | tail -1 | awk '{print $2" "$4}')"; echo "docker=$(docker compose version >/dev/null 2>&1 && docker ps >/dev/null 2>&1 && echo yes || echo no)"; echo "systemd=$(systemctl --user show-environment >/dev/null 2>&1 && echo yes || echo no)"; echo "node=$(node -v 2>/dev/null)"; echo "uid=$(id -u) gid=$(id -g)"; echo "admin=$( [ "$(id -u)" = 0 ] && echo root || (sudo -n true >/dev/null 2>&1 && echo sudo) || echo no)"`;
 
-export type Probe = { os: string; diskFree?: number; diskTotal?: number; docker: boolean; systemd: boolean; node?: string; uid: number; gid: number };
+export type Probe = { os: string; diskFree?: number; diskTotal?: number; docker: boolean; systemd: boolean; node?: string; uid: number; gid: number; /** Can this user install software: as root, or with passwordless sudo. */ admin: "root" | "sudo" | "no" };
 export async function probe(link: VpsLink): Promise<Probe> {
   const r = await link.exec(PROBE, { timeout: 20_000 });
   const get = (k: string) => r.stdout.match(new RegExp("^" + k + "=(.*)$", "m"))?.[1]?.trim() || "";
   const [total, free] = get("df").split(" ").map((n) => Number(n) * 1024);
-  return { os: get("os") || "Linux", ...(free ? { diskFree: free, diskTotal: total } : {}), docker: get("docker") === "yes", systemd: get("systemd") === "yes", ...(get("node") ? { node: get("node") } : {}), uid: Number(r.stdout.match(/uid=(\d+)/)?.[1] || 1000), gid: Number(r.stdout.match(/gid=(\d+)/)?.[1] || 1000) };
+  return { os: get("os") || "Linux", ...(free ? { diskFree: free, diskTotal: total } : {}), docker: get("docker") === "yes", systemd: get("systemd") === "yes", ...(get("node") ? { node: get("node") } : {}), uid: Number(r.stdout.match(/uid=(\d+)/)?.[1] || 1000), gid: Number(r.stdout.match(/gid=(\d+)/)?.[1] || 1000), admin: get("admin") === "root" ? "root" : get("admin") === "sudo" ? "sudo" : "no" };
 }
 /** Settings → Connectors → VPS → Test connection: how long a round trip takes, the OS, free disk and what can run the worker. */
 export async function testServer(link: SshLink | VpsLink): Promise<VpsTest> {
   const t0 = Date.now(); await link.exec("true", { timeout: 10_000 }); const ms = Date.now() - t0;
   const p = await probe(link);
   const s = link as SshLink;
-  return { ok: true, ms: Math.max(ms, 1), os: p.os, diskFree: p.diskFree, diskTotal: p.diskTotal, docker: p.docker, systemd: p.systemd, node: p.node, fingerprint: s.fingerprint || "", firstTime: !!s.firstTime };
+  return { ok: true, ms: Math.max(ms, 1), os: p.os, diskFree: p.diskFree, diskTotal: p.diskTotal, docker: p.docker, systemd: p.systemd, node: p.node, ...(!p.docker && p.admin !== "no" ? { canInstallDocker: true } : {}), fingerprint: s.fingerprint || "", firstTime: !!s.firstTime };
 }
 const nodeOk = (v?: string) => !!v && Number(v.replace(/^v/, "").split(".")[0]) >= 22;
 
@@ -35,7 +35,7 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
   o.progress?.("Checking the server…");
   const p = await probe(link);
   const kind = p.docker ? "docker" : p.systemd && nodeOk(p.node) ? "systemd" : null;
-  if (!kind) throw Error(p.systemd ? "Install Docker, or Node.js 22 or newer, on the server, then try again." : "This server has neither Docker nor systemd, so Clem can't keep a worker running there.");
+  if (!kind) throw Error(p.admin !== "no" ? "Docker didn't install on this server. Try again." : p.systemd ? "Install Docker, or Node.js 22 or newer, on the server, then try again." : "This server has neither Docker nor systemd, so Clem can't keep a worker running there.");
   o.progress?.("Sending Clem's worker…");
   for (const sub of ["", "/migrations", "/state", "/state/secrets", "/state/tmp"]) await link.mkdir(dir + sub);
   await link.mkdir(`clem/${owner}/files`);
@@ -62,6 +62,32 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
   const r = await link.exec(start, { timeout: 600_000 });
   if (r.code !== 0) throw Error("The worker didn't start: " + (r.stdout + r.stderr).trim().split("\n").slice(-3).join(" ").slice(0, 300));
   return { kind: kind as "docker" | "systemd", port };
+}
+/** Run Clem on my VPS, first step: Docker's own install script (get.docker.com) as root or with
+ *  passwordless sudo, the service started, and the SSH user added to the docker group. A user added to the group
+ *  sees it only on a new SSH connection, so the caller reconnects and tests again. */
+export async function installDocker(link: VpsLink, progress?: (label: string) => void): Promise<boolean> {
+  const p = await probe(link);
+  if (p.docker) return false;
+  if (p.admin === "no") throw Error("Clem needs root, or sudo without a password, to install Docker. Sign in as root, or install Docker yourself.");
+  const sudo = p.admin === "root" ? "" : "sudo -n ";
+  progress?.("Installing Docker… this takes a few minutes");
+  const script = [
+    "set -e",
+    "if ! command -v docker >/dev/null 2>&1; then",
+    "  f=$(mktemp)",
+    "  (curl -fsSL https://get.docker.com -o \"$f\" || wget -qO \"$f\" https://get.docker.com)",
+    `  ${sudo}sh "$f"`,
+    "  rm -f \"$f\"",
+    "elif ! docker compose version >/dev/null 2>&1; then",
+    `  (${sudo}apt-get install -y docker-compose-plugin || ${sudo}dnf install -y docker-compose-plugin || ${sudo}yum install -y docker-compose-plugin) >/dev/null 2>&1 || true`,
+    "fi",
+    `${sudo}systemctl enable --now docker >/dev/null 2>&1 || ${sudo}service docker start >/dev/null 2>&1 || true`,
+    `if [ "$(id -u)" != 0 ]; then ${sudo}usermod -aG docker "$(whoami)"; fi`,
+  ].join("\n");
+  const r = await link.exec("sh -s 2>&1", { stdin: script + "\n", timeout: 900_000 });
+  if (r.code !== 0) throw Error("Docker didn't install: " + (r.stdout + r.stderr).trim().split("\n").slice(-3).join(" ").slice(0, 300));
+  return true;
 }
 /** Sends one changed secret (a new GUC password) to an installed worker. */
 export async function sendSecret(link: VpsLink, owner: string, key: Uint8Array, name: string, value: unknown) {

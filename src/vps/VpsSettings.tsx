@@ -115,6 +115,7 @@ function TestResult({ test }: { test: VpsTest }) {
         {test.diskFree !== undefined && <li>{bytes(test.diskFree)} free of {bytes(test.diskTotal)}</li>}
         <li>{test.docker ? "Docker is ready" : "No Docker"} · {test.systemd ? "systemd is ready" : "no systemd"}{test.node ? ` · Node ${test.node}` : ""}</li>
       </ul>
+      {test.canInstallDocker && <small>No Docker yet: Clem installs it when you turn on Run Clem on my VPS.</small>}
       {test.firstTime && <small>First time here. Clem now trusts this server's fingerprint <code>{test.fingerprint}</code> and will refuse to connect if it changes.</small>}
     </div>
   </div>;
@@ -151,16 +152,17 @@ function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; ref
       {toVps && <Pinned files={files} />}
     </Section>
 
-    <Section title="Background jobs" aside={<Switch checked={w.enabled} label="Run Clem's background jobs on my VPS" onChange={(on) => void run(on ? "Installing…" : "Stopping…", () => desktop!.invoke({ action: "vpsWorker", on }))} />}>
-      <p className="vps-fine">Run Clem's background jobs on my VPS: GUC checks, reminders, the organizer and Telegram keep going while this PC is off.</p>
+    <Section title="Run Clem on my VPS" aside={<Switch checked={w.enabled} label="Run Clem on my VPS" onChange={(on) => void run(on ? "Installing…" : "Stopping…", () => desktop!.invoke({ action: "vpsWorker", on }))} />}>
+      <p className="vps-fine">Clem sets up everything on your server: GUC checks, reminders, the organizer, the AI and Telegram keep going while this PC is off.</p>
       {busy === "Installing…" && <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />{step || "Installing…"}</p>}
       {w.enabled && <ul className="vps-facts">
         <li><span>Running on</span><b>{w.runner === "worker" ? "Your VPS" : w.runner === "desktop" ? "This PC (until your VPS answers)" : "Checking…"}</b></li>
         <li><span>How</span><b>{w.kind === "docker" ? "Docker, with Postgres" : w.kind === "systemd" ? "systemd and Node" : "—"}</b></li>
         <li><span>Last heartbeat</span><b>{ago(w.heartbeat)}</b></li>
-        <li><span>AI on the VPS</span><b>{w.model === "api" ? "Your API key" : w.model === "cli" ? "The CLI signed in on the server" : "None: rules only, Telegram replies wait for this PC"}</b></li>
+        <li><span>AI on the VPS</span><b>{w.model === "api" ? "Your API key" : w.model === "cli" ? "Signed in on your VPS" : "None yet: rules only, Telegram replies wait for this PC"}</b></li>
       </ul>}
       {w.error && <p className="vps-line is-warn"><Icon name="alert" size={14} />{w.error}</p>}
+      {w.enabled && w.model !== "api" && <ServerAi w={w} />}
       <ModelKey has={w.model === "api"} onSave={(key, model) => run("Saving…", () => desktop!.invoke({ action: "vpsModelKey", ...(key ? { key } : {}), ...(model ? { model } : {}) }))} />
       <details className="vps-advanced"><summary>What Clem sends to your VPS</summary>
         <ul className="vps-sent">{WORKER_SECRETS.map((x) => <li key={x.name}><b>{x.what}</b><small>{x.when}</small></li>)}</ul>
@@ -211,10 +213,40 @@ function Pinned({ files }: { files: StoredFile[] }) {
     {hits.length > 0 && <ul>{hits.map((f) => <li key={f.id}><span>{f.name}</span><button type="button" className="vps-link" onClick={() => { void toggle(f.id, true); setQ(""); }}>Pin</button></li>)}</ul>}
   </div>;
 }
+/** The AI on the server (Claude Code or Codex, the one this PC uses), set up by the switch; here only its progress,
+ *  the one sign-in, and a retry. */
+function ServerAi({ w }: { w: VpsStatus["worker"] }) {
+  const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false);
+  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT (Codex)" : "Claude";
+  const start = (cli: "claude" | "codex") => { setError(""); void desktop!.invoke({ action: "vpsCli", cli }).catch((e) => setError(message(e))); };
+  const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
+  if (w.model === "cli" && !s) return null;
+  return <div className="vps-ai">
+    {!s || s.step === "failed" ? <>
+      {s?.error && <p className="vps-line is-warn"><Icon name="alert" size={14} />{s.error}</p>}
+      <button type="button" className="secondary vps-small" onClick={() => start(s?.cli || "claude")}>{s ? "Try again" : "Set up the AI on my VPS"}</button>
+    </> : s.step === "installing" ? <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Installing {name} on your VPS… this takes a minute or two</p>
+      : s.step === "finishing" ? <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Signed in. Restarting Clem on your VPS…</p>
+      : s.cli === "codex" ? <div className="provider-challenge cx-challenge">
+        <p>Enter this code on the OpenAI sign-in page</p>
+        <button type="button" className="cx-code" onClick={() => void navigator.clipboard.writeText(s.code || "").then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); })}><code>{s.code}</code><span>{copied ? "Copied" : "Copy"}</span></button>
+        <a className="primary cx-go" href={s.url} target="_blank" rel="noreferrer">Open sign-in page<Icon name="arrow" size={15} /></a>
+        <p className="provider-wait"><Icon name="hourglass" size={14} />Waiting for your account…</p>
+      </div>
+      : <div>
+        <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Sign in with your Claude account in the window that opened. Clem passes the sign-in to your VPS.</p>
+        <details className="vps-advanced"><summary>The page shows a code instead?</summary>
+          <label className="guc-field"><span>Code from the page</span><input value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} autoComplete="off" /></label>
+          <button type="button" className="secondary vps-small" disabled={code.trim().length < 4} onClick={paste}>Send it to my VPS</button>
+        </details>
+      </div>}
+    {error && <p className="gd-error" role="alert">{error}</p>}
+  </div>;
+}
 function ModelKey({ has, onSave }: { has: boolean; onSave: (key?: string, model?: string) => Promise<void> }) {
   const [key, setKey] = useState("");
   return <details className="vps-advanced"><summary>{has ? "Model key for the VPS (saved)" : "Add a model key for the VPS (optional)"}</summary>
-    <p className="vps-fine">Without one, the VPS uses a <code>claude</code> or <code>codex</code> CLI you signed in to on the server, or runs on rules alone. Clem never copies keys from your PC's apps.</p>
+    <p className="vps-fine">Instead of signing in on your VPS above. Clem never copies keys or sign-ins from your PC's apps.</p>
     <label className="guc-field"><span>Anthropic API key</span><input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" /></label>
     <div className="vps-row-buttons"><button type="button" className="secondary vps-small" disabled={!key} onClick={() => void onSave(key).then(() => setKey(""))}>Save key</button>{has && <button type="button" className="vps-link" onClick={() => void onSave()}>Remove key</button>}</div>
   </details>;

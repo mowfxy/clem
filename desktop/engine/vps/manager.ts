@@ -10,8 +10,9 @@ import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, type StorageMode, type VpsConfig, typ
 import { snapshotOf } from "../../../core/proactivity/snapshot.ts";
 import { generateKey, publicOf } from "./keys.ts";
 import { SshLink, type LinkConfig, type VpsLink } from "./link.ts";
-import { installWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
+import { installDocker, installWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
 import { Migrator } from "./migrate.ts";
+import { claudeSignIn, cliSignedIn, codexSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
 import { StorageRouter, type LocalBlobs } from "./router.ts";
 import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
@@ -38,6 +39,10 @@ export type ManagerDeps = {
   log?: (m: string) => void;
   changed?: (what: "status" | "migration" | "worker") => void;
   notify?: (n: { key: string; title: string; body: string; open?: object }) => void;
+  /** A sign-in window on this PC for a CLI signing in on the server; `landed` hears each address it reaches. */
+  openSignIn?: (url: string, landed: (url: string) => void) => () => void;
+  /** The AI this PC uses (its signed-in CLI), so the VPS gets the same one. */
+  preferredCli?: () => Promise<ServerCli | undefined>;
 };
 
 export class VpsManager {
@@ -197,11 +202,17 @@ export class VpsManager {
   /** "Run Clem's background jobs on my VPS": install or refresh the worker, send its secrets sealed, start the
    *  heartbeat. The desktop keeps running jobs until the worker's first beat takes the lease. */
   async enableWorker(progress?: (label: string) => void) {
+    // One switch does it all: Docker first when the server can take it (else systemd with Node, as before)…
+    const installed = await installDocker(await this.link(), progress).catch((e) => { this.log("[vps] docker: " + (e as Error).message); return false; });
+    if (installed) await this.drop(); // the docker group counts only on a new SSH session
     await this.install(progress);
     // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
     await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
     this.startHeartbeat();
     await this.pushWorkspace(true);
+    // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once).
+    const v = await this.vault();
+    if (!v.modelKey && this.workerModel !== "cli") await this.connectCli((await this.d.preferredCli?.().catch(() => undefined)) || "claude").catch((e) => this.log("[vps] ai: " + (e as Error).message));
     return this.status();
   }
   /** Uploads this app's worker bundle with the worker's key and secrets, and starts it (its database is kept). */
@@ -245,6 +256,44 @@ export class VpsManager {
     if (!v.worker?.enabled) return;
     await sendSecret(await this.link(), this.owner, Buffer.from(v.worker.key, "base64"), name, value);
   }
+  // ---------- AI on the VPS ----------
+  private signIn?: NonNullable<WorkerView["signIn"]>; private pasteCode?: (code: string) => void;
+  /** "Use Claude / ChatGPT on my VPS": installs the CLI inside the worker, signs it in there with the person's own
+   *  account (a window on this PC for Claude, a device code for Codex), then restarts the worker so it uses it.
+   *  Returns at once; progress is in `status().worker.signIn`. */
+  async connectCli(cli: ServerCli) {
+    const v = await this.vault();
+    if (!v.worker?.enabled || !v.worker.kind) throw Error("Turn on background jobs on your VPS first.");
+    if (this.signIn && ["installing", "waiting", "finishing"].includes(this.signIn.step)) return this.status();
+    const kind = v.worker.kind, owner = this.owner;
+    const step = (s: NonNullable<WorkerView["signIn"]>) => { this.signIn = s; this.d.changed?.("worker"); };
+    step({ cli, step: "installing" });
+    void (async () => {
+      const l = await this.link();
+      await installCli(l, kind, owner, cli);
+      if (!(await cliSignedIn(l, kind, owner, cli))) {
+        let done: Promise<boolean>;
+        if (cli === "codex") { const c = await codexSignIn(l, kind, owner); step({ cli, step: "waiting", url: c.url, code: c.code }); done = c.done; }
+        else {
+          if (!this.d.openSignIn) throw Error("Sign-in windows need the Clem desktop app.");
+          const c = await claudeSignIn(l, kind, owner, this.d.openSignIn);
+          this.pasteCode = c.paste; step({ cli, step: "waiting", url: c.url }); done = c.done;
+        }
+        const ok = await done; this.pasteCode = undefined;
+        if (!ok || !(await cliSignedIn(l, kind, owner, cli))) throw Error("The sign-in on your VPS didn't finish. Try again.");
+      }
+      step({ cli, step: "finishing" });
+      await restartWorker(l, kind, owner);
+      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
+      // It answers again within seconds; the next heartbeat reads its model.
+      for (let i = 0; i < 12 && this.workerModel !== "cli"; i++) { await new Promise((r) => setTimeout(r, 5000)); await this.heartbeat().catch(() => {}); }
+      this.signIn = undefined; this.d.changed?.("worker");
+    })().catch((e) => { this.pasteCode = undefined; step({ cli, step: "failed", error: (e as Error).message }); });
+    return this.status();
+  }
+  /** A code the person copied from Claude's page, if the window didn't hand it over by itself. */
+  pasteCliCode(code: string) { if (!this.pasteCode) throw Error("No sign-in is waiting for a code."); this.pasteCode(code); return { ok: true }; }
+
   async setModelKey(k?: { key: string; model?: string }) { await this.save({ modelKey: k?.key ? { provider: "anthropic", key: k.key.trim(), ...(k.model ? { model: k.model } : {}) } : undefined }); await this.secretChanged("model", k?.key ? (await this.vault()).modelKey : undefined); return this.status(); }
 
   private async worker(): Promise<WorkerClient> {
@@ -315,7 +364,7 @@ export class VpsManager {
     const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
-    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}) };
+    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }
   async close() { this.stopHeartbeat(); if (this.pushTimer) clearTimeout(this.pushTimer); await this.migrator?.abort().catch(() => {}); await this.drop(); }
