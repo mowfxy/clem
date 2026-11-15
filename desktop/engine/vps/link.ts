@@ -20,25 +20,55 @@ export interface VpsLink {
   /** A local port that reaches 127.0.0.1:`remotePort` on the server through this connection. */
   tunnel(remotePort: number): Promise<{ port: number; close(): void }>;
   close(): Promise<void>;
+  /** The connection is gone (the server closed it, the network dropped, the PC slept): make a new one. */
+  readonly closed?: boolean;
+  /** A command that keeps running, printing as it goes and reading what is typed (a CLI's sign-in). `pty`: give it a
+   *  terminal, very wide so a long sign-in link is never wrapped. */
+  interactive?(cmd: string, o?: { pty?: boolean }): Promise<LiveCommand>;
 }
+export type LiveCommand = { write(s: string): void; onData(f: (s: string) => void): void; done: Promise<number>; close(): void };
 export type LinkConfig = { host: string; port: number; user: string; privateKey?: string; passphrase?: string; password?: string; fingerprint?: string };
 
 /** Single-quoted for the remote shell. */
 export const q = (s: string) => "'" + s.replace(/'/g, "'\\''") + "'";
-const plain = (e: unknown) => {
+/** Every SSH and SFTP error as one plain sentence (never a stack trace or a library's wording). */
+export const plain = (e: unknown) => {
   const m = String((e as Error)?.message || e);
+  if (/The connection to your VPS|The server stopped answering|The server didn't|Couldn't find that server|The server refused/.test(m)) return m;
   if (/All configured authentication methods failed|authentication/i.test(m)) return "The server didn't accept the key. Add the public key to ~/.ssh/authorized_keys on the server, then try again.";
   if (/ENOTFOUND|EAI_AGAIN/.test(m)) return "Couldn't find that server. Check the address.";
   if (/ECONNREFUSED/.test(m)) return "The server refused the connection. Check the port (usually 22) and that SSH is running.";
   if (/ETIMEDOUT|Timed out|timeout/i.test(m)) return "The server didn't answer in time. Check the address, port and firewall.";
-  return m.replace(/^connect: /, "").replace(/getConnection: /, "");
+  if (/ECONNRESET|EPIPE|ECONNABORTED|No response from server|Not connected|socket hang up|end of file|Channel open failure|No SFTP connection|Connection lost|closed/i.test(m)) return DROPPED;
+  return m.replace(/^connect: /, "").replace(/getConnection: /, "").replace(/^(get|put|stat|mkdir|rename|delete|_put|_get): /, "");
 };
+export const DROPPED = "The connection to your VPS dropped.";
+/** A dropped connection (or a server that stopped answering), as opposed to a refusal: worth reconnecting and trying again. */
+export const isDrop = (e: unknown) => /The connection to your VPS dropped|The server stopped answering|ECONNRESET|EPIPE|No response from server|Not connected|socket hang up/i.test(String((e as Error)?.message || e));
+/** Fails with one plain sentence when an SFTP step hangs (a dead link never answers, and SFTP has no timeout of its own). */
+export function timed<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Error(`The server stopped answering while ${what}.`)), ms);
+    t.unref?.();
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(Error(plain(e))); });
+  });
+}
+const STEP_MS = 30_000;
+/** Time for a transfer: 30 s plus 20 KB/s, the slowest link Clem waits for. */
+const transferMs = (bytes: number) => STEP_MS + Math.ceil(bytes / 20);
 
 export class SshLink implements VpsLink {
   private sftp: SftpClient;
   readonly fingerprint: string;
   readonly firstTime: boolean;
-  private constructor(sftp: SftpClient, fp: string, first: boolean) { this.sftp = sftp; this.fingerprint = fp; this.firstTime = first; }
+  private gone = false;
+  get closed() { return this.gone; }
+  private constructor(sftp: SftpClient, fp: string, first: boolean) {
+    this.sftp = sftp; this.fingerprint = fp; this.firstTime = first;
+    // The library keeps a dead connection object: mark it, so the manager makes a new one instead of failing on it.
+    const c = this.client as unknown as import("node:events").EventEmitter | undefined;
+    for (const ev of ["close", "end", "error"]) c?.on?.(ev, () => { this.gone = true; });
+  }
 
   /** Connects, verifying the host key against `fingerprint` (trust on first use). Errors are plain sentences. */
   static async connect(c: LinkConfig, timeout = 15_000): Promise<SshLink> {
@@ -46,7 +76,8 @@ export class SshLink implements VpsLink {
     let seen = "", refused = "", first = false;
     try {
       await sftp.connect({
-        host: c.host, port: c.port, username: c.user, readyTimeout: timeout, keepaliveInterval: 20_000,
+        // A keep-alive every 15 s; three unanswered ones and the connection is called dropped (a sleeping PC, a lost network).
+        host: c.host, port: c.port, username: c.user, readyTimeout: timeout, keepaliveInterval: 15_000, keepaliveCountMax: 3,
         ...(c.privateKey ? { privateKey: c.privateKey, passphrase: c.passphrase } : {}), ...(c.password ? { password: c.password } : {}),
         // Only key auth unless a password was given on purpose (the advanced toggle).
         tryKeyboard: false,
@@ -62,8 +93,12 @@ export class SshLink implements VpsLink {
 
   exec(cmd: string, o: { timeout?: number; cap?: number; stdin?: string | Uint8Array } = {}): Promise<ExecResult> {
     const cap = o.cap ?? 1_000_000;
+    if (this.gone) return Promise.reject(Error(DROPPED));
     return new Promise((resolve, reject) => {
+      // The channel itself may never open on a dying connection.
+      const opening = setTimeout(() => reject(Error("The server stopped answering while starting a command.")), STEP_MS);
       this.client.exec(cmd, (err, stream) => {
+        clearTimeout(opening);
         if (err) return reject(Error(plain(err)));
         let out = "", errs = "", truncated = false;
         const timer = setTimeout(() => { stream.close(); reject(Error("The command took too long and was stopped.")); }, o.timeout ?? 60_000);
@@ -75,12 +110,32 @@ export class SshLink implements VpsLink {
       });
     });
   }
-  async get(path: string) { return new Uint8Array(await this.sftp.get(path) as Buffer); }
-  async put(path: string, bytes: Uint8Array, mode?: number) { await this.sftp.put(Buffer.from(bytes), path, mode ? { writeStreamOptions: { mode } } : undefined); }
-  async size(path: string) { try { return (await this.sftp.stat(path)).size; } catch { return null; } }
-  async mkdir(path: string) { if (!(await this.sftp.exists(path))) await this.sftp.mkdir(path, true); }
-  async rename(from: string, to: string) { await this.sftp.posixRename(from, to); }
-  async remove(path: string) { await this.sftp.delete(path, true); }
+  interactive(cmd: string, o: { pty?: boolean } = {}): Promise<LiveCommand> {
+    return new Promise((resolve, reject) => {
+      const opts = o.pty ? { pty: { cols: 4000, rows: 40, term: "xterm" } } : {};
+      this.client.exec(cmd, opts, (err, stream) => {
+        if (err) return reject(Error(plain(err)));
+        const listeners: ((s: string) => void)[] = [];
+        const emit = (b: Buffer) => { const t = b.toString("utf8"); for (const f of listeners) f(t); };
+        stream.on("data", emit); stream.stderr.on("data", emit);
+        const done = new Promise<number>((res) => stream.on("close", (code: number | null) => res(code ?? -1)));
+        resolve({ write: (t) => { stream.write(t); }, onData: (f) => { listeners.push(f); }, done, close: () => stream.close() });
+      });
+    });
+  }
+  async get(path: string) {
+    const size = await this.size(path);
+    return new Uint8Array(await timed(this.sftp.get(path) as Promise<Buffer>, transferMs(size || 0), "sending a file"));
+  }
+  async put(path: string, bytes: Uint8Array, mode?: number) { await timed(this.sftp.put(Buffer.from(bytes), path, mode ? { writeStreamOptions: { mode } } : undefined), transferMs(bytes.length), "receiving a file"); }
+  async size(path: string) {
+    if (this.gone) throw Error(DROPPED);
+    try { return (await timed(this.sftp.stat(path), STEP_MS, "checking a file")).size; }
+    catch (e) { if (isDrop(e) || this.gone) throw e; return null; }
+  }
+  async mkdir(path: string) { await timed((async () => { if (!(await this.sftp.exists(path))) await this.sftp.mkdir(path, true); })(), STEP_MS, "making a folder"); }
+  async rename(from: string, to: string) { await timed(this.sftp.posixRename(from, to), STEP_MS, "naming a file"); }
+  async remove(path: string) { await timed(this.sftp.delete(path, true), STEP_MS, "removing a file"); }
   async hash(path: string) {
     const r = await this.exec("sha256sum -- " + q(path), { timeout: 120_000 }).catch(() => null);
     const m = r?.code === 0 && r.stdout.match(/^([a-f0-9]{64})\b/);

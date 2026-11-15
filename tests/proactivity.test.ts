@@ -662,3 +662,24 @@ test("a quiz with a day but no time is reminded two mornings before and the even
   assert.equal(deadlineText(quiz, now, undefined, { left: 2 * 3600e3 }), "MATH 301 Quiz 3 is tomorrow (Monday or Tuesday, by tutorial group).");
   assert.equal(deadlineText({ id: "m", title: "Midterm", due: "2026-11-30T06:30:00Z", code: "MATH 301", kind: "exam", place: "H5, seat J13" }, Date.parse("2026-11-30T04:00:00Z"), undefined, { left: 2.5 * 3600e3 }), "MATH 301 Midterm is in 3 hours, at 8:30 am in H5, seat J13.");
 });
+
+test("engine: \"undo that\" lifts the person's latest correction of what Clem synced, newest first, and the item is back", async () => {
+  const clock = { t: T(SUN, "10:00") };
+  const { engine, o } = await engineWith(empty(), clock);
+  try {
+    const item = { id: "q9", courseKey: "45:70", title: "Group presentation 2", due: "2026-11-22T09:45:00.000Z", source: "mail", kind: "presentation", timeKnown: true, ref: "m1", sent: "2026-10-25T05:46:47.000Z" };
+    await engine.db.query("insert into guc_snapshots (owner_id, pages, data, seen, stats) values ('pro-owner', '{}', $1, '{}', '{}')", [{ deadlines: [item] }]);
+    await engine.db.query("insert into guc_deadlines (owner_id, deadline_id, course_key, title, due, source, kind, time_known, source_ref, sent_at) values ('pro-owner', 'q9', '45:70', 'Group presentation 2', $1, 'mail', 'presentation', true, 'm1', $2)", [item.due, item.sent]);
+    await engine.correct({ kind: "hide", itemId: "q9", sourceRef: "m1", courseKey: "45:70", patch: {}, before: item, label: "Removed Group presentation 2 (Sunday 22 Nov at 11:45) from Coming up" }, { drop: "q9" });
+    await engine.correct({ kind: "rule", patch: { rule: { type: "max_age", days: 14 } }, label: "Mail and posts sent more than 14 days before Clem reads them don't create Coming up items." });
+    assert.deepEqual(await engine.deadlines(), []);
+    // By its words: the removal, though the rule came after it.
+    assert.deepEqual(await o.tool({ action: "clem.undo", what: "presentation" }), { ok: true, undone: "Removed Group presentation 2 (Sunday 22 Nov at 11:45) from Coming up", note: "Their correction is lifted: the item is back as Clem read it." });
+    assert.deepEqual((await engine.deadlines()).map((d) => [d.id, d.ref]), [["q9", "m1"]], "back where it was, still keyed to its mail");
+    // Then the latest: the rule.
+    assert.equal(((await o.tool({ action: "clem.undo" })) as { undone?: string }).undone, "Mail and posts sent more than 14 days before Clem reads them don't create Coming up items.");
+    assert.deepEqual(await engine.corrections(), []);
+    assert.match(String((await o.tool({ action: "clem.undo" }) as { error?: string }).error), /hasn't changed anything/);
+    assert.ok(CALENDAR_GUIDE.includes("Never answer that something is synced automatically"), "the main thread's guide says it can correct");
+  } finally { await engine.close(); }
+});

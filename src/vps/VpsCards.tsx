@@ -13,7 +13,7 @@ export function VpsMovedCardView({ card, onOpen }: { card: z.infer<typeof vpsMov
   const up = card.direction === "up";
   return <div className="edit-proposal clem-card guc-card">
     <header><Icon name="server" size={16} /><div><strong>{up ? "Your files are on your VPS" : "Your files are back on this PC"}</strong><small>{card.files} file{card.files === 1 ? "" : "s"} · {bytes(card.bytes)}{card.failed ? ` · ${card.failed} stayed where they were` : ""}</small></div></header>
-    <div className="guc-card-body"><p className="guc-card-line">{up ? "Each one was checked on your VPS first. Recent and pinned files stay on this PC so they open instantly." : "Each one was checked here before it left your VPS."}</p></div>
+    <div className="guc-card-body"><p className="guc-card-line">{up ? "Each was checked on your VPS first. Recent and pinned files stay here." : "Each was checked here before it left your VPS."}</p></div>
     {onOpen && <footer><button type="button" onClick={onOpen}>Storage settings</button></footer>}
   </div>;
 }

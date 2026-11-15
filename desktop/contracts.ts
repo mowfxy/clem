@@ -41,6 +41,8 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("vpsGenerateKey") }),
   z.object({ action: z.literal("vpsPasteKey"), privateKey: z.string().min(40).max(20_000), passphrase: z.string().max(200).optional() }),
   z.object({ action: z.literal("vpsTest") }),
+  z.object({ action: z.literal("vpsCli"), cli: z.enum(["claude", "codex"]) }),
+  z.object({ action: z.literal("vpsCliCode"), code: z.string().trim().min(4).max(2000) }),
   z.object({ action: z.literal("vpsForget") }),
   z.object({ action: z.literal("vpsMove"), direction: z.enum(["up", "down"]) }),
   z.object({ action: z.literal("vpsAbortMove") }),
@@ -87,7 +89,10 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("gucAckInbox"), keys: z.array(z.string().min(1).max(300)).min(1).max(300) }),
   // Clem's organizer (desktop/engine/organizer.ts).
   z.object({ action: z.literal("proSettings"), set: proPatch.optional() }),
-  z.object({ action: z.literal("proInbox") }),
+  // `vpsSync`: how far the window's workspace has taken in the VPS worker's changes (core/workspace/ops.ts).
+  z.object({ action: z.literal("proInbox"), vpsSync: z.object({ id: z.string().max(80), seq: z.number().int().min(0) }).optional() }),
+  // Whether the VPS worker runs Clem's jobs (and the person's routines) right now, so the window doesn't run them too.
+  z.object({ action: z.literal("vpsRunsJobs") }),
   z.object({ action: z.literal("proAck"), posts: z.array(z.string().regex(/^pro-[\w-]{1,60}$/)).max(100).optional(), results: z.array(z.object({ key: proKey, ok: z.boolean(), undo: z.any().optional(), error: z.string().max(300).optional() })).max(200).optional(), reverted: z.array(proKey).max(100).optional() }),
   z.object({ action: z.literal("proLog") }),
   z.object({ action: z.literal("proStatus"), keys: z.array(proKey).min(1).max(100) }),

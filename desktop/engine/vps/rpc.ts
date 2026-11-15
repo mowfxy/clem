@@ -4,6 +4,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { Lease } from "../../../core/vps/lease.ts";
+import type { WsBatch, WsCursor } from "../../../core/workspace/ops.ts";
 
 /** Engine methods the desktop may call on the worker's engine: what the window's requests use. */
 export const RPC_METHODS = new Set([
@@ -30,6 +31,8 @@ export type WorkerHandlers = {
   lease(who: "desktop"): Promise<{ lease: Lease; run: boolean }>;
   health(): Promise<Record<string, unknown>>;
   notices(): unknown[];
+  /** The worker's workspace changes a desktop at `cursor` hasn't saved yet (core/workspace/ops.ts); null before any push. */
+  ops?(cursor: WsCursor | null): Promise<WsBatch | null>;
 };
 
 const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
@@ -48,12 +51,15 @@ export function serveWorker(o: { token: string; port: number; host?: string; han
       if (url.pathname === "/workspace" && req.method === "PUT") { await o.handlers.workspace(body); return send(200, { ok: true }); }
       if (url.pathname === "/lease" && req.method === "POST") return send(200, await o.handlers.lease("desktop"));
       if (url.pathname === "/notices" && req.method === "GET") return send(200, o.handlers.notices());
+      if (url.pathname === "/ws/ops" && req.method === "POST" && o.handlers.ops) return send(200, { batch: await o.handlers.ops(body?.cursor && typeof body.cursor.id === "string" ? { id: body.cursor.id, seq: Number(body.cursor.seq) || 0 } : null) });
       send(404, { error: "Not found" });
     } catch (e) {
       o.log?.("[worker] request failed: " + (e as Error).message);
       send(400, { error: (e as Error).message });
     }
   });
+  // A request that never finishes doesn't hold the endpoint: long agent calls get 10 minutes, headers 30 seconds.
+  server.requestTimeout = 600_000; server.headersTimeout = 30_000; server.keepAliveTimeout = 5_000;
   return new Promise((resolve, reject) => { server.on("error", reject); server.listen(o.port, o.host || "127.0.0.1", () => resolve(server)); });
 }
 
@@ -61,10 +67,17 @@ export function serveWorker(o: { token: string; port: number; host?: string; han
 export class WorkerClient {
   private base: string; private token: string; private fetcher: typeof fetch;
   constructor(base: string, token: string, fetcher: typeof fetch = fetch) { this.base = base; this.token = token; this.fetcher = fetcher; }
+  /** Every call has a time limit, and every failure is one plain sentence (the manager reconnects on its next beat). */
   private async req<T>(path: string, init: { method?: string; body?: unknown; timeout?: number } = {}): Promise<T> {
-    const r = await this.fetcher(this.base + path, { method: init.method || "GET", headers: { authorization: "Bearer " + this.token, "content-type": "application/json" }, ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}), signal: AbortSignal.timeout(init.timeout ?? 60_000) });
+    let r: Response;
+    try {
+      r = await this.fetcher(this.base + path, { method: init.method || "GET", headers: { authorization: "Bearer " + this.token, "content-type": "application/json" }, ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}), signal: AbortSignal.timeout(init.timeout ?? 60_000) });
+    } catch (e) {
+      const name = (e as Error)?.name;
+      throw Object.assign(Error(name === "TimeoutError" || name === "AbortError" ? "Clem's worker on your VPS didn't answer in time." : "Clem's worker on your VPS isn't answering."), { unreachable: true });
+    }
     const json = await r.json().catch(() => ({})) as { error?: string };
-    if (!r.ok) throw Error(json.error || "The worker didn't answer.");
+    if (!r.ok) throw Error(json.error || "Clem's worker on your VPS didn't answer.");
     return json as T;
   }
   async call<T = unknown>(path: string, args: unknown[] = []) { return (await this.req<{ result: T }>("/rpc", { method: "POST", body: { path, args: JSON.parse(JSON.stringify(args, (_k, v) => (typeof v === "function" ? undefined : v))) }, timeout: 180_000 })).result; }
@@ -72,4 +85,5 @@ export class WorkerClient {
   lease() { return this.req<{ lease: Lease; run: boolean }>("/lease", { method: "POST", body: {}, timeout: 10_000 }); }
   pushWorkspace(snapshot: unknown) { return this.req("/workspace", { method: "PUT", body: snapshot }); }
   notices() { return this.req<{ key: string; title: string; body: string; open?: object }[]>("/notices"); }
+  async ops(cursor: WsCursor | null | undefined) { return (await this.req<{ batch: WsBatch | null }>("/ws/ops", { method: "POST", body: { cursor: cursor || null }, timeout: 60_000 })).batch; }
 }

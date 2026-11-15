@@ -43,6 +43,7 @@ import {
   nativeTheme,
   Tray,
   Notification,
+  powerMonitor,
 } from "electron";
 import { captureRegion } from "./capture";
 import { clipboardFiles } from "./clipboard-files";
@@ -383,14 +384,16 @@ void app.whenReady().then(async () => {
    *  sign-in over (the person was signed in to that app, and Claude Code was never authorised). Its own saved session
    *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
   const signInDenied=new Set(["media","geolocation","notifications","display-capture","midi","midiSysex","idle-detection","clipboard-read","openExternal","window-management","fileSystem"]);
-  const claudeSignInPage=(url:string)=>{
+  const claudeSignInPage=(url:string,landed?:(target:string)=>void)=>{
     const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#1f1f1f",icon:join(__dirname,"../desktop/icon.ico"),
       webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
     // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
     page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Clem)\/\S+/g,""));
     const allowed=(target:string)=>{try{const u=new URL(target);return u.protocol==="https:"||(u.protocol==="http:"&&["localhost","127.0.0.1"].includes(u.hostname));}catch{return false;}};
-    page.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});
-    page.webContents.on("will-redirect",(event,target)=>{if(!allowed(target))event.preventDefault();});
+    page.webContents.on("will-navigate",(event,target)=>{landed?.(target);if(!allowed(target))event.preventDefault();});
+    page.webContents.on("will-redirect",(event,target)=>{landed?.(target);if(!allowed(target))event.preventDefault();});
+    // A CLI signing in on the VPS (desktop/engine/vps/cli.ts) hears where the page lands, to pass its code to the server.
+    if(landed)page.webContents.on("did-navigate",(_event,target)=>landed(target));
     // Google and Apple sign-in may open a pop-up; it shares the window's session and rules.
     page.webContents.setWindowOpenHandler(({url:target})=>allowed(target)?{action:"allow",overrideBrowserWindowOptions:{parent:page,autoHideMenuBar:true,webPreferences:{partition:"persist:claude-signin",sandbox:true,contextIsolation:true,nodeIntegration:false}}}:{action:"deny"});
     page.webContents.on("did-create-window",(child)=>{child.webContents.on("will-navigate",(event,target)=>{if(!allowed(target))event.preventDefault();});});
@@ -1269,6 +1272,8 @@ void app.whenReady().then(async () => {
         bundle: join(__dirname, "worker"), accountService: config.service, version: app.isPackaged ? app.getVersion() : undefined,
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
+        openSignIn: claudeSignInPage,
+        preferredCli: async () => (await (await claudeFor(owner)).status().catch(() => null))?.connected ? "claude" : (await codex.status().catch(() => false)) ? "codex" : undefined,
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },
         notify: (n) => engineHost(owner).notify(n as Parameters<EngineHost["notify"]>[0]),
       });
@@ -1317,6 +1322,9 @@ void app.whenReady().then(async () => {
     await m.resumeMove().catch(() => {});
     if ((await m.vault()).worker?.enabled) m.startHeartbeat();
   }).catch(() => {});
+  // The laptop woke (or was unlocked): the worker's connection is checked now, and the lease hands over cleanly.
+  const wakeVps = () => { for (const m of vpsManagers.values()) m.wake(); };
+  powerMonitor.on("resume", wakeVps); powerMonitor.on("unlock-screen", wakeVps);
   const gucProgress = (progress: unknown) => { if (!window.isDestroyed()) window.webContents.send("clem:guc", progress); };
   const gucStatus = async (owner: string) => engines.has(owner) || await vault.read("guc-" + owner, undefined) ? (await engineFor(owner)).status() : { connected: false, syncing: false, courses: 0, linked: 0 };
   // Scheduled GUC syncs run while Clem is open (in the tray too), so the engine starts with a connected account.
@@ -1569,6 +1577,8 @@ void app.whenReady().then(async () => {
     if (request.action === "gucSync") { const engine = await engineFor(user.id); return engine.sync(gucProgress).catch(() => engine.status()); }
     if (request.action === "gucDisconnect") { const remote = await vpsManagers.get(user.id)?.remote(); await remote?.call("disconnect").catch(() => {}); return (await rawEngineFor(user.id)).disconnect(); }
     // Settings → Connectors → VPS (desktop/engine/vps/manager.ts). The key and password never come back to the window.
+    // The window's routines wait while the VPS worker runs Clem's jobs (it runs them there, once).
+    if (request.action === "vpsRunsJobs") return vpsManagers.get(user.id)?.workerRuns() ?? false;
     if (request.action.startsWith("vps")) {
       const m = vpsFor(user.id), reset = () => { vpsSet.delete(user.id); return vpsConfigured(user.id); };
       if (request.action === "vpsStatus") { if (await vpsConfigured(user.id)) return m.status(); const v = await m.vault(); return { connected: false, ...(v.config ? { config: v.config } : {}), storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: !!v.allowPassword }; }
@@ -1576,6 +1586,8 @@ void app.whenReady().then(async () => {
       if (request.action === "vpsGenerateKey") return m.generate();
       if (request.action === "vpsPasteKey") return m.pasteKey(request.privateKey, request.passphrase);
       if (request.action === "vpsTest") { const t = await m.test(); await reset(); return t; }
+      if (request.action === "vpsCli") return m.connectCli(request.cli);
+      if (request.action === "vpsCliCode") return m.pasteCliCode(request.code);
       if (request.action === "vpsForget") { const r = await m.forget(); vpsManagers.delete(user.id); await reset(); return r; }
       if (request.action === "vpsMove") { const r = await m.move(request.direction); vpsModes.set(user.id, request.direction === "up" ? "vps" : "device"); return r; }
       if (request.action === "vpsAbortMove") { const r = await m.abortMove(); vpsModes.set(user.id, await m.mode()); return r; }
@@ -1591,7 +1603,13 @@ void app.whenReady().then(async () => {
     if (request.action.startsWith("pro")) {
       const o = (await engineFor(user.id)).organizer;
       if (request.action === "proSettings") return request.set ? o.setSettings(request.set) : o.settings();
-      if (request.action === "proInbox") return o.inbox();
+      // With a VPS worker, what it changed in the workspace (Telegram with the laptop off, its sweeps and routines)
+      // comes with the inbox, for the window to apply with the same function (core/workspace/ops.ts).
+      if (request.action === "proInbox") {
+        const inbox = await o.inbox(), m = vpsManagers.get(user.id);
+        const ws = m && await vpsConfigured(user.id) ? await m.pullOps(request.vpsSync).catch((e) => { console.warn("[vps] pull:", (e as Error).message); return null; }) : null;
+        return ws && (ws.ops.length || ws.id !== request.vpsSync?.id) ? { ...inbox, ws } : inbox;
+      }
       if (request.action === "proAck") return o.ack(request);
       if (request.action === "proLog") return o.log();
       if (request.action === "proStatus") return o.statuses(request.keys);

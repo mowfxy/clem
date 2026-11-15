@@ -21,6 +21,9 @@ import { GucError, asGucError } from "./errors.ts";
 import { GucClient, fetchFile, login, type Credentials, type Http } from "./guc-client.ts";
 import * as read from "./guc-read.ts";
 import * as subjects from "./subjects.ts";
+import { addCorrection, dropItems, forgetRead, loadCorrections, putItem, storedItems, undoCorrection } from "./corrections.ts";
+import type { Correction } from "../../core/guc/corrections.ts";
+import type { GucDeadline } from "../../core/guc/types.ts";
 import { dueParts, previousSnapshot, syncGuc, type Part } from "./guc-sync.ts";
 import type { EngineHost } from "./host.ts";
 import { Jobs } from "./jobs.ts";
@@ -28,7 +31,7 @@ import { Organizer } from "./organizer.ts";
 import { TelegramRelay } from "./telegram.ts";
 import type { Backend } from "./db.ts";
 
-const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive"];
+const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive", "guc_corrections"];
 /** The GUC pulse: every 2 minutes it reads only the parts whose pace has come round (guc-sync.ts PACE): mail and
  *  course pages every few minutes, grades every 15, heavy pages rarely. Runs where the engine runs (this PC or the VPS). */
 export const GUC_SYNC_CRON = "*/2 * * * *";
@@ -74,6 +77,8 @@ export class Engine {
     this.organizer = new Organizer({ db, owner, host, clock: o.clock, guc: () => this.gucFacts() });
     this.telegram = new TelegramRelay({ db, owner, host, organizer: this.organizer, clock: o.clock, engine: { checkNow: (id) => this.check(id, "now"), file: (id) => this.file(id) } });
     if (host.account) this.organizer.telegram = this.telegram;
+    // "Undo that" (clem.undo) also lifts the person's latest correction of what Clem synced (docs/GUC-VPS-ENGINE.md).
+    this.organizer.corrections = { recent: (since) => loadCorrections(this.db, this.owner, since), undo: (id) => this.uncorrect(id) };
     this.deviceStore = o.store || new DeviceStore(host.paths.files || (host.paths.data ? join(host.paths.data, "..", "Files") : join(tmpdir(), "clem-guc-files", owner)));
   }
 
@@ -351,6 +356,56 @@ export class Engine {
       drive = { folder: parts.join("/") || "My Drive", id: (await d.upload(folder, f.name, f.path, f.type)).id };
     }
     return { ...r, subjectId: link?.subjectId, drive };
+  }
+
+  // ---------- Corrections (docs/GUC-VPS-ENGINE.md → Corrections; desktop/engine/corrections.ts) ----------
+  private lastFix = 0;
+  /** The person's corrections in force, oldest first. */
+  corrections() { return loadCorrections(this.db, this.owner); }
+  /** The tracked items as stored, with the text each was read from (corrections key on it). */
+  trackedItems() { return storedItems(this.db, this.owner); }
+  /** Records a correction and applies it where the item lives now: `put` writes the item as corrected, `drop` removes
+   *  it. Coming up, the Now card and the organizer see it at once; the next sync keeps it. */
+  async correct(c: Omit<Correction, "id" | "at">, apply: { put?: GucDeadline; drop?: string } = {}) {
+    // One after another, even on a clock that stands still (tests): "undo that" lifts the latest.
+    this.lastFix = Math.max(this.clock(), this.lastFix + 1);
+    const made = await addCorrection(this.db, this.owner, c, this.lastFix);
+    if (apply.put) await putItem(this.db, this.owner, apply.put);
+    if (apply.drop) await dropItems(this.db, this.owner, { id: apply.drop });
+    this.touch();
+    return made;
+  }
+  /** Undoes one correction: the item is put back as it was (a link change is linked back). Null when none has that id. */
+  async uncorrect(id: string) {
+    const c = await undoCorrection(this.db, this.owner, id);
+    if (c?.kind === "link") {
+      const { subjectId, from } = c.patch as { subjectId: string; from?: string };
+      if (from) await this.link(subjectId, from); else await this.unlink(subjectId);
+    }
+    if (c) this.touch();
+    return c;
+  }
+  /** Something the person sees changed outside a sync: the Now card is read again and the window refreshes. */
+  private touch() { this.version++; this.host.changed?.(); }
+  /** Reads GUC now, all of it or one course (its page, and its mail's deadlines). The result in counts. */
+  async resync(courseKey?: string) {
+    if (!courseKey) { const s = await this.sync(); return { events: s.stats?.events ?? 0, missed: s.stats?.missed || [] }; }
+    const out: { result?: SyncResult } = {};
+    await this.syncCourse(courseKey, undefined, undefined, out);
+    return { events: out.result?.events ?? 0, missed: out.result?.missed || [] };
+  }
+  /** Reads a course's posts and mail again for dates (all of them, or only `textIds`), quietly: nothing found is told
+   *  as news. What the person corrected still holds. */
+  async reread(courseKey: string, textIds?: string[]) {
+    await forgetRead(this.db, this.owner, courseKey, textIds);
+    return this.resync(courseKey);
+  }
+  /** Clears what Clem worked out for one course (its Coming up items and what was read) and reads it again from GUC. */
+  async rebuild(courseKey: string) {
+    await dropItems(this.db, this.owner, { courseKey });
+    await forgetRead(this.db, this.owner, courseKey);
+    this.touch();
+    return this.resync(courseKey);
   }
 
   // ---------- Subjects and their courses (core/guc/setup-flow.ts, src/guc/setup.ts) ----------

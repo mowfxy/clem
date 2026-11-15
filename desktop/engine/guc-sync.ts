@@ -4,6 +4,8 @@ import { announcementEdits, bareText, diffSnapshots, newCourses, type Announceme
 import { courseDeadlines, DEADLINE_VERSION, fileUpdate } from "../../core/guc/deadlines.ts";
 import { applyReader, courseTexts, fileText, isSeatingFile, mailTexts, readerPrompt, type CourseText } from "../../core/guc/deadline-ai.ts";
 import { DONE_DAYS, endsAt, materialFile, weekLabel } from "../../core/guc/hub.ts";
+import { applyCorrections, rulesFor, rulesText, textAllowed } from "../../core/guc/corrections.ts";
+import { loadCorrections } from "./corrections.ts";
 import { extractText } from "./file-text.ts";
 import { mailAbout } from "../../core/guc/mail-about.ts";
 import { slotCourse } from "../../core/guc/match.ts";
@@ -265,6 +267,9 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   // answer stands until the texts change. A course a new announcement reader just read again reads every text once (the
   // diff makes what it finds a baseline).
   const at = now.getTime(), who = { courses: next.courses, username: client.username, now: at };
+  // What the person corrected (desktop/engine/corrections.ts): their rules keep texts out and are told to the reader,
+  // and their overrides are applied to what it finds, so a sync never brings back what they removed or undoes an edit.
+  const fixes = await loadCorrections(db, owner).catch(() => []);
   const jobs = new Map<string, { course: GucCourse; texts: CourseText[]; page?: { url: string; memo: PageMemo } }>();
   for (const [key, r] of read) jobs.set(key, { course: r.course, texts: [...r.texts, ...mailTexts(next.mail || [], r.course, who)], page: { url: r.url, memo: r.memo } });
   for (const course of next.courses.filter(current)) if (!jobs.has(course.key) && fresh.has(course.key)) {
@@ -307,14 +312,16 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   seen.files = { read: files.read.slice(-500), tries: files.tries };
   await pool([...jobs.values()], READERS_AT_ONCE, async ({ course, texts, page }) => {
     const had = new Set(switched.has(course.key) ? [] : textsRead[course.key] || []);
-    const unread = texts.filter((t) => !had.has(t.id));
+    const rules = rulesFor(fixes, course.key);
+    const unread = texts.filter((t) => !had.has(t.id) && textAllowed(t, rules, at));
     const tracked = deadlines.filter((d) => d.courseKey === course.key && Date.parse(d.due) >= at - 30 * 864e5);
+    const firstRead = !fresh.has(course.key) || switched.has(course.key);
     let list = tracked, ok = true;
     if (unread.length) {
       const sig = stableId(unread.map((t) => t.id).sort().join("|")), tries = fails[course.key]?.texts === sig ? fails[course.key].n : 0;
       let ai: GucDeadline[] | null = null;
       if (o.reader && tries < READER_TRIES) {
-        const input = { course, slots: next.slots, texts: unread, tracked, now: at, exams: (next.exams || []).filter((e) => sameCode(e.code, course.code)) };
+        const input = { course, slots: next.slots, texts: unread, tracked, now: at, exams: (next.exams || []).filter((e) => sameCode(e.code, course.code)), rules: rulesText(rules), firstRead };
         try { const raw = await within(o.reader(readerPrompt(input)), o.readerMs ?? READER_MS); ai = raw == null ? null : applyReader(parseModelJson(raw), input); } catch { ai = null; }
         if (!ai) { ok = tries + 1 >= READER_TRIES; fails[course.key] = { texts: sig, n: tries + 1 }; warnings.push(course.code + ": deadline reader didn't answer"); }
         else delete fails[course.key];
@@ -322,12 +329,16 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
       if (ai) list = ai;
       else {
         const mine = next.slots.filter((x) => sameCode(x.code, course.code));
-        const rules = new Map(courseDeadlines(unread.filter((t) => t.source !== "file").map((t) => ({ text: t.text, source: t.source })), course.key, now, mine).map((d) => [d.id, d]));
-        list = [...tracked.filter((d) => !rules.has(d.id)), ...rules.values()];
+        const found = new Map(courseDeadlines(unread.filter((t) => t.source !== "file").map((t) => ({ text: t.text, source: t.source, id: t.id, sent: t.sent, around: t.around })), course.key, now, mine).map((d) => [d.id, d]));
+        list = [...tracked.filter((d) => !found.has(d.id)), ...found.values()];
         // A file sets the room (and time) of the item its title names, for the student's group's row; unsure: nothing.
         for (const f of unread.filter((t) => t.source === "file")) { const u = fileUpdate({ title: f.label.replace(/^File: /, "").replace(/ \([^)]*\)$/, ""), text: f.text }, list, mine); if (u) list = list.map((d) => (d.id === u.id ? u : d)); }
       }
     }
+    // Something new that is already over never joins Coming up (an old message read late), and the person's
+    // corrections hold whatever was read.
+    const had2 = new Set(tracked.map((d) => d.id));
+    list = applyCorrections(list.filter((d) => had2.has(d.id) || endsAt(d) > at), fixes, { now: at });
     deadlines.splice(0, deadlines.length, ...deadlines.filter((d) => d.courseKey !== course.key), ...list);
     // A course the switch read counts as read by this reader only once its deadlines were read too, so a model that
     // didn't answer leaves the next read a baseline as well.
@@ -364,9 +375,9 @@ async function events(t: Db, owner: string, list: GucEvent[]) {
 /** The tracked items (Coming up's rows besides exam seats), replaced as a whole. */
 async function saveDeadlines(t: Db, owner: string, list: GucDeadline[]) {
   await t.query("delete from guc_deadlines where owner_id = $1", [owner]);
-  await t.query(`insert into guc_deadlines (owner_id, deadline_id, course_key, title, due, source, note, kind, place, covers, time_known, either)
-    select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::bool[], $12::text[]) on conflict do nothing`,
-    [owner, ...columns(lastOf(list), (d) => d.id, (d) => d.courseKey, (d) => d.title, (d) => d.due, (d) => d.source, (d) => d.note ?? null, (d) => d.kind ?? null, (d) => d.place ?? null, (d) => d.covers ?? null, (d) => d.timeKnown ?? null, (d) => d.either ?? null)]);
+  await t.query(`insert into guc_deadlines (owner_id, deadline_id, course_key, title, due, source, note, kind, place, covers, time_known, either, source_ref, sent_at)
+    select $1::text, * from unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::bool[], $12::text[], $13::text[], $14::timestamptz[]) on conflict do nothing`,
+    [owner, ...columns(lastOf(list), (d) => d.id, (d) => d.courseKey, (d) => d.title, (d) => d.due, (d) => d.source, (d) => d.note ?? null, (d) => d.kind ?? null, (d) => d.place ?? null, (d) => d.covers ?? null, (d) => d.timeKnown ?? null, (d) => d.either ?? null, (d) => d.ref ?? null, (d) => d.sent ?? null)]);
 }
 
 /** JSON with object keys sorted: the database (jsonb) keeps keys in its own order. */

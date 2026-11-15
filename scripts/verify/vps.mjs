@@ -42,7 +42,7 @@ function fakeMain() {
     vpsCap: () => status(),
     vpsPinned: () => ["file-notes"],
     vpsPin: () => ({ ok: true }),
-    vpsWorker: (r) => { s.worker = r.on; return status(); },
+    vpsWorker: async (r) => { await new Promise((ok) => setTimeout(ok, 700)); s.worker = r.on; return status(); },
     vpsConfirm: () => ({ exitCode: 0, output: "Removed 3 old log files." }),
     vpsCancel: () => ({ ok: true }),
   };
@@ -99,8 +99,8 @@ try {
       await dialog.getByRole("button", { name: "Save and test" }).click();
       await dialog.locator("h3", { hasText: /^Your VPS$/ }).waitFor({ timeout: 5000 });
       const text = await dialog.textContent();
-      check(/Connected in 38 ms/.test(text) && /Ubuntu 24\.04/.test(text) && /Docker is ready/.test(text) && /free of/.test(text), `${theme}: the test shows latency, OS, disk and Docker`);
-      check(text.includes(FP) && /First time here/.test(text), `${theme}: the fingerprint, trusted on first use`);
+      check(/Connected in 38 ms/.test(text) && /Ubuntu 24\.04/.test(text) && /Docker ready/.test(text) && /free of/.test(text), `${theme}: the test shows latency, OS, disk and Docker`);
+      check(text.includes(FP) && /Fingerprint saved/.test(text), `${theme}: the fingerprint, trusted on first use`);
       check(await dialog.locator(".vps-dot.is-on").count() >= 1, `${theme}: a live status dot`);
       await shot("tested", ".app-modal");
       // Storage: usage, then Move everything with its progress, then done.
@@ -117,12 +117,20 @@ try {
       check(await dialog.getByLabel("Cache limit").count() === 1 && /Pinned to this PC/.test(after), `${theme}: the cache limit and pinned files`);
       await dialog.locator(".vps-usage").scrollIntoViewIfNeeded();
       await shot("stored", ".app-modal");
-      // The worker.
-      await dialog.locator(".vps-section .mw-switch").last().click();
-      await dialog.locator(".vps-facts").waitFor({ timeout: 4000 });
-      const facts = await dialog.locator(".vps-facts").textContent();
-      check(/Your VPS/.test(facts) && /Docker, with Postgres/.test(facts) && /min ago|just now/.test(facts) && /CLI signed in/.test(facts), `${theme}: the worker runs on the VPS, its heartbeat and model`);
-      await dialog.locator(".vps-facts").scrollIntoViewIfNeeded();
+      // The worker. Pressing the switch moves it at once and locks it; nothing else in the pop-up moves or dims.
+      const sw = dialog.locator(".vps-section .mw-switch").last();
+      await sw.scrollIntoViewIfNeeded();
+      const where = () => dialog.evaluate((d) => ({ below: Math.round(d.querySelector(".vps-section:last-of-type details").getBoundingClientRect().top), dim: [...d.querySelectorAll(".vps-manage button")].filter((b) => getComputedStyle(b).opacity !== "1").length }));
+      const before = await where();
+      await sw.click();
+      await page.waitForTimeout(150);
+      const during = await where(), input = sw.locator("input");
+      check(await input.isChecked() && await input.isDisabled(), `${theme}: the switch turns on at once and is locked while it runs`);
+      check(during.below === before.below && during.dim === 0, `${theme}: pressing it moves nothing (${during.below - before.below}px) and dims no button (${during.dim})`);
+      await dialog.locator(".vps-status", { hasText: "Running on your VPS" }).waitFor({ timeout: 4000 });
+      const facts = await dialog.locator(".vps-status").textContent();
+      check(/Running on your VPS/.test(facts) && /min ago|just now/.test(facts) && /AI signed in/.test(facts), `${theme}: the worker runs on the VPS, its heartbeat and model, in one line`);
+      await dialog.locator(".vps-status").scrollIntoViewIfNeeded();
       await shot("worker", ".app-modal");
       const lay = await dialog.evaluate((d) => {
         const r = (el) => el.getBoundingClientRect(), box = r(d), head = r(d.querySelector(".modal-heading"));

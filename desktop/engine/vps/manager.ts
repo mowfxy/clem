@@ -6,16 +6,18 @@ import type { Db } from "../db.ts";
 import type { Engine } from "../index.ts";
 import { DeviceStore } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
-import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
-import { snapshotOf } from "../../../core/proactivity/snapshot.ts";
+import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
+import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
 import { generateKey, publicOf } from "./keys.ts";
-import { SshLink, type LinkConfig, type VpsLink } from "./link.ts";
-import { installWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
+import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
+import { installDocker, installWorker, reviveWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
 import { Migrator } from "./migrate.ts";
+import { claudeSignIn, cliSignedIn, codexSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
 import { StorageRouter, type LocalBlobs } from "./router.ts";
 import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
 import { VpsTools } from "./tools.ts";
+import { DiskLimit, sshDisk } from "./limit.ts";
 
 /** Everything kept in the Vault under vps-<owner>: the connection, its key or password, and the worker's secrets. */
 export type VpsVault = {
@@ -36,9 +38,21 @@ export type ManagerDeps = {
   engineToken?: () => Promise<string | undefined>;
   connect?: (c: LinkConfig) => Promise<VpsLink & { fingerprint?: string; firstTime?: boolean }>;
   log?: (m: string) => void;
-  changed?: (what: "status" | "migration" | "worker") => void;
+  changed?: (what: "status" | "migration" | "worker" | "workspace") => void;
   notify?: (n: { key: string; title: string; body: string; open?: object }) => void;
+  /** A sign-in window on this PC for a CLI signing in on the server; `landed` hears each address it reaches. */
+  openSignIn?: (url: string, landed: (url: string) => void) => () => void;
+  /** The AI this PC uses (its signed-in CLI), so the VPS gets the same one. */
+  preferredCli?: () => Promise<ServerCli | undefined>;
+  /** Tests: the time. */
+  clock?: () => number;
 };
+/** Reconnecting after a failure waits one beat, then two, four, eight, at most ten minutes (any action tries at once). */
+export const RETRY_MAX_MS = 10 * 60_000;
+/** Beats in a row the worker didn't answer while SSH did, before Clem starts it again (at most once in 10 minutes). */
+export const REVIVE_AFTER = 3;
+/** What the person reads when the connection drops during the switch and a second try didn't help either. */
+export const INSTALL_DROPPED = "The connection to your VPS dropped while Clem was setting it up. Nothing was left half-done: turn it on again and Clem picks up where it stopped.";
 
 export class VpsManager {
   readonly owner: string;
@@ -52,9 +66,12 @@ export class VpsManager {
   private lastTest?: VpsTest; private online?: boolean;
   private pushTimer?: ReturnType<typeof setTimeout>;
   readonly tools: VpsTools;
+  /** At most 75% of the VPS disk full because of Clem (core/vps/limit.ts): measured with df there, every 5 minutes. */
+  readonly limit: DiskLimit;
   constructor(d: ManagerDeps) {
     this.d = d; this.owner = d.owner;
     this.tools = new VpsTools(() => this.link());
+    this.limit = new DiskLimit({ measure: sshDisk(() => this.link(), vpsRoot(d.owner)), clock: d.clock });
   }
   private key() { return "vps-" + this.owner; }
   async vault(): Promise<VpsVault> { return (await this.d.secrets.get<VpsVault>(this.key())) || {}; }
@@ -66,7 +83,10 @@ export class VpsManager {
     if (!v.config) throw Error("Set up the VPS first.");
     return { host: v.config.host, port: v.config.port, user: v.config.user, fingerprint: v.config.fingerprint, ...(v.privateKey ? { privateKey: v.privateKey, passphrase: v.passphrase } : {}), ...(v.allowPassword && v.password ? { password: v.password } : {}) };
   }
+  private now() { return (this.d.clock || Date.now)(); }
   link(): Promise<VpsLink> {
+    // A connection that died (the server closed it, the PC slept) is never handed out again.
+    if (this.current?.closed) { this.linkJob = undefined; this.current = undefined; this.tunnel?.close(); this.tunnel = undefined; this.client = undefined; }
     this.linkJob ||= (async () => {
       const c = this.linkConfig(await this.vault());
       const l = await (this.d.connect || SshLink.connect)(c);
@@ -149,7 +169,7 @@ export class VpsManager {
     this.routerJob ||= (async () => {
       const v = await this.vault(); this.modeNow = v.storage?.mode || "device";
       const engine = await this.d.engine();
-      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, cap: v.storage?.cap || DEFAULT_CACHE_CAP, log: (m) => this.log(m) }).init();
+      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, cap: v.storage?.cap || DEFAULT_CACHE_CAP, log: (m) => this.log(m), limit: this.limit }).init();
     })().catch((e) => { this.routerJob = undefined; throw e; });
     return this.routerJob;
   }
@@ -163,7 +183,7 @@ export class VpsManager {
   private async migratorFor() {
     if (!this.migrator) {
       const engine = await this.d.engine();
-      this.migrator = new Migrator({ db: engine.db, owner: this.owner, router: await this.router(), local: this.d.local, remote: () => this.vpsStore(), device: new DeviceStore(this.d.files), log: (m) => this.log(m),
+      this.migrator = new Migrator({ db: engine.db, owner: this.owner, router: await this.router(), local: this.d.local, remote: () => this.vpsStore(), device: new DeviceStore(this.d.files), log: (m) => this.log(m), limit: this.limit,
         onProgress: (m) => { this.d.changed?.("migration"); if (m && ["done", "failed"].includes(m.status)) void this.moved(m.direction, m.done, m.bytesDone, m.failed); } });
     }
     return this.migrator;
@@ -197,11 +217,17 @@ export class VpsManager {
   /** "Run Clem's background jobs on my VPS": install or refresh the worker, send its secrets sealed, start the
    *  heartbeat. The desktop keeps running jobs until the worker's first beat takes the lease. */
   async enableWorker(progress?: (label: string) => void) {
-    await this.install(progress);
+    // One switch does it all: Docker first when the server can take it (else systemd with Node, as before)…
+    const installed = await installDocker(await this.link(), progress).catch((e) => { this.log("[vps] docker: " + (e as Error).message); return false; });
+    if (installed) await this.drop(); // the docker group counts only on a new SSH session
+    await this.retryDropped(() => this.install(progress));
     // Its database starts empty: subject links and settings, the organizer's settings, watches and mutes follow.
     await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
     this.startHeartbeat();
     await this.pushWorkspace(true);
+    // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once).
+    const v = await this.vault();
+    if (!v.modelKey && this.workerModel !== "cli") await this.connectCli((await this.d.preferredCli?.().catch(() => undefined)) || "claude").catch((e) => this.log("[vps] ai: " + (e as Error).message));
     return this.status();
   }
   /** Uploads this app's worker bundle with the worker's key and secrets, and starts it (its database is kept). */
@@ -215,19 +241,32 @@ export class VpsManager {
     const r = await installWorker({ link: l, owner: this.owner, bundle: this.d.bundle, key: Buffer.from(key, "base64"), secrets, accountService: this.d.accountService, publicHost: v.config?.host, progress });
     await this.save({ worker: { enabled: true, kind: r.kind, key, rpc, installedAt: Date.now(), ...(this.d.version ? { version: this.d.version } : {}) } });
   }
-  private refreshing?: Promise<void>;
-  /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs): it is
-   *  refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
-   *  lease meanwhile as usual (an unreachable worker is covered by desktopRunsOffline). */
-  refreshWorker() {
+  /** A step over SSH that the connection dropping in the middle of shouldn't break: tried again once on a fresh
+   *  connection (every step of the install can run twice), then one plain sentence. */
+  private async retryDropped<T>(fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); } catch (e) {
+      if (!isDrop(e) && !this.current?.closed) throw Error(plain(e));
+      this.log("[vps] connection dropped; trying once more");
+      await this.drop();
+      try { return await fn(); } catch (e2) { throw Error(isDrop(e2) || this.current?.closed ? INSTALL_DROPPED : plain(e2)); }
+    }
+  }
+  private refreshing?: Promise<void>; private refreshFailed = 0;
+  /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs), and a
+   *  worker whose health names another protocol than this desktop's (WORKER_PROTOCOL) may not understand it: either
+   *  is refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
+   *  lease meanwhile as usual (an unreachable worker is covered by desktopRunsOffline). A failed refresh waits 30 minutes. */
+  refreshWorker(force = false) {
+    if (!this.refreshing && this.now() - this.refreshFailed < 30 * 60_000) return Promise.resolve();
     this.refreshing ||= (async () => {
       const v = await this.vault();
-      if (!v.worker?.enabled || !this.d.version || v.worker.version === this.d.version) return;
-      this.log("[vps] refreshing the worker to " + this.d.version);
-      await this.install();
+      if (!v.worker?.enabled) return;
+      if (!force && (!this.d.version || v.worker.version === this.d.version)) return;
+      this.log("[vps] refreshing the worker" + (this.d.version ? " to " + this.d.version : ""));
+      await this.retryDropped(() => this.install());
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       await this.pushWorkspace(true);
-    })().catch((e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; });
+    })().then(() => { this.refreshing = undefined; }, (e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; this.refreshFailed = this.now(); });
     return this.refreshing;
   }
   async disableWorker() {
@@ -245,6 +284,44 @@ export class VpsManager {
     if (!v.worker?.enabled) return;
     await sendSecret(await this.link(), this.owner, Buffer.from(v.worker.key, "base64"), name, value);
   }
+  // ---------- AI on the VPS ----------
+  private signIn?: NonNullable<WorkerView["signIn"]>; private pasteCode?: (code: string) => void;
+  /** "Use Claude / ChatGPT on my VPS": installs the CLI inside the worker, signs it in there with the person's own
+   *  account (a window on this PC for Claude, a device code for Codex), then restarts the worker so it uses it.
+   *  Returns at once; progress is in `status().worker.signIn`. */
+  async connectCli(cli: ServerCli) {
+    const v = await this.vault();
+    if (!v.worker?.enabled || !v.worker.kind) throw Error("Turn on background jobs on your VPS first.");
+    if (this.signIn && ["installing", "waiting", "finishing"].includes(this.signIn.step)) return this.status();
+    const kind = v.worker.kind, owner = this.owner;
+    const step = (s: NonNullable<WorkerView["signIn"]>) => { this.signIn = s; this.d.changed?.("worker"); };
+    step({ cli, step: "installing" });
+    void (async () => {
+      const l = await this.link();
+      await installCli(l, kind, owner, cli);
+      if (!(await cliSignedIn(l, kind, owner, cli))) {
+        let done: Promise<boolean>;
+        if (cli === "codex") { const c = await codexSignIn(l, kind, owner); step({ cli, step: "waiting", url: c.url, code: c.code }); done = c.done; }
+        else {
+          if (!this.d.openSignIn) throw Error("Sign-in windows need the Clem desktop app.");
+          const c = await claudeSignIn(l, kind, owner, this.d.openSignIn);
+          this.pasteCode = c.paste; step({ cli, step: "waiting", url: c.url }); done = c.done;
+        }
+        const ok = await done; this.pasteCode = undefined;
+        if (!ok || !(await cliSignedIn(l, kind, owner, cli))) throw Error("The sign-in on your VPS didn't finish. Try again.");
+      }
+      step({ cli, step: "finishing" });
+      await restartWorker(l, kind, owner);
+      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
+      // It answers again within seconds; the next heartbeat reads its model.
+      for (let i = 0; i < 12 && this.workerModel !== "cli"; i++) { await new Promise((r) => setTimeout(r, 5000)); await this.heartbeat().catch(() => {}); }
+      this.signIn = undefined; this.d.changed?.("worker");
+    })().catch((e) => { this.pasteCode = undefined; step({ cli, step: "failed", error: (e as Error).message }); });
+    return this.status();
+  }
+  /** A code the person copied from Claude's page, if the window didn't hand it over by itself. */
+  pasteCliCode(code: string) { if (!this.pasteCode) throw Error("No sign-in is waiting for a code."); this.pasteCode(code); return { ok: true }; }
+
   async setModelKey(k?: { key: string; model?: string }) { await this.save({ modelKey: k?.key ? { provider: "anthropic", key: k.key.trim(), ...(k.model ? { model: k.model } : {}) } : undefined }); await this.secretChanged("model", k?.key ? (await this.vault()).modelKey : undefined); return this.status(); }
 
   private async worker(): Promise<WorkerClient> {
@@ -257,46 +334,137 @@ export class VpsManager {
   }
   /** The worker's engine, while it is the one running jobs (the window's requests go there). */
   async remote(): Promise<WorkerClient | undefined> {
-    if (!this.workerRunner || Date.now() - this.lastWorker > STALE_MS) return undefined;
+    if (!this.workerRunner || this.now() - this.lastWorker > STALE_MS) return undefined;
     return this.worker().catch(() => undefined);
   }
+  private beating?: Promise<void>; private lastBeat = 0; private awakeSince = 0; private failures = 0; private retryAt = 0; private workerDown = 0; private revivedAt = 0;
   /** One beat: step the lease on the worker; this engine runs jobs only when the lease says so, or when the worker
-   *  has been unreachable for longer than STALE_MS. Pulls the worker's notices; Telegram stays here without its model. */
-  async heartbeat() {
-    const engine = await this.d.engine();
+   *  has been unreachable for longer than STALE_MS. Pulls the worker's notices; Telegram stays here without its model.
+   *  Beats never overlap; after a failure the next tries back off (RETRY_MAX_MS); the first beat after the PC slept
+   *  reconnects before deciding anything, so a laptop that wakes never runs jobs the worker is already running. */
+  heartbeat() { return (this.beating ||= this.beatOnce().finally(() => { this.beating = undefined; })); }
+  private async beatOnce() {
+    const engine = await this.d.engine(), now = this.now();
+    const slept = this.lastBeat > 0 && now - this.lastBeat > 3 * BEAT_MS;
+    this.lastBeat = now;
+    // Time asleep doesn't count as the worker being out of reach: only time awake without reaching it does.
+    if (slept) { this.log("[vps] back after a pause: reconnecting"); this.retryAt = 0; this.awakeSince = now; await this.drop(); }
     let desktopRuns: boolean;
     try {
-      const c = await this.worker();
-      const [{ lease, run }, health] = await Promise.all([c.lease(), c.health()]);
+      if (now < this.retryAt) throw Error(this.workerError || DROPPED);
+      const { c, health } = await this.connected();
+      const { lease, run } = await c.lease();
       this.lastWorker = lease.seen.worker || 0;
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
-      this.workerError = undefined;
+      this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
+      // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
+      if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
+      // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
+      if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
+      // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
+      const head = health.ws as { id: string; seq: number } | null | undefined;
+      if (head && (head.seq > this.pulled || head.id !== this.wsHead?.id)) { this.wsHead = head; this.d.changed?.("workspace"); }
+      // Reached again after a while (the laptop woke): the worker gets this PC's workspace first.
+      if (Date.now() - this.pushedAt > 10 * 60_000) void this.pushWorkspace(true);
       desktopRuns = run;
       for (const n of await c.notices().catch(() => [])) this.d.notify?.(n);
     } catch (e) {
-      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined; this.linkJob = undefined;
+      this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       this.workerError = (e as Error).message;
-      desktopRuns = desktopRunsOffline(this.lastWorker, Date.now());
+      if (now >= this.retryAt) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
+      // Just woke and still can't reach it: decide on the next beat, not on a connection the sleep broke.
+      desktopRuns = slept ? engine.isRunner : desktopRunsOffline(Math.max(this.lastWorker, this.awakeSince), now);
       if (desktopRuns) this.workerRunner = false;
     }
     await engine.runner(desktopRuns);
     if (!desktopRuns && this.workerModel === "none") engine.telegram.start();
     this.d.changed?.("worker");
   }
+  /** The worker's client through a live connection. SSH answering while the worker doesn't, beat after beat, means
+   *  the worker is down (stopped, crashed, hung): Clem starts it again, at most once in ten minutes. */
+  private async connected(): Promise<{ c: WorkerClient; health: Record<string, unknown> }> {
+    const l = await this.link();
+    try {
+      const c = await this.worker();
+      return { c, health: await c.health() };
+    } catch (e) {
+      const unreachable = (e as { unreachable?: boolean }).unreachable || /Not allowed|refused|isn't answering|didn't answer/i.test((e as Error).message);
+      if (!unreachable || l.closed) throw e;
+      this.workerDown++;
+      const v = await this.vault();
+      if (this.workerDown >= REVIVE_AFTER && v.worker?.kind && this.now() - this.revivedAt > 10 * 60_000) {
+        this.revivedAt = this.now();
+        this.log("[vps] the worker isn't answering; starting it again");
+        await reviveWorker(l, this.owner, v.worker.kind).catch((err) => this.log("[vps] revive: " + (err as Error).message));
+        this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
+      }
+      throw e;
+    }
+  }
   startHeartbeat() { if (this.beat) return; void this.refreshWorker(); void this.heartbeat(); this.beat = setInterval(() => void this.heartbeat(), BEAT_MS); this.beat.unref?.(); }
+  /** The PC woke from sleep or came back online (main hears powerMonitor): beat now instead of within the minute. */
+  wake() { if (this.beat) { this.lastBeat = 1; void this.heartbeat(); } }
   stopHeartbeat() { if (this.beat) clearInterval(this.beat); this.beat = undefined; }
-  /** The compact workspace snapshot the organizer reads, sent when the workspace changes (at most every 20 s). */
+  /** The workspace the worker's agent and organizer work on (core/workspace/ops.ts leanState: chats cut to their
+   *  latest messages, files as metadata with where their bytes are on the VPS), sent when it changes (at most every
+   *  20 s) and when the worker is reached again. The worker keeps its own changes the desktop hasn't saved on top. */
   async pushWorkspace(now = false, state?: unknown) {
     if (!(await this.vault()).worker?.enabled) return;
     const send = async () => {
       this.pushTimer = undefined;
-      try { await (await this.worker()).pushWorkspace({ __snapshot: true, ...snapshotOf(state ?? await this.workspaceState?.(), Date.now()) }); }
-      catch (e) { this.log("[vps] workspace push: " + (e as Error).message); }
+      try {
+        const lean = leanState(state ?? await this.workspaceState?.());
+        await (await this.worker()).pushWorkspace({ ...lean, files: await this.withBlobs(lean.files) });
+        this.pushedAt = Date.now();
+      } catch (e) { this.log("[vps] workspace push: " + (e as Error).message); }
     };
     if (now) return send();
     if (!this.pushTimer) { this.pushTimer = setTimeout(() => void send(), 20_000); this.pushTimer.unref?.(); }
   }
+  private pushedAt = 0;
+  /** Each file with where its bytes are on the VPS (content-addressed: the worker reads the same name on its disk). */
+  private async withBlobs(files: { id: string }[]) {
+    const engine = await this.d.engine();
+    const rows = await engine.db.query<{ file_id: string; path: string; size: string; sha256: string }>("select file_id, path, size, sha256 from file_objects where owner_id = $1 and location = 'vps' and (file_id like 'ws:%' or file_id like 'guc:%')", [this.owner]);
+    const at = new Map(rows.map((r) => [r.file_id, r]));
+    return files.map((f) => {
+      const r = at.get(f.id.startsWith("guc_") ? "guc:" + f.id.slice(4) : "ws:" + f.id);
+      if (!r) return f;
+      const ext = (r.path.split("/").pop() || "").split(".")[1] || "";
+      return { ...f, blob: { sha256: r.sha256, ext, size: Number(r.size) } };
+    });
+  }
+  /** What the worker changed in the workspace since `cursor` (the window's own `State.vpsSync`): files it made are
+   *  known to this PC's router as files on the VPS before the window sees them. Null without a worker copy. */
+  async pullOps(cursor?: WsCursor | null): Promise<WsBatch | null> {
+    const v = await this.vault();
+    if (!v.worker?.enabled) return null;
+    const batch = await (await this.worker()).ops(cursor);
+    if (!batch) return null;
+    const r = await this.router();
+    for (const op of batch.ops) {
+      // A file the worker couldn't keep on the VPS past its storage limit came with its bytes: kept on this PC now.
+      if (op.t === "put" && op.kind === "file" && typeof op.item.inline === "string") {
+        const { inline, blob: _b, ...file } = op.item as { id: string; inline: string; blob?: unknown };
+        await r.writeFile(file.id, new Uint8Array(Buffer.from(inline, "base64"))).catch((e) => this.log("[vps] pull: " + (e as Error).message));
+        (op as { item: unknown }).item = file;
+        continue;
+      }
+      if (op.t !== "put" || op.kind !== "file" || !op.item.blob) continue;
+      const { blob, ...file } = op.item as { id: string; blob: { sha256: string; ext: string; size: number } };
+      const store = this.vpsStore();
+      if (!/^[a-f0-9]{64}$/.test(blob.sha256)) continue;
+      const path = store ? store.pathOf(blob.sha256, blob.ext) : `${vpsRoot(this.owner)}/${blob.sha256}${blob.ext ? "." + blob.ext : ""}`;
+      if (!file.id.startsWith("guc_")) await r.markVps(file.id, path, blob.sha256, blob.size, false).catch((e) => this.log("[vps] pull: " + (e as Error).message));
+      (op as { item: unknown }).item = file;
+    }
+    this.pulled = Math.max(this.pulled, batch.last);
+    return batch;
+  }
+  private pulled = 0; private wsHead?: { id: string; seq: number };
+  /** The worker runs Clem's jobs (and the person's routines) right now: the window leaves them to it. */
+  workerRuns() { return this.workerRunner && Date.now() - this.lastWorker <= STALE_MS; }
   /** The saved workspace (main sets this to the window's state.json reader). */
   workspaceState?: () => Promise<unknown>;
   /** Copies what the worker's empty database needs from this engine's. */
@@ -313,9 +481,11 @@ export class VpsManager {
   async status(): Promise<VpsStatus> {
     const v = await this.vault();
     const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
+    // The disk is measured (again every 5 minutes) while the VPS answers; Settings shows Clem's share of it.
+    if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
-    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}) };
+    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }
   async close() { this.stopHeartbeat(); if (this.pushTimer) clearTimeout(this.pushTimer); await this.migrator?.abort().catch(() => {}); await this.drop(); }

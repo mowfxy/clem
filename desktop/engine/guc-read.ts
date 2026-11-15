@@ -3,6 +3,8 @@ import { comingUp, materialFile, semesterOrder, type HubMail, type HubTerm, type
 import { normCode, withCode } from "../../core/guc/codes.ts";
 import type { GucSlot, GucSnapshot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
+import { applyCorrections } from "../../core/guc/corrections.ts";
+import { loadCorrections } from "./corrections.ts";
 
 export const ANNOUNCEMENT_PAGE = 40;
 /** Where a post with no page position (kept before positions were read) sorts: after the ones with one. */
@@ -158,15 +160,19 @@ export async function mail(db: Db, owner: string): Promise<HubMail> {
 
 /** Coming up: the tracked items (read from posts, week notes and course mail) and the portal's exam seats as one list,
  *  upcoming soonest first, then what is done (newest first) until it is removed 14 days after (core/guc/hub.ts
- *  comingUp). The hub, the AI's guc.deadlines, the Now card and the organizer all read this. */
+ *  comingUp). The hub, the AI's guc.deadlines, the Now card and the organizer all read this. The person's corrections
+ *  (core/guc/corrections.ts) are applied last: what they removed is gone, edits and notes show, done is done, and the
+ *  portal's exam seats can be hidden or annotated too. */
 export async function deadlines(db: Db, owner: string, now = Date.now()): Promise<HubDeadline[]> {
-  const [rows, row, courses] = await Promise.all([
-    db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string; note: string | null; kind: string | null; place: string | null; covers: string | null; time_known: boolean | null; either: string | null }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source, d.note, d.kind, d.place, d.covers, d.time_known, d.either
+  const [rows, row, courses, fixes] = await Promise.all([
+    db.query<{ deadline_id: string; course_key: string; code: string | null; title: string; due: Date; source: string; note: string | null; kind: string | null; place: string | null; covers: string | null; time_known: boolean | null; either: string | null; source_ref: string | null; sent_at: Date | null }>(`select d.deadline_id, d.course_key, c.code, d.title, d.due, d.source, d.note, d.kind, d.place, d.covers, d.time_known, d.either, d.source_ref, d.sent_at
       from guc_deadlines d left join guc_courses c on c.owner_id = d.owner_id and c.course_key = d.course_key where d.owner_id = $1 order by d.due`, [owner]),
     latest(db, owner),
     db.query<{ course_key: string; code: string; season_id: number }>("select course_key, code, season_id from guc_courses where owner_id = $1", [owner]),
+    loadCorrections(db, owner),
   ]);
   const tracked = rows.map((r) => ({ id: r.deadline_id, courseKey: r.course_key, code: canon(r.code), title: r.title, due: new Date(r.due).toISOString(), source: r.source,
-    ...(r.note ? { note: r.note } : {}), ...(r.kind ? { kind: r.kind } : {}), ...(r.place ? { place: r.place } : {}), ...(r.covers ? { covers: r.covers } : {}), ...(r.time_known !== null ? { timeKnown: r.time_known } : {}), ...(r.either ? { either: r.either } : {}) }));
-  return comingUp(tracked, row?.data.exams || [], courses.map((c) => ({ key: c.course_key, code: canon(c.code), seasonId: c.season_id })), now);
+    ...(r.note ? { note: r.note } : {}), ...(r.kind ? { kind: r.kind } : {}), ...(r.place ? { place: r.place } : {}), ...(r.covers ? { covers: r.covers } : {}), ...(r.time_known !== null ? { timeKnown: r.time_known } : {}), ...(r.either ? { either: r.either } : {}), ...(r.source_ref ? { ref: r.source_ref } : {}), ...(r.sent_at ? { sent: new Date(r.sent_at).toISOString() } : {}) }));
+  const list = comingUp(tracked, row?.data.exams || [], courses.map((c) => ({ key: c.course_key, code: canon(c.code), seasonId: c.season_id })), now);
+  return fixes.length ? applyCorrections(list, fixes, { now, hub: true }) : list;
 }

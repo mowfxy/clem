@@ -9,6 +9,9 @@ export class FakeVps implements VpsLink {
   /** Puts left before the connection drops (undefined: never). */
   dropAfter?: number;
   offline = false;
+  /** The disk `df` reports: its size and what else is on it; Clem's files count as they are put. Default: 1 TB, empty. */
+  diskTotal = 1024 ** 4; diskOther = 0;
+  get diskUsed() { let n = this.diskOther; for (const b of this.files.values()) n += b.length; return n; }
   /** Paths whose upload arrives damaged (the server's sha256 won't match). */
   corrupt: (path: string) => boolean = () => false;
   private check() { if (this.offline) throw Error("connect ECONNRESET"); }
@@ -16,6 +19,9 @@ export class FakeVps implements VpsLink {
     this.check(); this.commands.push(cmd);
     const sha = cmd.match(/^sha256sum -- '(.+)'$/);
     if (sha) { const b = this.files.get(sha[1]); return b ? { code: 0, stdout: createHash("sha256").update(b).digest("hex") + "  " + sha[1] + "\n", stderr: "" } : { code: 1, stdout: "", stderr: "No such file" }; }
+    if (/df -Pk/.test(cmd)) { const k = (n: number) => Math.floor(n / 1024); return { code: 0, stdout: `Filesystem 1024-blocks Used Available Capacity Mounted on
+/dev/vda1 ${k(this.diskTotal)} ${k(this.diskUsed)} ${k(this.diskTotal - this.diskUsed)} ${Math.round((100 * this.diskUsed) / this.diskTotal)}% /
+`, stderr: "" }; }
     const mv = cmd.match(/^mv -f -- '(.+)' '(.+)'$/);
     if (mv) { this.files.set(mv[2], this.files.get(mv[1])!); this.files.delete(mv[1]); return { code: 0, stdout: "", stderr: "" }; }
     const out = `ran: ${cmd}\n`.repeat(cmd.startsWith("cat big") ? 5000 : 1);

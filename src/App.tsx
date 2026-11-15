@@ -98,7 +98,8 @@ import {DriveAccess} from './drive/DriveAccess';
 import {DriveIcon} from './drive/DriveIcon';
 import {refreshDrive,driveSources,driveFolder,driveList as driveListText,uploadToDrive,updateInDrive,renameInDrive,trashInDrive,driveBytes,driveError,isGoogleFormat,type DriveItem,type DriveSyncState} from './drive/drive';
 import {capabilityIndex,clemPlaybooks,plansPlaybook,planIntent} from '../core/clem-skills';
-import {resolveSpace,newPlan,applyUpdate,undoUpdate,canUndo,toggleTask,planContext,planBlocksIn,withoutPlanBlocks,overdueByPlan,localDay,type PlanBlock,type SpacePlan} from '../core/plans';
+import {commitPlanBlock,type PlanCommit} from '../core/workspace/apply';
+import {resolveSpace,newPlan,undoUpdate,canUndo,toggleTask,planContext,planBlocksIn,withoutPlanBlocks,overdueByPlan,localDay,type PlanBlock,type SpacePlan} from '../core/plans';
 import type {PlanDraftView,PlanActions} from './space/PlanView';
 import type {PlanCardInfo} from './chat/PlanProposal';
 import {boundedConversation,compressReply,SOURCE_PREFIX} from '../core/chat-context';
@@ -1123,7 +1124,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!ready || !desktop) return;
     const post = () => { void gucSetup.linkNewCourses(); void gucSetup.applyInbox(); void pro.pull(); };
     post();
-    return desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
+    // The VPS worker changed the workspace (it answered Telegram, ran a routine): its changes come with the inbox.
+    const offVps = desktop.onVps?.((e) => { if (e.what === "workspace") void pro.pull(); });
+    const offGuc = desktop.onGuc?.((p) => { if (p.phase === "done") post(); });
+    return () => { offVps?.(); offGuc?.(); };
   }, [ready]);
   function updateChat(id: string, fn: (c: Chat) => Chat) {
     patch((s) => ({
@@ -1954,30 +1958,18 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
   const planDraftsRef=useRef(planDrafts);planDraftsRef.current=planDrafts;
   const dropPlanDraft=(spaceId:string)=>setPlanDrafts(({[spaceId]:_,...rest})=>rest);
   /** Carries out one plan block. Saving a plan for a subject or project that doesn't exist yet makes it first. */
-  function commitPlan(block:PlanBlock,here:string|null):{ok:true;spaceId:string;changeId?:string;note?:string}|{ok:false;error:string}{
+  // The same applier the VPS worker uses (core/workspace/apply.ts), so a plan made from Telegram with the laptop off
+  // lands exactly as one made here.
+  function commitPlan(block:PlanBlock,here:string|null):PlanCommit{
     const current=stateRef.current;
-    let spaceId=resolveSpace(block,current.spaces,here);
-    const missing=()=>block.space?`There’s no subject or project called “${block.space}”.`:'Clem didn’t say which subject or project this plan is for.';
-    if(block.action==='create'||block.action==='replace'){
-      if(!spaceId&&block.create&&!block.space){
-        const space:Space={id:uid(),name:block.create.name,description:'',kind:block.create.kind,memory:'',sources:[]};
-        patch(s=>({...s,spaces:[space,...s.spaces]}));
-        spaceId=space.id;
-      }
-      if(!spaceId)return {ok:false,error:missing()};
-      const plan=newPlan(spaceId,block),target=spaceId;
-      setPlans(plans=>[...plans.filter(p=>p.spaceId!==target),plan]);
-      dropPlanDraft(target);
-      return {ok:true,spaceId,changeId:plan.id};
-    }
-    if(!spaceId)return {ok:false,error:missing()};
-    const plan=plansNow().find(p=>p.spaceId===spaceId),name=current.spaces.find(x=>x.id===spaceId)?.name||'This space',target=spaceId;
-    if(!plan)return {ok:false,error:`${name} has no plan to ${block.action==='delete'?'delete':'update'}.`};
-    if(block.action==='delete'){setPlans(plans=>plans.filter(p=>p.spaceId!==target));return {ok:true,spaceId};}
-    const result=applyUpdate(plan,block as Extract<PlanBlock,{action:'update'}>);
-    if(!result.applied)return {ok:false,error:'None of those tasks are in the plan any more.'};
-    setPlans(plans=>plans.map(p=>p.spaceId===target?result.plan:p));
-    return {ok:true,spaceId,changeId:result.snapshot,...(result.missing.length?{note:`${result.missing.length} change${result.missing.length===1?'':'s'} skipped (task not found)`}:{})};
+    const {state:next,result}=commitPlanBlock({...current,plans:plansNow()},block,here);
+    if(!result.ok)return result;
+    const made=next.spaces.filter(x=>!current.spaces.some(y=>y.id===x.id));
+    if(made.length)patch(s=>({...s,spaces:[...made,...s.spaces]}));
+    const target=result.spaceId,plan=(next.plans||[]).find(p=>p.spaceId===target);
+    setPlans(plans=>!plan?plans.filter(p=>p.spaceId!==target):plans.some(p=>p.spaceId===target)&&block.action==='update'?plans.map(p=>p.spaceId===target?plan:p):[...plans.filter(p=>p.spaceId!==target),plan]);
+    if(block.action==='create'||block.action==='replace')dropPlanDraft(target);
+    return result;
   }
   /** A finished reply's plan updates apply at once (with Undo on their cards); new, replacing and deleting plans wait for the person. */
   function applyPlanUpdates(chatId:string,messageId:string,content:string,here:string|null){
@@ -2247,6 +2239,8 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       if(automationBusy.current)return;
       const task=stateRef.current.automations.find(a=>a.enabled&&a.nextRun&&a.nextRun<=Date.now());
       if(!task)return;
+      // While the VPS worker runs Clem's jobs it runs routines too (desktop/engine/vps/agent.ts): never both.
+      if(await desktop!.invoke({action:'vpsRunsJobs'}).catch(()=>false))return;
       automationBusy.current=true;
       const owner=ownerRef.current,controller=new AbortController();automationAbort.current=controller;
       patch(s=>({...s,automations:s.automations.map(a=>a.id===task.id?{...a,nextRun:nextAutomation(a.schedule,a.nextRun),lastRun:Date.now(),lastError:undefined}:a)}));

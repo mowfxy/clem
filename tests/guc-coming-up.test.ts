@@ -17,6 +17,12 @@ import { GucClient } from "../desktop/engine/guc-client.ts";
 import { readMail, readMessage } from "../desktop/engine/guc-mail.ts";
 import { syncGuc } from "../desktop/engine/guc-sync.ts";
 import { checkGrade, fakeEws, fakeGuc, host, noWait, type FakePage } from "./guc-fake.ts";
+import { GUC_GUIDE } from "../core/guc/ai-tools.ts";
+import { CALENDAR_GUIDE } from "../core/proactivity/calendar.ts";
+import { isClemAction } from "../core/proactivity/tools.ts";
+import { runGucTool } from "../desktop/engine/ai-tools.ts";
+import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
+import { WorkerWorkspace } from "../desktop/engine/vps/workspace.ts";
 
 // Saturday 14 November 2026, 10:00 in Cairo.
 const NOW = Date.parse("2026-11-14T08:00:00Z");
@@ -61,9 +67,15 @@ function realSite(): Record<string, FakePage> {
     [EWS_URL]: fakeEws([{ id: "AAMk1", subject: "Welcome back", from: "Student Affairs", at: "2026-09-01T08:00:00Z", body: "Classes start Saturday." }, CSEN_MAIL]),
   };
 }
-async function owner(name: string, o: { reader?: boolean } = {}) {
+const WELCOME = { id: "AAMk1", subject: "Welcome back", from: "Student Affairs", at: "2026-09-01T08:00:00Z", body: "Classes start Saturday." };
+/** `mail`: more messages in the Inbox; `complete`: a model for the deadline reader; `before`: run on the engine before
+ *  it connects (a rule the person taught earlier). */
+async function owner(name: string, o: { reader?: boolean; mail?: Parameters<typeof fakeEws>[0]; complete?: (r: { system: string; user: string }) => Promise<string>; before?: (e: Engine) => Promise<unknown> } = {}) {
   const pages = realSite(), guc = fakeGuc(pages), h = host();
+  if (o.mail) pages[EWS_URL] = fakeEws([WELCOME, CSEN_MAIL, ...o.mail]);
+  if (o.complete) h.complete = o.complete;
   const engine = await Engine.open(name, h, { http: guc.http, sleep: noWait, memory: true, jobs: false, clock: () => NOW });
+  await o.before?.(engine);
   await engine.connect("student.name", "secret");
   return { engine, pages, guc, h, close: () => engine.close() };
 }
@@ -308,4 +320,131 @@ test("mail is listed newest first and stops at a page it has seen; a message ope
   const opened = await readMessage(client, second.mail[0].id);
   assert.equal(opened.text, "Lab 3 moved to Thursday.");
   assert.equal(finds(), 2, "the first page holds it, then its body");
+});
+
+// ---------- Old mail, and the person's corrections ----------
+// The owner's real mail (CPS 402, sent Sunday 25 October): read on first connect three weeks later, the model counted
+// "next week" from today and Clem showed the presentation as upcoming.
+const presMail = (at: string) => ({ id: "AAMkPres", subject: "[EXTERNAL EMAIL] - Notification System: Group Presentation [Group: Winter 2026  - CPS 402 - 3 IET&amp;MET II CPS40 (Tutorial)]", from: "GUC Notification System (DO NOT REPLY)", at,
+  body: "Good morning dear CPS students: Kindly be reminded that in next week's class you will be having your 2nd group persuasive presentation. Mrs. Reem Hassan Ibrahim" });
+/** A model reading the CPS mail: `due` says what date it gives (from the prompt); every other course has nothing new. */
+const presModel = (due: (prompt: string) => string, asked: string[] = []) => async ({ user }: { system: string; user: string }) => {
+  const id = /\[(\w+)\] Email: Group Presentation/.exec(user)?.[1];
+  if (!/Course: CPS 402/.test(user) || !id) return '{"deadlines":[],"cancel":[]}';
+  asked.push(user);
+  return JSON.stringify({ deadlines: [{ title: "Group presentation 2", kind: "presentation", due: due(user), timeKnown: true, from: id, quote: "in next week's class you will be having your 2nd group persuasive presentation" }], cancel: [] });
+};
+const cps = async (e: Engine) => (await e.deadlines()).filter((d) => d.code === "CPS 402").map((d) => [d.title, whenText(d.due, d.timeKnown !== false), !!d.done]);
+
+test("first connect: the old TA mail ('presentation 2 next week', sent three weeks ago) puts nothing in Coming up", async () => {
+  const asked: string[] = [];
+  // As the real model did: the week after today's, on their CPS tutorial (Wednesday, 5th slot).
+  const t = await owner("cu-stale", { mail: [presMail("2026-10-25T05:46:47Z")], complete: presModel(() => "2026-11-25 15:45", asked) });
+  try {
+    assert.equal(asked.length, 1, "the model read the mail");
+    assert.match(asked[0], /\(sent Sunday 25 Oct 2026\):/, "told when it was sent");
+    assert.match(asked[0], /Week starting Sat 24 Oct 2026/, "and the calendar reaches back to that week");
+    assert.deepEqual(await cps(t.engine), [], "nothing upcoming, nothing done");
+    assert.equal((await t.engine.db.query("select 1 from guc_deadlines where owner_id = 'cu-stale' and course_key = '48:70'")).length, 0);
+  } finally { await t.close(); }
+});
+
+test("the same mail sent yesterday: the presentation is next week, in Coming up", async () => {
+  // Sent Friday 13 November: "next week" is the week starting Saturday 14, so their Wednesday tutorial on the 18th.
+  const t = await owner("cu-fresh-mail", { mail: [presMail("2026-11-13T07:00:00Z")], complete: presModel((u) => (/\(sent Friday 13 Nov 2026\)/.test(u) ? "2026-11-18 15:45" : "2026-11-25 15:45")) });
+  try {
+    assert.deepEqual(await cps(t.engine), [["Group presentation 2", "Wednesday 18 Nov at 15:45", false]]);
+    const [row] = await t.engine.db.query<{ source_ref: string; sent_at: Date }>("select source_ref, sent_at from guc_deadlines where owner_id = 'cu-fresh-mail' and course_key = '48:70'");
+    assert.ok(row.source_ref && new Date(row.sent_at).toISOString() === "2026-11-13T07:00:00.000Z", "it remembers the message it came from and when that was sent");
+  } finally { await t.close(); }
+});
+
+test("corrections hold: removed stays gone after syncs and re-reads, an edit holds, undo restores, restore brings back", async () => {
+  const t = await owner("cu-fix");
+  try {
+    const run = (r: Record<string, unknown>) => runGucTool({ engine: t.engine, owner: "cu-fix", subjects: [], now: NOW }, r);
+    const courses = await t.engine.courses(), math = key("MATH301", courses), csen = key("CSEN301", courses);
+    const titles = async (code: string) => (await t.engine.deadlines()).filter((d) => d.code === code && !d.done).map((d) => `${d.title} · ${whenText(d.due, d.timeKnown !== false)}`);
+    assert.ok((await titles("MATH 301")).includes("Quiz 3 · Monday 30 Nov"));
+
+    // "Quiz 3 is cancelled, remove it": gone at once, and after a full sync and the reader reading every post again.
+    assert.match(String(await run({ action: "guc.correct", item: "Quiz 3", subject: "MATH 301", do: "remove", why: "cancelled" })), /^Removed MATH 301 Quiz 3 \(Monday 30 Nov\) from Coming up\. It holds through every sync\./);
+    assert.ok(!(await titles("MATH 301")).some((x) => x.startsWith("Quiz 3")));
+    await t.engine.sync();
+    await t.engine.reread(math);
+    assert.ok(!(await titles("MATH 301")).some((x) => x.startsWith("Quiz 3")), "the next sync doesn't bring it back");
+    assert.deepEqual(await titles("MATH 301"), ["In-class assignment 4 · Sunday 15 Nov at 10:00", "Quiz 2 · Tuesday 17 Nov at 16:30"]);
+
+    // "Quiz 2 moved to Wednesday at 10": the edit holds through a sync and a re-read of the post that said Tuesday.
+    assert.match(String(await run({ action: "guc.correct", item: "quiz 2", subject: "CSEN 301", do: "edit", date: "2026-11-25", time: "10:00" })), /Changed CSEN 301 Quiz 2 \(was Tuesday 24 Nov at 15:45\): now Wednesday 25 Nov at 10:00/);
+    await t.engine.sync();
+    await t.engine.reread(csen);
+    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Wednesday 25 Nov at 10:00", "Final exam · Sunday 20 Dec at 12:00"]);
+    // The portal's exam seat can't be falsified: hidden or annotated only.
+    assert.match(String(await run({ action: "guc.correct", item: "Final exam", subject: "CSEN 301", do: "edit", date: "2026-12-21" })), /portal's own record/);
+    assert.match(String(await run({ action: "guc.correct", item: "Final exam", subject: "CSEN 301", do: "note", note: "bring a calculator" })), /Added a note/);
+    assert.match((await t.engine.deadlines()).find((d) => d.title === "Final exam")!.note!, /^Your note: bring a calculator/);
+
+    // "Undo that" (the organizer's clem.undo): the latest correction, the note, is lifted; then the edit, by its words.
+    assert.equal(((await t.engine.organizer.tool({ action: "clem.undo" })) as { ok?: boolean }).ok, true);
+    assert.equal((await t.engine.deadlines()).find((d) => d.title === "Final exam")!.note, undefined);
+    assert.deepEqual(await t.engine.organizer.tool({ action: "clem.undo", what: "quiz 2" }), { ok: true, undone: "Changed CSEN 301 Quiz 2 (was Tuesday 24 Nov at 15:45): now Wednesday 25 Nov at 10:00", note: "Their correction is lifted: the item is back as Clem read it." });
+    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Sunday 20 Dec at 12:00"]);
+    await t.engine.sync();
+    assert.deepEqual(await titles("CSEN 301"), ["Quiz 2 · Tuesday 24 Nov at 15:45", "Final exam · Sunday 20 Dec at 12:00"], "and stays as read");
+
+    // "Bring Quiz 3 back": restored; then done marks it done.
+    assert.match(String(await run({ action: "guc.correct", item: "Quiz 3", subject: "MATH 301", do: "restore" })), /^Brought back: Removed MATH 301 Quiz 3/);
+    assert.ok((await titles("MATH 301")).includes("Quiz 3 · Monday 30 Nov"));
+    await run({ action: "guc.correct", item: "Quiz 3", subject: "MATH 301", do: "done" });
+    assert.equal((await t.engine.deadlines()).find((d) => d.title === "Quiz 3")?.done, true);
+    assert.match(String(await run({ action: "guc.corrections" })), /Marked MATH 301 Quiz 3 \(Monday 30 Nov\) done/);
+  } finally { await t.close(); }
+});
+
+test("a learned rule keeps a second, similar old mail out (enforced in code); lifting it lets it in", async () => {
+  // A MATH mail from 28 October, read on first connect: with the rule the person taught after the presentation mistake,
+  // it creates nothing.
+  const oldQuiz = { id: "AAMkQ4", subject: "[EXTERNAL EMAIL] - Notification System: MATH301 Quiz 4 [Group: Winter 2026  - MATH 301 - 3MIET T014 (Tutorial)]", from: "GUC Notification System (DO NOT REPLY)", at: "2026-10-28T09:00:00Z", body: "Dear students, Quiz 4 will be held on Tuesday 1/12/2026 at 3:45 pm." };
+  const text = "Mail sent more than 14 days before Clem reads it doesn't create Coming up items.";
+  const t = await owner("cu-rule", { mail: [oldQuiz], before: (e) => e.correct({ kind: "rule", patch: { rule: { type: "max_age", days: 14 }, text }, label: text }) });
+  try {
+    const run = (r: Record<string, unknown>) => runGucTool({ engine: t.engine, owner: "cu-rule", subjects: [], now: NOW }, r);
+    const math = async () => (await t.engine.deadlines()).filter((d) => d.code === "MATH 301").map((d) => d.title);
+    assert.ok(!(await math()).includes("Quiz 4"), "the rule kept it out");
+    assert.ok((await math()).includes("Quiz 2"), "the rest is read as before");
+    const id = /- (fix\w+) · rule: Mail sent more than 14 days/.exec(String(await run({ action: "guc.corrections" })))![1];
+    assert.match(String(await run({ action: "guc.uncorrect", id })), /^Lifted: .* Clem no longer follows that rule\./);
+    assert.match(String(await run({ action: "guc.reread", subject: "MATH 301" })), /^Read MATH 301[^:]*'s posts and mail again for dates: MATH 301[^:]* has 4 upcoming items \(was 3\)\./);
+    assert.ok((await math()).includes("Quiz 4"), "without it the old mail's quiz is in");
+  } finally { await t.close(); }
+});
+
+test("an ignore rule taught with one item hides the next similar one; resync and rebuild answer plainly", async () => {
+  const t = await owner("cu-ignore");
+  try {
+    const run = (r: Record<string, unknown>) => runGucTool({ engine: t.engine, owner: "cu-ignore", subjects: [], now: NOW }, r);
+    assert.match(String(await run({ action: "guc.correct", item: "Quiz 2 / Assignment 2", subject: "PHYST 301", do: "remove", learn: "Ignore Physics tutorial assignments in Coming up.", rule: { type: "ignore", words: ["assignment"] } })), /Clem learned: Ignore Physics tutorial assignments/);
+    t.pages[urls.course(399, 70)] = PHYST.replace("</div></body>", "<hr><p>Assignment 3 is due Thursday 26/11/2026.</p></div></body>");
+    await t.engine.sync();
+    assert.deepEqual((await t.engine.deadlines()).filter((d) => d.code === "PHYST 301").map((d) => d.title), [], "the second one never shows");
+    assert.match(String(await run({ action: "guc.resync" })), /^Read GUC again: /);
+    assert.match(String(await run({ action: "guc.rebuild", subject: "MATH 301" })), /^Cleared what Clem had worked out for MATH 301[^:]* and read it again from GUC: 3 upcoming items now \(was 3\)\./);
+  } finally { await t.close(); }
+});
+
+test("the corrections run through the VPS worker's agent too", async () => {
+  const t = await owner("cu-headless");
+  try {
+    const replies = ['{"kinetra":{"action":"guc.correct","item":"Quiz 3","subject":"MATH 301","do":"remove"}}', "Removed MATH 301 Quiz 3 from Coming up.", '{"kinetra":{"action":"clem.undo"}}', "Brought it back."];
+    // As worker/index.ts wires it (desktop/engine/vps/agent.ts): the window's loop, guc.* to the GUC tools, clem.* to the organizer.
+    const ws = new WorkerWorkspace({ db: t.engine.db, owner: "cu-headless" });
+    await ws.receive({ name: "", memory: "", spaces: [], files: [], plans: [], studySets: [], automations: [], chats: [{ id: "main", kind: "main", title: "Clem", spaceId: null, updated: 1, messages: [] }] });
+    const agent = new WorkerAgent({ owner: "cu-headless", ws, files: "/nowhere", engine: () => t.engine, complete: async () => replies.shift()! });
+    assert.deepEqual(await agent.converse({ id: "tg-1", text: "Quiz 3 in math is cancelled" }), { text: "Removed MATH 301 Quiz 3 from Coming up." });
+    assert.ok(!(await t.engine.deadlines()).some((d) => d.title === "Quiz 3"));
+    assert.deepEqual(await agent.converse({ id: "tg-2", text: "undo that" }), { text: "Brought it back." });
+    assert.ok((await t.engine.deadlines()).some((d) => d.title === "Quiz 3"));
+    assert.ok(GUC_GUIDE.includes('never answer that something "is synced automatically"'), "the worker's guide carries the correction rules");
+  } finally { await t.close(); }
 });

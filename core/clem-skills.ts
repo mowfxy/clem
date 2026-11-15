@@ -93,7 +93,7 @@ export const clemSkills: ClemSkill[] = [
   {
     // core/guc/ai-tools.ts (GUC_GUIDE, the guc.* actions); desktop/engine/ai-tools.ts runs them; desktop/main.ts tools.
     id: "guc", name: "GUC", description: "The person's GUC schedule, deadlines, announcements, CMS files and grades, read live.",
-    when: /\b(guc|cms|schedule|timetable|class(?:es)?|lectures?|tutorials?|labs?|slides?|sheets?|materials?|announcements?|news|deadlines?|due|assignments?|quiz(?:zes)?|midterms?|finals?|exams?|grades?|gpa|transcript|course|week \d+|today|tomorrow|study|revise|revision)\b/i,
+    when: /\b(guc|cms|schedule|timetable|class(?:es)?|lectures?|tutorials?|labs?|slides?|sheets?|materials?|announcements?|news|deadlines?|due|assignments?|quiz(?:zes)?|midterms?|finals?|exams?|grades?|gpa|transcript|course|week \d+|today|tomorrow|study|revise|revision|presentations?|projects?|coming up|wrong|incorrect|mistaken?|remove|delete|re-?sync(?:ed)?|synced|undo|bring (?:it )?back|old (?:e-?)?mail)\b/i,
     steps: GUC_GUIDE.split("\n").map((l) => l.replace(/^- /, "")),
   },
   {

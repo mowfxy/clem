@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deadlineWindow, fileTextPage, gucAction, gucNow, resolveSubject, scheduleDays } from "../core/guc/ai-tools.ts";
+import { deadlineWindow, fileTextPage, GUC_GUIDE, gucAction, gucNow, resolveSubject, scheduleDays } from "../core/guc/ai-tools.ts";
 import { clemSkillsFor } from "../core/clem-skills.ts";
 import { localNowCard, renderNow, withGuc } from "../core/main-thread/context.ts";
 import { Engine } from "../desktop/engine/index.ts";
@@ -277,5 +277,27 @@ test("guc.settings everywhere: one answer covers every linked course and the one
     assert.equal((await t.engine.subject("subj-never-seen")).settings.save.kinds.videos, true);
     assert.match((await t.run({ action: "guc.settings", everywhere: true, checkText: "every day at 9pm" }) as { error: string }).error, /For every course/);
     assert.match((await t.run({ action: "guc.settings", everywhere: true, saveText: "the blue ones" }) as { error: string }).error, /couldn't read/);
+  } finally { await t.close(); }
+});
+
+test("corrections as tools: names a model may guess, checked arguments, items found by id or words, links fixed and put back", async () => {
+  assert.equal(gucAction("guc.remove_deadline"), "guc.correct");
+  assert.equal(gucAction("guc.sync_now"), "guc.resync");
+  assert.equal(gucAction("guc.undo_correction"), "guc.uncorrect");
+  assert.ok(GUC_GUIDE.includes("guc.correct") && GUC_GUIDE.includes("guc.rebuild") && GUC_GUIDE.includes("can't be changed"));
+  const t = await open({ owner: "owner-fix" });
+  try {
+    assert.match(String((await t.run({ action: "guc.correct", item: "Lab report", do: "explode" }) as { error: string }).error), /^guc\.correct: do /);
+    assert.match(String((await t.run({ action: "guc.correct", item: "nothing like it", do: "remove" }) as { error: string }).error), /^Nothing in Coming up matches "nothing like it"/);
+    // By its link, as guc.deadlines shows it.
+    assert.match(String(await t.run({ action: "guc.correct", item: "#/app/guc/deadlines/d2", do: "remove", rule: { type: "ignore", message: true } })), /^Removed CSEN 702 Lab report .* from Coming up\./);
+    assert.ok(!(await t.engine.deadlines()).some((d) => d.id === "d2"));
+    assert.match(String(await t.run({ action: "guc.deadlines", range: "all" })), /Assignment 2 submission|No deadlines/);
+    // A subject linked to the wrong course: unlinked in words, and "undo that" links it back.
+    assert.match(String(await t.run({ action: "guc.link", subject: "Micro", course: "none" })), /^Unlinked Micro from CSEN 702/);
+    assert.equal((await t.engine.links()).some((l) => l.subjectId === "subj-mp"), false);
+    assert.equal(((await t.engine.organizer.tool({ action: "clem.undo", what: "micro" })) as { ok?: boolean }).ok, true);
+    await (t.engine as any).light;
+    assert.equal((await t.engine.links()).find((l) => l.subjectId === "subj-mp")?.courseKey, "1202:64");
   } finally { await t.close(); }
 });

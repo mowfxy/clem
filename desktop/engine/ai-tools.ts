@@ -1,7 +1,12 @@
 // The AI's GUC tools, run for one owner (docs/GUC-VPS-ENGINE.md → AI tools): each kinetra "guc.*" request becomes
 // owner-scoped engine reads, and the result is compact text with #/app/guc links to cite. The engine is per owner;
 // a request is refused when the engine is not the signed-in owner's.
-import { announcementsText, deadlinesText, deadlineWindow, fileTextPage, GUC_GUIDE, gradesText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
+import { announcementsText, correctionsText, deadlinesText, deadlineWindow, fileTextPage, findItem, GUC_GUIDE, gradesText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
+import { applyCorrections, fingerprint, matches, ruleSentence, staleRule, type Correction, type Rule } from "../../core/guc/corrections.ts";
+import { mailTextId } from "../../core/guc/deadline-ai.ts";
+import { cairoInstant, whenText } from "../../core/guc/deadlines.ts";
+import { cairo, type HubDeadline } from "../../core/guc/hub.ts";
+import type { GucDeadline } from "../../core/guc/types.ts";
 import { settingsUpdateCard } from "../../core/guc/cards.ts";
 import { AI_RULES_FORMAT, describeSaveRules } from "../../core/guc/rules.ts";
 import { describeChecks } from "../../core/guc/schedule-rules.ts";
@@ -89,6 +94,32 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
         return `${r.already ? "Already saved" : "Saved"} ${r.name} to their files${r.subjectId ? " (under its subject)" : ""}${r.drive ? `, and uploaded it to Google Drive → ${r.drive.folder}` : ""}. Say so in one short sentence.`;
       }
       case "guc.settings": return settings(ctx, a, a.everywhere ? "all" : need());
+      case "guc.correct": return correctItem(ctx, a, course || undefined, now);
+      case "guc.learn": {
+        const rule = toRule(a.rule);
+        const c = await e.correct({ kind: "rule", ...(course && rule.type !== "max_age" ? { courseKey: course.courseKey } : {}), patch: { rule, text: a.text }, label: a.text });
+        return `Learned${course ? ` for ${label(course)}` : ""}: ${c.label} Clem's deadline reader follows it from the next sync on${rule.type === "note" ? "" : ", and the code enforces it"}. Say so in one plain sentence.`;
+      }
+      case "guc.corrections": return correctionsText(await e.corrections(), course || undefined);
+      case "guc.uncorrect": {
+        const c = await e.uncorrect(a.id);
+        return c ? `Lifted: ${c.label}. ${c.kind === "rule" ? "Clem no longer follows that rule." : "It is back as Clem read it."} Say so in one plain sentence.` : { error: "No correction in force has that id. guc.corrections lists them." };
+      }
+      case "guc.resync": {
+        const r = await e.resync(course?.courseKey);
+        return `Read GUC again${course ? ` for ${label(course)}` : ""}: ${r.events ? `${r.events} new thing${r.events === 1 ? "" : "s"} found` : "nothing new"}${r.missed.length ? `; couldn't read ${r.missed.join(", ")} this time` : ""}. Corrections still hold. Say so plainly.`;
+      }
+      case "guc.reread": return reread(ctx, a.message, course || undefined, need);
+      case "guc.rebuild": {
+        const c = need();
+        if ("error" in c) return c;
+        const count = async () => (await e.deadlines()).filter((d) => d.courseKey === c.courseKey && !d.done && d.source !== "portal").length;
+        const was = await count();
+        await e.rebuild(c.courseKey);
+        const is = await count();
+        return `Cleared what Clem had worked out for ${label(c)} and read it again from GUC: ${is} upcoming item${is === 1 ? "" : "s"} now (was ${was}). Their corrections still hold. Say so plainly.`;
+      }
+      case "guc.link": return relink(ctx, a.subject, a.course);
     }
   } catch (error) {
     const g = asGucError(error);
@@ -188,4 +219,114 @@ export async function runTelegramTool(ctx: GucToolContext, request: Record<strin
   } catch (error) {
     return { error: (error instanceof GucError ? error.message : (error as Error)?.message) || "Telegram couldn't be reached right now." };
   }
+}
+
+// ---------- Corrections (docs/GUC-VPS-ENGINE.md → Corrections) ----------
+const PORTAL = "That is the portal's own record (its exam seat), so Clem can't change its date, time or hall. It can hide it (do \"remove\"), add a note (do \"note\"), or read the portal again (guc.resync). Tell them that plainly, and do whichever they want.";
+const said = (d: Pick<HubDeadline, "code" | "title">) => `${d.code ? d.code + " " : ""}${d.title}`;
+/** A rule as stored, from the model's: `message` keys an "ignore" to the message the item was read from. */
+function toRule(r: { type: string; days?: number; from?: string; words?: string[]; message?: boolean } | undefined, item?: Pick<GucDeadline, "ref">): Rule {
+  if (r?.type === "max_age") return { type: "max_age", days: r.days || 14 };
+  if (r?.type === "ignore") return { type: "ignore", ...(r.from ? { from: r.from } : {}), ...(r.words?.length ? { words: r.words } : {}), ...(r.message && item?.ref ? { ref: item.ref } : {}) };
+  return { type: "note" };
+}
+/** guc.correct: one item removed, edited, marked done, annotated or brought back, and what it taught kept as a rule. */
+async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, now: number) {
+  const e = ctx.engine, list = await e.deadlines();
+  if (a.do === "restore") return restore(ctx, a.item, list, course);
+  const found = findItem(list, a.item, course);
+  if ("error" in found) return found;
+  const portal = found.source === "portal" || found.id.startsWith("exam-");
+  if (portal && a.do === "edit") return PORTAL;
+  const stored = portal ? undefined : (await e.trackedItems()).find((d) => d.id === found.id);
+  const base: GucDeadline = stored || { id: found.id, courseKey: found.courseKey, title: found.title, due: found.due, source: found.source, ...(found.kind ? { kind: found.kind } : {}) };
+  const common = { itemId: found.id, ...(stored?.ref ? { sourceRef: stored.ref } : {}), ...(portal ? {} : { fingerprint: fingerprint(base) }), ...(found.courseKey ? { courseKey: found.courseKey } : {}), ...(stored ? { before: stored } : {}) };
+  const when = whenText(found.due, found.timeKnown !== false);
+  let done: Correction;
+  if (a.do === "remove") done = await e.correct({ ...common, kind: "hide", patch: a.why ? { why: a.why } : {}, label: `Removed ${said(found)} (${when}) from Coming up` }, portal ? {} : { drop: found.id });
+  else if (a.do === "done") done = await e.correct({ ...common, kind: "done", patch: {}, label: `Marked ${said(found)} (${when}) done` });
+  else if (a.do === "note") {
+    if (!a.note) return { error: 'guc.correct note: give "note" (their words).' };
+    done = await e.correct({ ...common, kind: "note", patch: { note: a.note }, label: `Added a note to ${said(found)}: "${a.note}"` });
+  } else {
+    if (!a.title && !a.date && a.time === undefined && a.place === undefined) return { error: "guc.correct edit: give title, date, time or place." };
+    const c = cairo(Date.parse(base.due)), timed = base.timeKnown !== false && c.time !== "23:59";
+    const day = a.date || c.ymd, time = a.time === "" ? undefined : a.time || (timed ? c.time : undefined);
+    const dueMoved = !!a.date || a.time !== undefined;
+    const at = time ? /^(\d{1,2}):(\d{2})$/.exec(time)! : null;
+    const due = new Date(cairoInstant(+day.slice(0, 4), +day.slice(5, 7), +day.slice(8, 10), at ? +at[1] : 23, at ? +at[2] : 59)).toISOString();
+    const patch = { ...(a.title ? { title: a.title } : {}), ...(dueMoved ? { due, timeKnown: !!at } : {}), ...(a.place !== undefined ? { place: a.place } : {}) };
+    const changes = [a.title ? `now "${a.title}"` : "", dueMoved ? `now ${whenText(due, !!at)}` : "", a.place !== undefined ? (a.place ? `in ${a.place}` : "no place") : ""].filter(Boolean).join(", ");
+    const draft: Correction = { id: "draft", kind: "edit", at: now, label: "", ...common, patch };
+    const after = stored ? applyCorrections([stored], [draft], { now })[0] : undefined;
+    done = await e.correct({ ...common, kind: "edit", patch, label: `Changed ${said(found)} (was ${when}): ${changes}` }, after ? { put: after } : {});
+  }
+  // What it taught: the rule the model named, else the stale-mail rule when that was the mistake, else its sentence.
+  const rule = a.rule ? toRule(a.rule, stored) : a.do === "remove" && stored ? staleRule(stored, now) : undefined;
+  let learned = "";
+  if (rule || a.learn) {
+    const r = rule || { type: "note" as const }, text = a.learn || ruleSentence(r), scope = r.type !== "max_age" ? found.courseKey || undefined : undefined;
+    // The same rule twice is kept once.
+    const known = (await e.corrections()).some((c) => c.kind === "rule" && c.courseKey === scope && JSON.stringify(c.patch.rule) === JSON.stringify(r) && (r.type !== "note" || c.label === text));
+    if (!known) await e.correct({ kind: "rule", ...(r.type !== "max_age" && found.courseKey ? { courseKey: found.courseKey } : {}), patch: { rule: r, text }, label: text });
+    learned = ` Clem learned: ${text}`;
+  }
+  return `${done.label}. It holds through every sync.${learned} Tell them what you changed in one plain sentence ("undo that" brings it back).`;
+}
+/** "Bring it back": the corrections in force on an item (listed or removed) are lifted, newest first. */
+async function restore(ctx: GucToolContext, item: string, list: HubDeadline[], course?: Resolved) {
+  const e = ctx.engine, fixes = (await e.corrections()).filter((c) => c.kind !== "rule" && c.kind !== "link" && (!course || c.courseKey === course.courseKey));
+  const found = findItem(list, item, course);
+  let mine = "error" in found ? [] : fixes.filter((c) => matches(c, found));
+  if (!mine.length) {
+    // A removed item isn't in Coming up: find it by its correction (its id, or the words of what it was).
+    const words = item.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((w) => w.length > 1);
+    const hit = [...fixes].reverse().find((c) => c.itemId === item || (words.length > 0 && words.every((w) => c.label.toLowerCase().includes(w))));
+    mine = hit ? fixes.filter((c) => c.itemId === hit.itemId) : [];
+  }
+  if (!mine.length) return { error: `No correction of "${item}" is in force. guc.corrections lists them.` };
+  for (const c of [...mine].reverse()) await e.uncorrect(c.id);
+  return `Brought back: ${mine.map((c) => c.label).join("; ")} is undone, and it shows as Clem read it. Say so in one plain sentence.`;
+}
+/** guc.reread: a course's texts (or one message) read again for dates, quietly. */
+async function reread(ctx: GucToolContext, message: string | undefined, course: Resolved | undefined, need: () => Resolved | { error: string }) {
+  const e = ctx.engine;
+  let courseKey = course?.courseKey, ids: string[] | undefined, note = "";
+  if (message) {
+    const [post] = await e.db.query<{ course_key: string }>("select course_key from guc_announcements where owner_id = $1 and announcement_id = $2", [e.owner, message]);
+    const mail = post ? undefined : (await e.mail()).items.find((m) => m.id === message);
+    if (!post && !mail) return { error: `No mail or announcement has the id "${message}". guc.mail and guc.announcements list them.` };
+    if (post) { courseKey ||= post.course_key; ids = [message]; }
+    else {
+      ids = [mailTextId(mail!.id)];
+      if (Date.parse(mail!.received) < (ctx.now ?? Date.now()) - 21 * 864e5) note = ` That mail is from ${mail!.received.slice(0, 10)}, over three weeks old, so Clem takes no dates from it.`;
+    }
+  }
+  if (!courseKey) { const c = need(); if ("error" in c) return c; courseKey = c.courseKey; }
+  const name = course ? label(course) : (await e.courses()).find((c) => c.key === courseKey)?.code || "that course";
+  const count = async () => (await e.deadlines()).filter((d) => d.courseKey === courseKey && !d.done && d.source !== "portal").length;
+  const was = await count();
+  await e.reread(courseKey, ids);
+  const is = await count();
+  return `Read ${message ? "that message" : `${name}'s posts and mail`} again for dates: ${name} has ${is} upcoming item${is === 1 ? "" : "s"} (was ${was}).${note} Corrections still hold. Say so plainly.`;
+}
+/** guc.link: which GUC course a subject is linked to, fixed (or unlinked); "undo that" links it back. */
+async function relink(ctx: GucToolContext, subjectArg: string, courseArg: string) {
+  const e = ctx.engine, [links, courses] = await Promise.all([e.links(), e.courses()]);
+  const s = subjectArg.trim().replace(/^@/, "").toLowerCase();
+  const subject = ctx.subjects.find((x) => x.id === subjectArg) || ctx.subjects.find((x) => x.name.toLowerCase() === s) || ctx.subjects.find((x) => x.name.toLowerCase().includes(s));
+  if (!subject) return { error: `No subject matches "${subjectArg}".` };
+  const was = links.find((l) => l.subjectId === subject.id);
+  if (/^(none|no course|unlink)$/i.test(courseArg.trim())) {
+    if (!was) return `${subject.name} isn't linked to a GUC course. Say so.`;
+    await e.unlink(subject.id);
+    await e.correct({ kind: "link", courseKey: was.courseKey, patch: { subjectId: subject.id, from: was.courseKey }, label: `Unlinked ${subject.name} from ${was.code}` });
+    return `Unlinked ${subject.name} from ${was.code}. Say so in one plain sentence.`;
+  }
+  const c = resolveSubject(courseArg, { links: [], courses, subjects: [] });
+  if (!c || "error" in c) return c || { error: `No GUC course matches "${courseArg}".` };
+  if (was?.courseKey === c.courseKey) return `${subject.name} is already linked to ${c.code}. Say so.`;
+  await e.link(subject.id, c.courseKey);
+  await e.correct({ kind: "link", courseKey: c.courseKey, patch: { subjectId: subject.id, ...(was ? { from: was.courseKey } : {}), to: c.courseKey }, label: `Linked ${subject.name} to ${c.code}${was ? ` (was ${was.code})` : ""}` });
+  return `Linked ${subject.name} to ${c.code} ${c.name}${was ? ` instead of ${was.code}` : ""}; Clem reads it now. Say so in one plain sentence.`;
 }
