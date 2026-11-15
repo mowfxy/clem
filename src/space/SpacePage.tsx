@@ -9,7 +9,7 @@ import {RenameField} from '../files/RenameField';
 import {FileGlyph} from '../files/FileGlyph';
 import {VideoThumb} from '../files/SaveVideo';
 import {YouTubeLogo} from '../BrandLogos';
-import {captionsLabel,durationLabel,shownName,watchUrl} from '../files/saved-video';
+import {durationLabel,shownName,watchUrl} from '../files/saved-video';
 import {SubjectStudy,weakConcepts} from '../SubjectStudy';
 import {isDue} from '../../core/srs';
 import {chatPreview} from '../../core/chat-title';
@@ -381,7 +381,7 @@ export function FilesView({space,files,actions,driveSync}:{space:Space;files:Sto
     const glyph=f.video?<VideoThumb id={f.video.id} duration={durationLabel(f.video.durationSec)} className="sp-thumb"/>:<FileGlyph file={f} size={36}/>;
     if(renaming===f.id)return <div className="sp-file-open">{glyph}<RenameField name={shownName(f)} onSave={name=>{actions.onRenameFile(f,f.video&&!/\.md$/i.test(name)?name+'.md':name);setRenaming(null);}} onCancel={()=>setRenaming(null)}/></div>;
     // One short line: where it is (when several folders are listed), a missing transcript, and when.
-    const meta=[place!==undefined?place||'':'',f.video?.captions==='none'?captionsLabel(f.video):'',ago(f.updated||f.created)].filter(Boolean);
+    const meta=[place!==undefined?place||'':'','',ago(f.updated||f.created)].filter(Boolean);
     return <button className="sp-file-open" onClick={()=>picked.size?pick(f.id):actions.onOpenFile(f)}>{picked.size>0&&<input type="checkbox" className="sp-pick" aria-label={`Select ${shownName(f)}`} checked={picked.has(f.id)} onClick={e=>e.stopPropagation()} onChange={()=>pick(f.id)}/>}{glyph}<span><strong>{shownName(f)}</strong><small className={f.video?.captions==='none'?'sp-no-transcript':undefined}>{meta.join(' · ')}</small></span></button>;
   };
   const fileTools=(f:StoredFile,handle?:ReturnType<typeof fileOrder.handle>)=><>

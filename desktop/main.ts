@@ -67,7 +67,7 @@ import { ProviderAccounts } from "./provider-accounts";
 import { ProviderLink, CLAUDE_LINK_ID } from "./provider-link";
 import {ClaudeProvider,claudeOpensPdfPages} from './claude';
 import {GrokProvider,grokModels,grokPdfPath,grokUsage,GROK_PREFIX} from './grok';
-import {AntigravityProvider,antigravityModels,antigravityPdfPath,googleSignInUrl,ANTIGRAVITY_PREFIX} from './antigravity';
+import {AntigravityProvider,antigravityModels,antigravityPdfPath,antigravityVideoProblem,googleSignInUrl,ANTIGRAVITY_PREFIX,ANTIGRAVITY_VIDEO_BYTES,type AntigravityVideo} from './antigravity';
 import {AntigravityEngine} from './antigravity-engine';
 import {endOrphanedAgents} from './agent-sweep';
 import {CliAccounts} from './cli-accounts';
@@ -499,7 +499,7 @@ void app.whenReady().then(async () => {
   /** `workspace`: the folder of the person's files each AI runs in as itself (desktop/ai-workspace.ts), the linked folders
    *  it may read, and what Claude's document writers are told (desktop/claude.ts claudeWriters). `finish`: work done once
    *  the answer is final, before it is marked done; a failure there never costs the answer. */
-  type AnswerOptions = { measure?: Pick<TurnStats, "windowMs" | "prepMs" | "filesMs" | "effort">; spill?: (text: string) => Promise<string>; images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; review?: AnswerGates["review"]; workspace?: { root: string; readOnly: string[]; protect?: string[]; writer?: string }; finish?: () => Promise<void>; keep?: KeepChat };
+  type AnswerOptions = { measure?: Pick<TurnStats, "windowMs" | "prepMs" | "filesMs" | "effort">; spill?: (text: string) => Promise<string>; images?: Picture[]; pdfs?: { name: string; data: Uint8Array }[]; videos?: AntigravityVideo[]; pdf?: (spec: any, cancelled: () => boolean) => Promise<any>; instructions?: string; notes?: string; tools?: (request: any, cancelled: () => boolean) => Promise<any>; unfinished?: () => string | undefined; review?: AnswerGates["review"]; workspace?: { root: string; readOnly: string[]; protect?: string[]; writer?: string }; finish?: () => Promise<void>; keep?: KeepChat };
   /** A chat's answer that may go on, and is kept as, the chat's CLI session (desktop/chat-sessions.ts): `history` is the
    *  conversation before this message, `after` the one after its answer, `continuation(sent)` this message alone for a
    *  session that has already been sent the given context blocks. */
@@ -525,7 +525,7 @@ void app.whenReady().then(async () => {
     }
   }
   async function answerTimed(owner: string, id: string, model: string | undefined, reasoning: string | undefined, prompt: string, emit: (event: any) => void,
-    { images = [], pdfs = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished, review, workspace, finish, keep, spill }: AnswerOptions, stats: TurnStats) {
+    { images = [], pdfs = [], videos = [], pdf, instructions = kinetraInstructions, notes = "", tools, unfinished, review, workspace, finish, keep, spill }: AnswerOptions, stats: TurnStats) {
     const grok = !!model?.startsWith(GROK_PREFIX), claude = !!model?.startsWith("claude:"), antigravity = !!model?.startsWith(ANTIGRAVITY_PREFIX);
     // Grok and Antigravity keep no compactable session and count their tokens themselves (sessionTokens); Claude does both itself.
     const counted = grok || antigravity;
@@ -606,7 +606,7 @@ void app.whenReady().then(async () => {
       const once = async () => {
         text = "";
         screen.step();
-        if (antigravity) await (current.provider as AntigravityProvider).run(id, input, model!, collect, [...(own ? images : []), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, workspace, native: native ? call : undefined });
+        if (antigravity) await (current.provider as AntigravityProvider).run(id, input, model!, collect, [...(own ? images : []), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, videos, workspace, native: native ? call : undefined });
         else if (grok) await (current.provider as GrokProvider).run(id, input, model!, collect, [...(own ? images : []), ...looked].map((i) => i.path), { id: session.id, resume: followUp }, reasoning, { system, pdfs: workspace ? [] : pdfs, workspace, native: native ? call : undefined });
         else await (current.provider as ClaudeProvider).run(id, input, model!, reasoning, collect, [...(own ? pictures : []), ...(await Promise.all(looked.map(async (i) => ({ mime: i.mime, data: (await readDiskFile(i.path)).toString("base64") }))))], { id: session.id, resume: followUp }, native ? inlinePictures(call, readDiskFile) : undefined, { system, pdfs: own ? claudePdfs : [], workspace });
         delivered = true;
@@ -677,6 +677,8 @@ void app.whenReady().then(async () => {
       const ending = [...sessions];
       void accounting.then(() => { for (const session of ending) void session.provider.endSession(session.id).catch(() => {}); });
       if (counted && pdfs.length) void (antigravity ? antigravities : groks).all(owner).then((all) => all.forEach((g) => void g.dropPdfs(id))).catch(() => {});
+      // The videos Gemini watched were only for this answer.
+      if (videos.length) void antigravities.all(owner).then((all) => all.forEach((g) => void g.dropVideos(id, workspace?.root))).catch(() => {});
     });
     await finishing();
     screen.answer(answer);
@@ -1837,9 +1839,16 @@ void app.whenReady().then(async () => {
     if (request.action === "driveText") return {text:await driveLive.text(request.id)};
     if (request.action === "videoCaptions") {
       const languages=request.languages?.length?request.languages:[app.getLocale()];
-      if(request.source==="youtube")return youtubeCaptions(request.id,{languages});
+      if(request.source==="youtube")return youtubeCaptions(request.id,{languages,captions:!request.detailsOnly});
       if(!await driveLive.connected())return {source:"drive",id:request.id,transcript:"",error:"Google Drive isn't connected. Connect it in Settings → Connectors → Google Drive."};
       return driveLive.captions(request.id,languages);
+    }
+    if (request.action === "videoWatchable") {
+      if(!await driveLive.connected())return {watchable:false,reason:"Google Drive isn't connected."};
+      const video=await driveLive.video(request.id).catch(()=>null);
+      if(!video)return {watchable:false,reason:"This Drive video couldn't be read."};
+      const reason=antigravityVideoProblem(video);
+      return {watchable:!reason,...(reason?{reason}:{}),name:video.name,...(video.durationSec?{durationSec:video.durationSec}:{})};
     }
     if (request.action === "youtubePlaylist") return youtubePlaylist(request.id);
     if (request.action === "driveOpenWeb") { const link=await driveLive.webLink(request.id); if(/^https:\/\/(drive|docs)\.google\.com\//.test(link)) await shell.openExternal(link); return {opened:true}; }
@@ -2805,7 +2814,14 @@ void app.whenReady().then(async () => {
         await writeFile(join(work!.root, path), text);
         return path;
       } : undefined;
-      const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { measure, images: pictures, pdfs, instructions } : { measure, spill, images: pictures, pdfs, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
+      // Drive videos Gemini watches itself, downloaded into its folder when the turn starts (checked again here: the
+      // window's check is advice, the limits are the desktop app's).
+      const videos: AntigravityVideo[] = agTurn && request.videos?.length && await driveLive.connected() ? (await Promise.all(request.videos.map(async (v) => {
+        const meta = await driveLive.video(v.id).catch(() => null);
+        if (!meta || antigravityVideoProblem(meta)) return null;
+        return { name: meta.name, mime: meta.mime, write: (path: string) => driveLive.downloadVideo(v.id, path, ANTIGRAVITY_VIDEO_BYTES) };
+      }))).filter((v): v is AntigravityVideo => !!v) : [];
+      const run = answerWith(user.id, request.id, request.model, reasoning, fresh, emit, request.plain ? { measure, images: pictures, pdfs, videos, instructions } : { measure, spill, images: pictures, pdfs, videos, pdf: makeOrRevise, instructions, tools: (tool) => tools(tool), unfinished, review, workspace, finish: collectOutputs, keep });
       usageTally.record(user.id, request.model, request.reasoning, pictures.length);
       void run.finally(() => Promise.all(imagePaths.map((path) => unlink(path).catch(() => {})))).catch(() => {});
       // The brief this message did not wait for (it went on the kept session), written now for a later fresh start.

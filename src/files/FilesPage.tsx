@@ -10,7 +10,7 @@ import { FileGlyph } from "./FileGlyph";
 import { RenameField, PencilIcon } from "./RenameField";
 import { StorageSummary, kinds, kindOf, type FileKind } from "./StorageSummary";
 import { VideoThumb } from "./SaveVideo";
-import { captionsLabel, durationLabel, shownName, watchUrl } from "./saved-video";
+import { captionsLabel, durationLabel, readsLive, shownName, watchUrl } from "./saved-video";
 import "./files-page.css";
 
 type Sort = "newest" | "oldest" | "name" | "size";
@@ -85,7 +85,7 @@ export function FilesPage({ files, spaces, folders, actions }: { files: StoredFi
     {f.video && <a className="icon-button" href={watchUrl(f.video.id)} target="_blank" rel="noreferrer" aria-label={`Watch ${shownName(f)} on YouTube`} title="Watch on YouTube"><Icon name="external" size={17} /></a>}
     <button className="icon-button" aria-label={`Ask about ${shownName(f)}`} title="Ask about it" onClick={() => actions.onAsk(f)}><Icon name="chat" size={17} /></button>
     <button className="icon-button" aria-label={`Rename ${shownName(f)}`} title="Rename" onClick={() => setRenaming(f.id)}><PencilIcon size={16} /></button>
-    <button className="icon-button" aria-label={`Download ${shownName(f)}`} title={f.video ? "Download transcript" : "Download"} onClick={() => actions.onDownload(f)}><Icon name="download" size={18} /></button>
+    <button className="icon-button" aria-label={`Download ${shownName(f)}`} title={f.video && !readsLive(f.video) ? "Download transcript" : "Download"} onClick={() => actions.onDownload(f)}><Icon name="download" size={18} /></button>
     <button className="icon-button" aria-label={`Delete ${shownName(f)}`} title="Delete" onClick={() => actions.onDelete(f)}><Icon name="trash" size={17} /></button>
   </div>;
   const name = (f: StoredFile) => renaming === f.id
@@ -134,7 +134,7 @@ export function FilesPage({ files, spaces, folders, actions }: { files: StoredFi
         </div>}
       </section>)}
     </>}
-    {!files.length && <EmptyState scene="folder" line="No files yet. Upload a file, or save a YouTube video and Clem keeps its transcript.">
+    {!files.length && <EmptyState scene="folder" line="No files yet. Upload a file, or save a YouTube video to ask Clem about.">
       <button className="lib-btn" onClick={actions.onSaveVideo}><YouTubeLogo size={16} />Save from YouTube</button>
       <button className="lib-btn strong" onClick={actions.onUpload}><Icon name="plus" size={16} />Upload files</button>
     </EmptyState>}

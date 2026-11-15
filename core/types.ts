@@ -52,7 +52,7 @@ export type StoredFile = { remote?:boolean; /** The chat it was sent in or made 
   /** Changed here since its Drive copy was saved; goes to Drive once the change is approved. */ drivePending?: boolean;
   /** A saved YouTube video. The file itself is its transcript as Markdown (src/files/saved-video.ts), so it is read as a
    *  source like any text file; this only drives how it is shown. */ video?: SavedVideo };
-export type SavedVideo = { id: string; channel?: string; durationSec?: number; /** Whose captions the transcript is: the video's own, YouTube's automatic ones, or none could be read. */ captions: 'own' | 'auto' | 'none'; language?: string; /** Why there is no transcript, in words the person can act on. */ error?: string; playlist?: { id: string; title: string } };
+export type SavedVideo = { id: string; channel?: string; durationSec?: number; /** 'live': no transcript is kept; Clem reads the captions when the video is opened or asked about (src/files/saved-video.ts). Older saves kept one: the video's own captions, YouTube's automatic ones, or none could be read. */ captions: 'live' | 'own' | 'auto' | 'none'; language?: string; /** Why there is no transcript, in words the person can act on. */ error?: string; playlist?: { id: string; title: string } };
 export type VisualRecord = { id: string; chatId: string; title: string; created: number; scene?: string; params?: Record<string, number>; spec?: unknown };
 export type Automation = {model?:string;nextRun?:number;lastRun?:number;lastError?:string; id: string; name: string; prompt: string; schedule: string; enabled: boolean; spaceId: string | null };
 

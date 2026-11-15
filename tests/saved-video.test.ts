@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {playlistFromData,youtubePlaylist} from '../desktop/video-captions.ts';
-import {videoDocument,videoRecord,transcriptOf,videoFileName,readVideoLink,shownName} from '../src/files/saved-video.ts';
+import {videoDocument,videoRecord,linkDocument,linkRecord,readsLive,captionsLabel,saveVideos,transcriptOf,videoFileName,readVideoLink,shownName} from '../src/files/saved-video.ts';
 
 test('both playlist page layouts give the videos in order, the title and the next page',()=>{
   const old={metadata:{playlistMetadataRenderer:{title:'Unit 2 &amp; more'}},contents:[{playlistVideoRenderer:{videoId:'aaaaaaaaaa1',title:{runs:[{text:'First'}]},shortBylineText:{runs:[{text:'Chan'}]},lengthSeconds:'61'}},{playlistVideoRenderer:{videoId:'bbbbbbbbbb2',title:{simpleText:'Gone'},isPlayable:false}},{playlistVideoRenderer:{videoId:'aaaaaaaaaa1'}},{continuationItemRenderer:{continuationEndpoint:{continuationCommand:{token:'NEXT'}}}}]};
@@ -32,6 +32,25 @@ test('a saved video is a Markdown file with its transcript, read by the viewer',
   assert.deepEqual(videoRecord(c),{id:'abcdefghijk',channel:'Cell Lab',durationSec:125,captions:'auto',language:'English'});
   assert.equal(videoFileName(c.title),'Osmosis a b.md');
   assert.equal(shownName({name:'Osmosis a b.md',video:videoRecord(c)}),'Osmosis a b');
+});
+
+test('a saved video keeps its details and link, never a transcript',async()=>{
+  const c={source:'youtube' as const,id:'abcdefghijk',title:'Osmosis',channel:'Cell Lab',durationSec:125,transcript:'[00:00] Water moves.',description:'About water.'};
+  const doc=linkDocument(c,{id:'PLxxxxxxxxxx',title:'Unit 2'});
+  assert.match(doc,/^# Osmosis\n\nYouTube video by Cell Lab · 02:05 long\nLink: https:\/\/www\.youtube\.com\/watch\?v=abcdefghijk\nPlaylist: Unit 2/);
+  assert.match(doc,/Transcript: not kept in this file\. Clem reads the video's captions when it is asked about/);
+  assert.doesNotMatch(doc,/Water moves/);
+  assert.deepEqual(transcriptOf(doc),[]);
+  const record=linkRecord(c,{id:'PLxxxxxxxxxx',title:'Unit 2'});
+  assert.deepEqual(record,{id:'abcdefghijk',channel:'Cell Lab',durationSec:125,captions:'live',playlist:{id:'PLxxxxxxxxxx',title:'Unit 2'}});
+  assert.ok(readsLive(record));assert.equal(captionsLabel(record),'Link');
+  // Older saves: a kept transcript is read from the file; one saved without captions is read live now.
+  assert.ok(!readsLive(videoRecord(c)));assert.ok(readsLive({id:'abcdefghijk',captions:'none'}));
+  // A playlist's videos are saved from what the playlist lists: no captions are read and no transcript is stored.
+  const stored:string[]=[];
+  const {files}=await saveVideos([{id:'abcdefghijk',title:'One',channel:'C',durationSec:60},{id:'bcdefghijkl',title:'Two'}],{place:null,playlist:{id:'PLxxxxxxxxxx',title:'Unit 2'},existing:[],store:async(_id,blob)=>{stored.push(await blob.text());}});
+  assert.deepEqual(files.map(f=>[f.name,f.video?.captions]),[['One.md','live'],['Two.md','live']]);
+  assert.ok(stored.every(t=>/Transcript: not kept/.test(t)&&!/## Transcript/.test(t)));
 });
 
 test('a video with no captions is kept and says it has no transcript',()=>{

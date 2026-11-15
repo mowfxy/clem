@@ -1,7 +1,8 @@
 // Browser check for saving YouTube videos and playlists, behind a scripted YouTube: a video saved from the Files page
-// keeps its transcript as a file; a playlist saved in a subject gets a folder of its own; a video with no captions is
-// kept and marked so; the viewer plays it beside its transcript; and a chat about a saved video sends the transcript to
-// the model through the ordinary file sources. Screenshots go to artifacts/saved-videos-*.png.
+// is kept as a file of its details and link, with no transcript (YouTube is asked for its details only); a playlist
+// saved in a subject gets a folder of its own; the viewer reads the captions when it opens and plays the video beside
+// them; and a chat about a saved video has its captions read then, under VIDEO TRANSCRIPTS. Screenshots go to
+// artifacts/saved-videos-*.png.
 // YouTube itself is not reachable from the check, so thumbnails and the player are drawn stand-ins.
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
@@ -31,6 +32,7 @@ const youtubeScript = () => {
         window.youtubeCalls.push(r);
         await new Promise((ok) => setTimeout(ok, 900));
         const v = videos[r.id];
+        if (v && r.detailsOnly) return { source: "youtube", id: r.id, title: v.title, channel: v.channel, durationSec: v.durationSec, transcript: "" };
         if (!v) return { source: "youtube", id: r.id, transcript: "", error: "YouTube didn't return this video. It may have been removed." };
         if (v.none) return { source: "youtube", id: r.id, title: v.title, channel: v.channel, durationSec: v.durationSec, transcript: "", error: "This video has no captions, and its owner hasn't turned on automatic ones." };
         const { stamp } = await import("/core/captions.ts");
@@ -67,9 +69,10 @@ try {
   await dialog.locator(".yt-save-progress").waitFor();
   await shot("2-saving");
   await dialog.waitFor({ state: "detached" });
-  await page.getByText("Saved “Osmosis and tonicity, explained” with its transcript.").waitFor();
+  await page.getByText("Saved “Osmosis and tonicity, explained”. Clem reads its captions when you ask about it.").waitFor();
+  assert.ok(await page.evaluate(() => window.youtubeCalls.filter((c) => c.action === "videoCaptions").every((c) => c.detailsOnly)), "saving asks YouTube for the details only");
 
-  // The saved video is an ordinary Markdown file holding the transcript, in Biology 101, used as a source there.
+  // The saved video is an ordinary Markdown file of its details and link, in Biology 101, used as a source there.
   // The workspace is written a moment after a change (SAVE_MS in src/App.tsx).
   await page.evaluate(async () => { const store = await import("/src/store.ts"); for (let i = 0; i < 50 && !(await store.loadState()).files.some((x) => x.video?.id === "osMo5isTon1"); i++) await new Promise((ok) => setTimeout(ok, 100)); });
   const kept = await page.evaluate(async () => {
@@ -81,11 +84,12 @@ try {
   assert.equal(kept.file.type, "text/markdown");
   assert.equal(kept.file.name, "Osmosis and tonicity, explained.md");
   assert.equal(kept.file.spaceId, "bio");
-  assert.equal(kept.file.video.captions, "own");
+  assert.equal(kept.file.video.captions, "live");
   assert.ok(kept.source, "a saved video is a source of its subject, like an upload");
   assert.match(kept.text, /^# Osmosis and tonicity, explained\n/);
   assert.match(kept.text, /Link: https:\/\/www\.youtube\.com\/watch\?v=osMo5isTon1/);
-  assert.match(kept.text, /## Transcript\n\n\[00:00\] Osmosis is the movement of water/);
+  assert.match(kept.text, /Transcript: not kept in this file/);
+  assert.doesNotMatch(kept.text, /## Transcript|Osmosis is the movement of water/, "no transcript is stored");
 
   // The same video again is not stored twice.
   await page.getByRole("button", { name: "Save from YouTube" }).first().click();
@@ -94,7 +98,7 @@ try {
   await dialog.getByRole("button", { name: "Save video" }).click();
   await page.getByText("That video is already saved here.").waitFor();
 
-  // A subject: save a playlist into a folder of its own; the video without captions is kept and marked.
+  // A subject: save a playlist into a folder of its own, from what the playlist lists (no captions are read).
   await page.evaluate(() => { location.hash = "/app/space/bio"; });
   await page.getByRole("tab", { name: /^Files/ }).click();
   await page.locator(".sp-files-bar").getByRole("button", { name: "Add" }).click(); await page.getByRole("menuitem", { name: "YouTube video" }).click();
@@ -102,13 +106,13 @@ try {
   await dialog.getByRole("button", { name: "Whole playlist" }).waitFor();
   assert.equal(await dialog.locator("select").count(), 0, "a subject saves into itself");
   await dialog.getByRole("button", { name: "Save playlist" }).click();
-  await dialog.locator(".yt-save-progress", { hasText: /of 3/ }).waitFor();
   await dialog.waitFor({ state: "detached" });
-  await page.getByText(/Saved 3 videos from “Cell biology, unit 2”; 1 had no captions to read\./).waitFor();
+  await page.getByText(/Saved 3 videos from “Cell biology, unit 2”\./).waitFor();
+  assert.ok(await page.evaluate(() => !window.youtubeCalls.some((c) => c.action === "videoCaptions" && !c.detailsOnly)), "no captions were read while saving");
   await page.locator(".sp-folder", { hasText: "Cell biology, unit 2" }).waitFor();
   await shot("3-subject-files");
   await page.locator(".sp-folder", { hasText: "Cell biology, unit 2" }).click();
-  await page.locator(".sp-file", { hasText: "Lab safety walkthrough" }).getByText(/No transcript/).waitFor();
+  await page.locator(".sp-file", { hasText: "Lab safety walkthrough" }).waitFor();
   await shot("4-subject-playlist-folder");
   await page.locator(".sp-path").getByRole("button", { name: "Files" }).click();
   await page.locator(".sp-kinds").getByRole("button", { name: /Videos/ }).click();
@@ -116,22 +120,23 @@ try {
   await shot("5-subject-videos-filter");
   await page.locator(".sp-kinds").getByRole("button", { name: /^All/ }).click();
 
-  // The viewer: the player beside the transcript; a time moves the player there.
+  // The viewer: the captions are read as it opens and shown beside the player; a time moves the player there.
   await page.locator(".sp-file-open", { hasText: "Osmosis and tonicity" }).click();
   const viewer = page.locator("dialog.yt-viewer");
   await viewer.locator(".yt-lines li").first().waitFor();
+  await viewer.getByText("Read from YouTube just now; Clem doesn’t keep a copy.").waitFor();
   await viewer.locator(".yt-lines button", { hasText: "00:42" }).click();
   assert.match(await viewer.locator("iframe").getAttribute("src"), /start=42&/);
   await shot("6-video-viewer");
 
-  // Asking about it sends the transcript to the model through the subject's ordinary file sources.
+  // Asking about it reads its captions now and sends them with the question.
   await viewer.getByRole("button", { name: "Ask about it" }).click();
   await page.locator(".composer textarea, textarea").first().fill("Why does a plant cell not burst in pure water?");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => window.requests.some((r) => r.action === "chat"));
   const sent = await page.evaluate(() => JSON.stringify(window.requests.filter((r) => r.action === "chat").at(-1)));
+  assert.match(sent, /VIDEO TRANSCRIPTS:/, "the captions are read for the question");
   assert.match(sent, /turgor, and it keeps the plant upright/, "the transcript reaches the model");
-  assert.doesNotMatch(sent, /VIDEO TRANSCRIPTS:/, "it comes as a file, not through the separate link-captions path");
 
   // The Files page: grouped by when, list and cards, with a Videos filter.
   await page.evaluate(() => { location.hash = "/app/files"; });

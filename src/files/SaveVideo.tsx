@@ -9,7 +9,7 @@ import "./saved-video.css";
 export type SavedVideos = { files: StoredFile[]; skipped: number; place: string | null; playlist?: { id: string; title: string } };
 
 /**
- * Paste a YouTube video or playlist and keep it, with its transcript, where the person is: a subject, a project or their
+ * Paste a YouTube video or playlist and keep it, as a link Clem reads the captions of when asked, where the person is: a subject, a project or their
  * own files. `places`: where it can go when there is a choice (the Files page); a subject's Files tab passes only itself.
  */
 export function SaveVideoDialog({ places, place: initial, folderId = null, existing, store, onSaved, onClose }: {
@@ -70,7 +70,7 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
     <form onSubmit={save}>
       <header className="yt-save-head">
         <YouTubeLogo size={26} />
-        <div><h2 id="yt-save-title">Save from YouTube</h2><p>Clem keeps the transcript, so it can answer from what the video says.</p></div>
+        <div><h2 id="yt-save-title">Save from YouTube</h2><p>Clem keeps the link and reads the video’s captions when you ask about it.</p></div>
         <button type="button" className="icon-button" aria-label="Close" onClick={close}><Icon name="close" size={18} /></button>
       </header>
       <label className="yt-save-field">
@@ -81,7 +81,7 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
         {preview ? <VideoThumb id={preview} /> : <span className="yt-thumb yt-thumb-list" aria-hidden="true"><Icon name="list" size={22} /></span>}
         <div>
           <strong>{asPlaylist ? "Playlist" : "Video"}</strong>
-          <small>{asPlaylist ? "Every video in it, up to the first 100, each with its transcript." : "Saved with its transcript when it has captions."}</small>
+          <small>{asPlaylist ? "Every video in it, up to the first 100." : "Its title, channel and length, with the link."}</small>
           {link.video && link.playlist && <span className="yt-save-choice" role="group" aria-label="What to save">
             <button type="button" aria-pressed={!whole} onClick={() => setWhole(false)}>This video</button>
             <button type="button" aria-pressed={whole} onClick={() => setWhole(true)}>Whole playlist</button>
@@ -94,11 +94,11 @@ export function SaveVideoDialog({ places, place: initial, folderId = null, exist
           {places.map((p) => <option key={p.id ?? ""} value={p.id ?? ""}>{p.name}</option>)}
         </select>
       </label>}
-      {!desktop && <p className="yt-save-note">In the browser, videos are saved without a transcript. The Clem desktop app reads them.</p>}
+      {!desktop && <p className="yt-save-note">In the browser, Clem can’t read a video’s captions. The Clem desktop app reads them when you ask.</p>}
       {error && <p className="yt-save-error" role="alert">{error}</p>}
       {busy && <div className="yt-save-progress" role="status">
         <progress max={busy.total || 1} value={busy.listing ? undefined : busy.done} />
-        <span>{busy.listing ? "Reading the playlist…" : busy.total > 1 ? `Reading transcripts · ${busy.done} of ${busy.total}` : "Reading the transcript…"}</span>
+        <span>{busy.listing ? "Reading the playlist…" : busy.total > 1 ? `Saving · ${busy.done} of ${busy.total}` : "Saving the video…"}</span>
       </div>}
       <footer className="yt-save-actions">
         <button type="button" className="yt-btn" onClick={halt}>{busy ? "Stop" : "Cancel"}</button>

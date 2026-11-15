@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtempSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {AntigravityProvider, antigravityModels, antigravityUsage, googleSignInUrl, parseAntigravityLevels, parseAntigravityModels, parseUsageReport, replyProblem, ANTIGRAVITY_TOOLS, ANTIGRAVITY_FOLDER_TOOLS} from '../desktop/antigravity.ts';
+import {AntigravityProvider, antigravityModels, antigravityUsage, antigravityVideoPath, antigravityVideoProblem, antigravityWatches, googleSignInUrl, parseAntigravityLevels, parseAntigravityModels, parseUsageReport, replyProblem, ANTIGRAVITY_TOOLS, ANTIGRAVITY_FOLDER_TOOLS, ANTIGRAVITY_VIDEO_BYTES, ANTIGRAVITY_VIDEO_SECONDS} from '../desktop/antigravity.ts';
 import {AntigravityEngine, antigravityRelease} from '../desktop/antigravity-engine.ts';
 import {UsageLimit} from '../desktop/kinetra-turn.ts';
 
@@ -174,6 +174,40 @@ test('pictures go as images and PDFs as attached files, each PDF once per sessio
     assert.match(first.blocks[2].uri, /^file:\/\/.*Week%203\.pdf$/);
     assert.deepEqual(second.blocks.map((b: any) => b.type), ['text']);
   } finally { p.stop(); }
+});
+
+test('a video Gemini watches is saved in its folder for the turn, attached once per session, and removed after', async () => {
+  const p = new FakeAgent('ok');
+  try {
+    const folder = mkdtempSync(join(tmpdir(), 'agy-video-'));
+    let writes = 0;
+    const video = {name: 'Lecture 4.mov', mime: 'video/quicktime', write: async (path: string) => { writes++; writeFileSync(path, Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70])); }};
+    await answer(p, 'Summarise it', 'antigravity:gemini-3.1-pro', {session: {id: 'chat-v', resume: false}, options: {videos: [video], workspace: {root: folder}}});
+    await answer(p, 'And the end?', 'antigravity:gemini-3.1-pro', {session: {id: 'chat-v', resume: true}, options: {videos: [video], workspace: {root: folder}}});
+    const [first, second] = await p.prompts();
+    assert.deepEqual(first.blocks.map((b: any) => b.type), ['text', 'resource_link']);
+    assert.equal(first.blocks[1].mimeType, 'video/quicktime');
+    assert.match(first.blocks[1].uri, /^file:\/\/.*\.videos-11111111-1111-4111-8111-111111111111\/1-Lecture%204\.mov$/);
+    assert.match(first.blocks[0].text, /^Summarise it\n\nVIDEOS ATTACHED .*"Lecture 4\.mov" \(\.videos-.*\/1-Lecture 4\.mov\)\. Open each with view_file/);
+    // The same turn's file is reused, and a kept session isn't handed the same video twice.
+    assert.equal(writes, 1);
+    assert.deepEqual(second.blocks.map((b: any) => b.type), ['text']);
+    assert.equal(second.blocks[0].text, 'And the end?');
+    const saved = join(folder, antigravityVideoPath('11111111-1111-4111-8111-111111111111', 0, video.name, video.mime));
+    assert.ok(existsSync(saved));
+    await p.dropVideos('11111111-1111-4111-8111-111111111111', folder);
+    assert.ok(!existsSync(saved));
+  } finally { p.stop(); }
+});
+
+test('only videos the agent can hand to Gemini, and that fit, go as the video itself', () => {
+  assert.ok(antigravityWatches('video/mp4') && antigravityWatches('video/webm') && !antigravityWatches('video/x-matroska') && !antigravityWatches('audio/mpeg'));
+  assert.equal(antigravityVideoProblem({mime: 'video/mp4', size: 20_000_000, durationSec: 600}), '');
+  assert.match(antigravityVideoProblem({mime: 'video/mp4', size: ANTIGRAVITY_VIDEO_BYTES + 1}), /larger/);
+  assert.match(antigravityVideoProblem({mime: 'video/mp4', size: 1000, durationSec: ANTIGRAVITY_VIDEO_SECONDS + 1}), /longer/);
+  assert.match(antigravityVideoProblem({mime: 'video/mp4', size: 0}), /size/);
+  assert.match(antigravityVideoProblem({mime: 'video/x-matroska', size: 1000}), /kind/);
+  assert.equal(antigravityVideoPath('t', 1, 'a/b:c?.MP4', 'video/mp4'), '.videos-t/2-a_b_c_.mp4');
 });
 
 test('Kinetra is a native MCP tool of the session, reached over this answer’s own endpoint', async () => {

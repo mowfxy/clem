@@ -102,6 +102,18 @@ test('YouTube captions: consent page, Android player, best track, transcript',as
   assert.equal(calls.filter(c=>c.url.includes('/watch')).length,2,'the consent cookie is sent on a second visit');
 });
 
+test('saving a video reads only its details: no caption track is fetched',async()=>{
+  const {fetcher,calls}=fakeYouTube();
+  const out=await youtubeCaptions('abcdefghijk',{fetcher,captions:false});
+  assert.equal(out.error,undefined);
+  assert.equal(out.title,'Entropy & you');assert.equal(out.channel,'MIT');assert.equal(out.durationSec,3000);
+  assert.equal(out.transcript,'');
+  assert.equal(calls.filter(c=>c.url.includes('/timedtext')).length,0);
+  const gone=await youtubeCaptions('abcdefghijk',{fetcher:fakeYouTube({player:{playabilityStatus:{status:'ERROR',reason:'Video unavailable'}}}).fetcher,captions:false});
+  // The page's own details still name it; with neither, the reason comes back.
+  assert.equal(gone.title,'Page title');
+});
+
 test('YouTube problems come back as reasons, never as a crash',async()=>{
   const none=await youtubeCaptions('abcdefghijk',{fetcher:fakeYouTube({player:{videoDetails:{title:'Silent film',lengthSeconds:'60',shortDescription:'A film'},captions:{}}}).fetcher});
   assert.match(none.error!,/no captions/);assert.equal(none.title,'Silent film');assert.equal(none.description,'A film');
