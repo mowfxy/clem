@@ -12,6 +12,9 @@ services:
       CLEM_DATA: /data
       CLEM_FILES: /files
       CLEM_KEY_FILE: /run/clem.key
+    # The host, for the server changes the person approves on Telegram (they run there over SSH, not in this container).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${CLEM_PORT:-7717}:7717"
       # Routines' incoming webhooks only (desktop/engine/hooks.ts): each needs its routine's secret key.

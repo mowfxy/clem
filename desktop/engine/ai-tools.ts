@@ -2,7 +2,7 @@
 // owner-scoped engine reads, and the result is compact text with #/app/guc links to cite. The engine is per owner;
 // a request is refused when the engine is not the signed-in owner's.
 import { announcementsText, correctionsText, deadlinesText, deadlineWindow, fileTextPage, findItem, GUC_GUIDE, gradesText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
-import { applyCorrections, fingerprint, matches, ruleSentence, staleRule, type Correction, type Rule } from "../../core/guc/corrections.ts";
+import { applyCorrections, fingerprint, matches, ruleSentence, staleRule, type Correction, type RecordTarget, type Rule } from "../../core/guc/corrections.ts";
 import { mailTextId } from "../../core/guc/deadline-ai.ts";
 import { cairoInstant, whenText } from "../../core/guc/deadlines.ts";
 import { cairo, type HubDeadline } from "../../core/guc/hub.ts";
@@ -222,7 +222,6 @@ export async function runTelegramTool(ctx: GucToolContext, request: Record<strin
 }
 
 // ---------- Corrections (docs/GUC-VPS-ENGINE.md → Corrections) ----------
-const PORTAL = "That is the portal's own record (its exam seat), so Clem can't change its date, time or hall. It can hide it (do \"remove\"), add a note (do \"note\"), or read the portal again (guc.resync). Tell them that plainly, and do whichever they want.";
 const said = (d: Pick<HubDeadline, "code" | "title">) => `${d.code ? d.code + " " : ""}${d.title}`;
 /** A rule as stored, from the model's: `message` keys an "ignore" to the message the item was read from. */
 function toRule(r: { type: string; days?: number; from?: string; words?: string[]; message?: boolean } | undefined, item?: Pick<GucDeadline, "ref">): Rule {
@@ -232,12 +231,13 @@ function toRule(r: { type: string; days?: number; from?: string; words?: string[
 }
 /** guc.correct: one item removed, edited, marked done, annotated or brought back, and what it taught kept as a rule. */
 async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, now: number) {
+  if (a.what === "grade" || a.what === "class" || a.what === "announcement" || a.what === "midterm") return correctRecord(ctx, a, a.what, course);
   const e = ctx.engine, list = await e.deadlines();
   if (a.do === "restore") return restore(ctx, a.item, list, course);
   const found = findItem(list, a.item, course);
   if ("error" in found) return found;
+  // An exam seat is the portal's own record: an edit changes Clem's copy (what it shows and reminds from), not the portal.
   const portal = found.source === "portal" || found.id.startsWith("exam-");
-  if (portal && a.do === "edit") return PORTAL;
   const stored = portal ? undefined : (await e.trackedItems()).find((d) => d.id === found.id);
   const base: GucDeadline = stored || { id: found.id, courseKey: found.courseKey, title: found.title, due: found.due, source: found.source, ...(found.kind ? { kind: found.kind } : {}) };
   const common = { itemId: found.id, ...(stored?.ref ? { sourceRef: stored.ref } : {}), ...(portal ? {} : { fingerprint: fingerprint(base) }), ...(found.courseKey ? { courseKey: found.courseKey } : {}), ...(stored ? { before: stored } : {}) };
@@ -271,7 +271,70 @@ async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: 
     if (!known) await e.correct({ kind: "rule", ...(r.type !== "max_age" && found.courseKey ? { courseKey: found.courseKey } : {}), patch: { rule: r, text }, label: text });
     learned = ` Clem learned: ${text}`;
   }
-  return `${done.label}. It holds through every sync.${learned} Tell them what you changed in one plain sentence ("undo that" brings it back).`;
+  return `${done.label}${portal && a.do === "edit" ? " in Clem's copy (the portal's own record is unchanged; Clem shows and reminds from this)" : ""}. It holds through every sync.${learned} Tell them what you changed in one plain sentence ("undo that" brings it back).`;
+}
+
+/** guc.correct on the portal's own records (owner, 2026-11-15): a grade, a class, an announcement or a midterm hidden,
+ *  edited or annotated in Clem's copy (core/guc/corrections.ts applyRecordCorrections). The portal keeps its record. */
+async function correctRecord(ctx: GucToolContext, a: Record<string, any>, target: RecordTarget, course: Resolved | undefined) {
+  const e = ctx.engine, raw = await recordsOf(e, target, course);
+  const words = String(a.item).toLowerCase().replace(/[^a-z0-9: ]+/g, " ").split(/\s+/).filter((w) => w.length > 1);
+  const text = (r: Rec) => r.label.toLowerCase();
+  const fixes = (await e.corrections()).filter((c) => c.patch?.target === target);
+  if (a.do === "restore") {
+    const mine = fixes.filter((c) => c.itemId === a.item || (words.length > 0 && words.every((w) => c.label.toLowerCase().includes(w))));
+    if (!mine.length) return { error: `No change to a ${target} matching "${a.item}" is in force. guc.corrections lists them.` };
+    for (const c of [...mine].reverse()) await e.uncorrect(c.id);
+    return `Brought back: ${mine.map((c) => c.label).join("; ")} is undone; Clem shows the portal's record again. Say so in one plain sentence.`;
+  }
+  let hits = raw.filter((r) => r.id === a.item);
+  if (!hits.length) hits = raw.filter((r) => words.every((w) => text(r).includes(w)));
+  if (target === "class" && a.day) hits = hits.filter((r) => r.label.toLowerCase().includes(String(a.day).toLowerCase().slice(0, 3)));
+  if (!hits.length) return { error: `No ${target} matches "${a.item}"${a.day ? ` on ${a.day}` : ""}. ${raw.slice(0, 12).map((r) => `${r.id}: ${r.label}`).join("; ") || "There are none."}` };
+  if (hits.length > 1 && !(target === "grade" && a.do !== "edit")) {
+    if (hits.length > 6 || a.do === "edit") return { error: `"${a.item}" matches ${hits.length}: ${hits.slice(0, 8).map((r) => `${r.id}: ${r.label}`).join("; ")}. Send the one meant ("item": its id).` };
+  }
+  const changed: string[] = [];
+  for (const r of target === "grade" && a.do !== "edit" ? hits : hits.slice(0, 1)) {
+    const common = { itemId: r.id, ...(r.courseKey ? { courseKey: r.courseKey } : {}) };
+    if (a.do === "remove") changed.push((await e.correct({ ...common, kind: "hide", patch: { target, ...(a.why ? { why: a.why } : {}) }, label: `Hid ${r.label} in Clem's copy` })).label);
+    else if (a.do === "note") {
+      if (!a.note) return { error: 'guc.correct note: give "note" (their words).' };
+      changed.push((await e.correct({ ...common, kind: "note", patch: { target, note: a.note }, label: `Added a note to ${r.label}: "${a.note}"` })).label);
+    } else if (a.do === "done") {
+      if (target !== "announcement") return { error: '"done" is for an announcement (read); remove, edit or note the others.' };
+      changed.push((await e.correct({ ...common, kind: "done", patch: { target }, label: `Marked ${r.label} read` })).label);
+    } else {
+      const set = target === "grade" ? (a.grade ? (/^\d+(\.\d+)?$/.test(a.grade) ? { numeric: Number(a.grade) } : { letter: a.grade }) : {})
+        : target === "midterm" ? (a.grade ? { grade: a.grade } : {})
+        : target === "class" ? { ...(a.day ? { day: a.day } : {}), ...(a.start ? { start: a.start } : {}), ...(a.end ? { end: a.end } : {}), ...(a.place !== undefined ? { location: a.place } : {}), ...(a.title ? { name: a.title } : {}) }
+        : a.note ? { text: a.note } : {};
+      if (!Object.keys(set).length) return { error: `guc.correct edit of a ${target}: give ${target === "grade" || target === "midterm" ? '"grade"' : target === "class" ? '"day", "start", "end" or "place"' : '"note" (the new text)'}.` };
+      const was = Object.keys(set).map((k) => `${k} ${String(r.values[k] ?? "none")}`).join(", ");
+      changed.push((await e.correct({ ...common, kind: "edit", patch: { target, set }, label: `Changed ${r.label} in Clem's copy to ${Object.values(set).join(", ")} (the portal says ${was})` })).label);
+    }
+  }
+  return `${changed.join("; ")}. The portal's own record is unchanged; Clem shows, plans around and reminds from its copy, and this holds through every sync. Tell them what you changed in one plain sentence ("undo that" brings it back).`;
+}
+type Rec = { id: string; label: string; courseKey?: string; values: Record<string, unknown> };
+/** The records as the portal has them (before the person's changes: those are matched by id). */
+async function recordsOf(e: Engine, target: RecordTarget, course?: Resolved): Promise<Rec[]> {
+  const code = course ? (await e.db.query<{ code: string }>("select code from guc_courses where owner_id = $1 and course_key = $2", [e.owner, course.courseKey]))[0]?.code?.replace(/\s+/g, "").toLowerCase() : undefined;
+  const mine = (c: string) => !code || c.replace(/\s+/g, "").toLowerCase() === code;
+  if (target === "grade") {
+    const rows = await e.db.query<{ grade_id: string; semester: string; code: string; name: string; numeric_grade: number | null; letter: string }>("select grade_id, semester, code, name, numeric_grade, letter from guc_grades where owner_id = $1", [e.owner]);
+    return rows.filter((r) => mine(r.code)).map((r) => ({ id: r.grade_id, label: `your ${r.code} ${r.name} grade (${r.semester})`, values: { letter: r.letter, numeric: r.numeric_grade } }));
+  }
+  if (target === "class") {
+    const rows = await e.db.query<{ slot_id: string; day: string; starts: string; ends: string; code: string; name: string; kind: string; location: string }>("select slot_id, day, starts, ends, code, name, kind, location from guc_schedule_slots where owner_id = $1", [e.owner]);
+    return rows.filter((r) => mine(r.code)).map((r) => ({ id: r.slot_id, label: `${r.code} ${r.kind} on ${r.day} ${r.starts}–${r.ends}${r.location ? " in " + r.location : ""}`, values: { day: r.day, start: r.starts, end: r.ends, location: r.location, name: r.name } }));
+  }
+  if (target === "announcement") {
+    const rows = await e.db.query<{ announcement_id: string; course_key: string; body: string }>(`select announcement_id, course_key, body from guc_announcements where owner_id = $1${course ? " and course_key = $2" : ""} order by first_seen desc limit 200`, course ? [e.owner, course.courseKey] : [e.owner]);
+    return rows.map((r) => ({ id: r.announcement_id, courseKey: r.course_key, label: `the announcement "${r.body.replace(/\s+/g, " ").slice(0, 60)}"`, values: { text: r.body } }));
+  }
+  const [row] = await e.db.query<{ data: { midterms?: { id: string; code: string; course: string; grade: string }[] } }>("select data from guc_snapshots where owner_id = $1 order by id desc limit 1", [e.owner]);
+  return (row?.data.midterms || []).filter((m) => mine(m.code)).map((m) => ({ id: m.id, label: `your ${m.code} midterm grade`, values: { grade: m.grade } }));
 }
 /** "Bring it back": the corrections in force on an item (listed or removed) are lifted, newest first. */
 async function restore(ctx: GucToolContext, item: string, list: HubDeadline[], course?: Resolved) {

@@ -719,17 +719,26 @@ export class Organizer {
   }
   /** Runs a routine: the model decides what to say (when `think`), it is said in the main thread and pushed when it
    *  matters, and posted to the person's own URL when it has one. */
-  async runRoutine(id: string, event: { kind: string; [k: string]: unknown } = { kind: "manual" }) {
+  /** What the routine's model would be asked for this run, so a run asked for in the app's chat is thought by the
+   *  laptop's own AI even while the VPS worker keeps the routines (desktop/main.ts); null when it doesn't think. */
+  async routinePrompt(id: string, event: { kind: string; [k: string]: unknown } = { kind: "manual" }): Promise<{ system: string; user: string } | null> {
+    const row = await this.routineRow(id);
+    if (!row || row.stopped || !row.routine.tell || !row.routine.think) return null;
+    const r = row.routine, now = this.clock(), context = await this.routineContext().catch(() => "");
+    return { system: ROUTINE_SYSTEM, user: `Routine: ${r.title}\nIts instructions: ${r.instructions || "Tell the person what happened, briefly."}\nTriggered: ${describeTrigger(r.trigger)}\nNow: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nEvent:\n${JSON.stringify(event).slice(0, 8000)}\n\nContext:\n${context}` };
+  }
+  /** `reply`: the model's answer written elsewhere (the laptop's AI for a run asked in the app), used instead of asking here. */
+  async runRoutine(id: string, event: { kind: string; [k: string]: unknown } = { kind: "manual" }, o: { reply?: string } = {}) {
     const row = await this.routineRow(id);
     if (!row || row.stopped) return { error: "No running routine has that id." };
     const r = row.routine, now = this.clock(), s = await this.settings();
     await this.db.query("update organizer_routines set runs = runs + 1, last_run = $3 where owner_id = $1 and id = $2", [this.owner, id, new Date(now)]);
     let say: string | null = null, important = false;
     if (r.tell) {
-      if (r.think && this.host.complete) {
-        const context = await this.routineContext().catch(() => "");
-        const user = `Routine: ${r.title}\nIts instructions: ${r.instructions || "Tell the person what happened, briefly."}\nTriggered: ${describeTrigger(r.trigger)}\nNow: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nEvent:\n${JSON.stringify(event).slice(0, 8000)}\n\nContext:\n${context}`;
-        try { ({ say, important } = readRoutineReply(await this.host.complete({ system: ROUTINE_SYSTEM, user }))); }
+      if (r.think && typeof o.reply === "string") ({ say, important } = readRoutineReply(o.reply));
+      else if (r.think && this.host.complete) {
+        const prompt = (await this.routinePrompt(id, event))!;
+        try { ({ say, important } = readRoutineReply(await this.host.complete(prompt))); }
         catch (e) { this.host.log("warn", "[routine] model: " + (e as Error).message); say = plainRoutine(r, event); }
       } else say = plainRoutine(r, event);
     }

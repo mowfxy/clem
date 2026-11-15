@@ -34,7 +34,7 @@ export const fingerprint = (d: Pick<GucDeadline, "courseKey" | "title" | "kind">
 /** A correction is about this item: the same id or the same fingerprint (in the same course), and read from the same
  *  message, when both say which. */
 export function matches(c: Correction, d: Item) {
-  if (c.kind === "rule" || c.kind === "link") return false;
+  if (c.kind === "rule" || c.kind === "link" || c.patch?.target) return false;
   if (c.courseKey && d.courseKey && c.courseKey !== d.courseKey) return false;
   if (!((c.itemId && c.itemId === d.id) || (c.fingerprint && c.fingerprint === fingerprint(d)))) return false;
   return !c.sourceRef || !d.ref || c.sourceRef === d.ref;
@@ -111,4 +111,34 @@ export const rulesText = (rules: Correction[]) => rules.map((c) => ruleSentence(
 export const STALE_DAYS = 14;
 export function staleRule(d: Pick<GucDeadline, "sent" | "source">, now: number): Rule | undefined {
   return d.sent && (d.source === "mail" || d.source === "announcement") && now - Date.parse(d.sent) > STALE_DAYS * 864e5 ? { type: "max_age", days: STALE_DAYS } : undefined;
+}
+
+/** Clem's copy of the portal's own records, changed by the person (owner, 2026-11-15: the AI comes first): a grade,
+ *  a class in the timetable, an announcement or a midterm hidden, edited or annotated. The portal keeps its record; the
+ *  hub, the AI, the Now card and the organizer's calendar read Clem's copy, so the change holds through every sync and
+ *  is undone by saying so. `patch.target` says which list; `itemId` is the record's stable id. */
+export type RecordTarget = "grade" | "class" | "announcement" | "midterm";
+/** The fields of each record the person may set. */
+export const RECORD_FIELDS: Record<RecordTarget, string[]> = { grade: ["letter", "numeric"], class: ["day", "start", "end", "location", "name", "type"], announcement: ["text"], midterm: ["grade"] };
+/** `yours`: what the person changed, with the portal's own values ("official"), so the AI can say both plainly. */
+export type Overridden = { note?: string; yours?: { official: Record<string, unknown> } };
+export function applyRecordCorrections<T extends { id: string }>(list: T[], corrections: Correction[], target: RecordTarget): (T & Overridden)[] {
+  const mine = corrections.filter((c) => c.patch?.target === target && c.itemId).sort((a, b) => a.at - b.at);
+  if (!mine.length) return list;
+  const out: (T & Overridden)[] = [];
+  for (const item of list) {
+    let d: T & Overridden = item, hidden = false;
+    for (const c of mine) {
+      if (c.itemId !== item.id) continue;
+      if (c.kind === "hide") hidden = true;
+      else if (c.kind === "note") d = { ...d, note: `Your note: ${String(c.patch.note || "")}`.slice(0, 400) };
+      else if (c.kind === "edit") {
+        const set = Object.fromEntries(Object.entries(c.patch.set || {}).filter(([k]) => RECORD_FIELDS[target].includes(k)));
+        const official = { ...(d.yours?.official || {}), ...Object.fromEntries(Object.keys(set).filter((k) => !(k in (d.yours?.official || {}))).map((k) => [k, (item as Record<string, unknown>)[k]])) };
+        d = { ...d, ...set, yours: { official } };
+      } else if (c.kind === "done" && target === "announcement") d = { ...d, read: true } as T & Overridden;
+    }
+    if (!hidden) out.push(d);
+  }
+  return out;
 }

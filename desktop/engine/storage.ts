@@ -7,7 +7,9 @@ import { join } from "node:path";
 export interface FileStore {
   readonly location: "device" | "vps";
   /** Keeps `bytes` under their sha256 (written once: the same bytes are never stored twice); returns where. */
-  put(sha256: string, ext: string, bytes: Uint8Array): Promise<string>;
+  /** `about`: what the bytes are (a CMS file's "cms:<material id>" and its name), for a store that may have to say it
+   *  couldn't keep them (the VPS at its storage limit). */
+  put(sha256: string, ext: string, bytes: Uint8Array, about?: { item: string; name: string }): Promise<string>;
   has(path: string): Promise<boolean>;
   /** The stored bytes at `path` (the AI's guc.read; a VPS store fetches them over its tunnel). */
   read(path: string): Promise<Uint8Array>;

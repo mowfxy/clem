@@ -7,6 +7,8 @@ import type { VpsTest } from "../../../core/vps/types.ts";
 import { createHash } from "node:crypto";
 import type { SshLink, VpsLink } from "./link.ts";
 import { seal, secretFile } from "./secrets.ts";
+import { generateKey } from "./keys.ts";
+import { q } from "./link.ts";
 
 export const WORKER_PORT = 7717;
 export const workerDir = (owner: string) => `clem/${owner}/worker`;
@@ -31,7 +33,8 @@ const nodeOk = (v?: string) => !!v && Number(v.replace(/^v/, "").split(".")[0]) 
 /** Uploads the worker bundle, its key, config and sealed secrets, then starts it. `secrets`: name → value (see
  *  core/vps/types.ts WORKER_SECRETS); each sealed with AES-256-GCM under `key` here, so the server only ever holds
  *  ciphertext plus the key file (mode 600). Returns how it runs. */
-export async function installWorker(o: { link: VpsLink; owner: string; bundle: string; key: Uint8Array; secrets: Record<string, unknown>; accountService: string; port?: number; /** The server's address, for routines' webhook URLs. */ publicHost?: string; progress?: (label: string) => void }) {
+export async function installWorker(o: { link: VpsLink; owner: string; bundle: string; key: Uint8Array; secrets: Record<string, unknown>; accountService: string; port?: number; /** The server's address, for routines' webhook URLs. */ publicHost?: string; progress?: (label: string) => void;
+  /** The SSH account the desktop uses: a worker in Docker runs the person's approved server changes on the host through it (authorizeWorker). */ hostAccess?: { user: string; port: number; fingerprint?: string } }) {
   const { link, owner } = o, dir = workerDir(owner), port = o.port || WORKER_PORT;
   o.progress?.("Checking the server…");
   const p = await probe(link);
@@ -60,6 +63,10 @@ export async function installWorker(o: { link: VpsLink; owner: string; bundle: s
   const env = await link.get(`${dir}/.env`).then((b) => Buffer.from(b).toString("utf8"), () => "");
   const pgPass = env.match(/^POSTGRES_PASSWORD=(\w+)$/m)?.[1] || randomBytes(18).toString("hex");
   await link.put(`${dir}/.env`, text(`POSTGRES_PASSWORD=${pgPass}\nCLEM_UID=${p.uid}\nCLEM_GID=${p.gid}\nCLEM_PORT=${port}\n`), 0o600);
+  // In Docker the worker's shell is its container's: a change the person approves on Telegram ("install htop",
+  // "restart nginx") runs on the host as their SSH user, through a key of the worker's own that works only from the
+  // server itself (authorizeWorker). Systemd runs as that user already.
+  if (kind === "docker" && o.hostAccess) o.secrets = { ...o.secrets, "host-ssh": { ...o.hostAccess, privateKey: await authorizeWorker(link, owner) } };
   for (const [name, value] of Object.entries(o.secrets)) if (value !== undefined) await link.put(`${dir}/state/secrets/${secretFile(name)}`, seal(o.key, name, value), 0o600);
   await link.exec(`chmod 700 ${dir}/state ${dir}/state/secrets; chmod 600 ${dir}/.key ${dir}/.env`);
   o.progress?.(kind === "docker" ? "Starting it with Docker…" : "Starting it with systemd…");
@@ -95,6 +102,15 @@ export async function installDocker(link: VpsLink, progress?: (label: string) =>
   const r = await link.exec("sh -s 2>&1", { stdin: script + "\n", timeout: 900_000 });
   if (r.code !== 0) throw Error("Docker didn't install: " + (r.stdout + r.stderr).trim().split("\n").slice(-3).join(" ").slice(0, 300));
   return true;
+}
+/** A key of the worker's own for the server's SSH, accepted only from the server itself and its containers
+ *  (from="…"), replacing the one an earlier install added. Its private half goes to the worker sealed ("host-ssh"). */
+export async function authorizeWorker(link: VpsLink, owner: string) {
+  const tag = "clem-worker-" + owner, k = generateKey(tag);
+  const line = `from="127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16" ${k.publicKey}`;
+  const r = await link.exec(`mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && { grep -v ${q(" " + tag + "$")} ~/.ssh/authorized_keys || true; } > ~/.ssh/authorized_keys.clem && echo ${q(line)} >> ~/.ssh/authorized_keys.clem && mv -f ~/.ssh/authorized_keys.clem ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`, { timeout: 30_000 });
+  if (r.code !== 0) throw Error("Clem couldn't give its worker a way to run approved commands on the server: " + (r.stdout + r.stderr).trim().slice(0, 200));
+  return k.privateKey;
 }
 /** Sends one changed secret (a new GUC password) to an installed worker. */
 export async function sendSecret(link: VpsLink, owner: string, key: Uint8Array, name: string, value: unknown) {

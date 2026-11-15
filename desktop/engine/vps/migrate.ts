@@ -37,8 +37,10 @@ export class Migrator {
     const rows = await this.db.query<{ file_id: string; location: string; size: string; sha256: string }>("select file_id, location, size, sha256 from file_objects where owner_id = $1 and (file_id like 'ws:%' or file_id like 'guc:%')", [this.owner]);
     if (direction === "down") return rows.filter((r) => r.location === "vps").map((r) => ({ item: r.file_id, size: Number(r.size), sha256: r.sha256 }));
     const onVps = new Set(rows.filter((r) => r.location === "vps").map((r) => r.file_id));
-    const ws = (await this.local.list()).filter((f) => !onVps.has("ws:" + f.id)).map((f) => ({ item: "ws:" + f.id, size: f.size }));
-    return [...ws, ...rows.filter((r) => r.file_id.startsWith("guc:") && r.location === "device").map((r) => ({ item: r.file_id, size: Number(r.size), sha256: r.sha256 }))];
+    // A file the person said to keep on the PC (vps.keep) never moves up.
+    const pc = new Set((await this.db.query<{ file_id: string }>("select file_id from file_keep where owner_id = $1 and place = 'pc'", [this.owner])).map((r) => r.file_id));
+    // Copies are of the person's own files: CMS files stay on the PC (the VPS fetches them from the CMS when it needs one).
+    return (await this.local.list()).filter((f) => !onVps.has("ws:" + f.id) && !pc.has(f.id)).map((f) => ({ item: "ws:" + f.id, size: f.size }));
   }
 
   /** Starts moving (a run already going in the same direction just carries on). */
@@ -133,7 +135,7 @@ export class Migrator {
       const hash = sha256(bytes);
       if (this.limit && !(await this.limit.reserve(bytes.length))) throw new AtLimit();
       const path = await store.put(hash, "blob", bytes).catch((e) => { this.limit?.release(bytes.length); throw e; });
-      // Checked on the VPS: the row moves; this copy becomes cache (the LRU frees it under the cap).
+      // Checked on the VPS: the file has a copy there too; this PC keeps its own.
       await this.router.markVps(id, path, hash, bytes.length, true);
       return;
     }
@@ -149,6 +151,8 @@ export class Migrator {
     if (!still.length) await this.device.remove(r.path);
   }
 
+  /** A file only on the VPS brought to this PC (checked), its VPS copy removed only then (fillLocal, CMS files). */
+  bringDown(item: string) { return this.down(item); }
   private async down(item: string) {
     const store = this.store();
     if (item.startsWith("ws:")) {

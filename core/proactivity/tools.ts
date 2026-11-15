@@ -31,7 +31,7 @@ export const clemArgs = {
   "clem.unremind": z.object({ id: z.string().regex(/^r[\w-]{1,40}$/) }),
   "clem.study": z.object({ subject, sessions: z.number().int().min(1).max(30), minutes: z.number().int().min(15).max(240).optional(), until: ymd, title: z.string().trim().min(2).max(120).optional() }),
   // Everything the person can tell Clem about how it runs: how much it speaks, quiet hours, its routines, study time.
-  "clem.prefs": proPatch.omit({ deadlineHours: true }).refine((p) => Object.values(p).some((v) => v !== undefined), "says nothing to change"),
+  "clem.prefs": proPatch.refine((p) => Object.values(p).some((v) => v !== undefined), "says nothing to change"),
   // Checked in full by the organizer (core/proactivity/routines.ts), which says exactly what was wrong.
   "clem.routine": z.object({ title: z.string() }).passthrough(),
   "clem.routines": z.object({}),
@@ -87,6 +87,7 @@ export const settingsText = (s: ProSettings) => [
   `Quiet hours: ${s.quiet.on ? `${s.quiet.from}–${s.quiet.to}` : "off"}.`,
   "Routines: " + (Object.keys(JOB_NAMES) as (keyof typeof JOB_NAMES)[]).map((k) => `${JOB_NAMES[k]} ${s.jobs[k].on ? `${s.jobs[k].day !== undefined ? WD[s.jobs[k].day!] + "s " : ""}${s.jobs[k].time}` : "off"}`).join(", ") + ".",
   prefsText(s.study),
+  `Deadline reminders: ${s.deadlineHours.map((h) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hour${h === 1 ? "" : "s"}`)).join(" and ")} before.`,
 ].join(" ");
 export const prefsText = (p: StudyPrefs) => `Study preferences: ${p.days.length === 7 ? "every day" : p.days.map((d) => WD[d].slice(0, 3)).join(", ")}, ${p.from}–${p.to}, ${p.gap} min clear around other things.`;
 

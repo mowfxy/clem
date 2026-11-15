@@ -1,7 +1,8 @@
 // Telegram's relay in the engine (docs/DESKTOP.md "Telegram"). Host-agnostic: the account service comes in through
 // EngineHost.account (desktop: the signed-in person's Supabase token; a VPS: its own), answers through
-// EngineHost.converse (desktop: the window's main thread, the same agent, tools and hand-off as typing there).
-// It pulls what the paired chat sent from the Worker's inbox, answers it (typing while it works), sends CMS files, and
+// EngineHost.converse (the Telegram main thread, desktop/telegram-thread.ts: in the window, or on the VPS worker).
+// Telegram is the main thread only: it manages the person's day and term, and questions and files are done in the app
+// (core/telegram/thread.ts). Once paired, it says so in one plain message (TELEGRAM_INTRO), once. It pulls what the paired chat sent from the Worker's inbox, answers it (typing while it works), sends CMS files, and
 // is the notifier's Telegram channel: what Clem says by itself arrives as plain messages with no buttons, and the
 // person steers it in words. Taps on buttons of older messages still run through the same appliers. No electron here.
 import { randomBytes } from "node:crypto";
@@ -9,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { TG_FILE_LIMIT } from "../../core/telegram/pairing.ts";
 import { cardsIn } from "../../core/guc/cards.ts";
 import { noticeMessage, plainMessage, replyMessages, type Button, type Tap, type TgMessage } from "../../core/telegram/render.ts";
+import { TELEGRAM_INTRO } from "../../core/telegram/thread.ts";
 import type { Db } from "./db.ts";
 import type { EngineHost, TelegramTurn } from "./host.ts";
 import type { Organizer } from "./organizer.ts";
@@ -72,15 +74,32 @@ export class TelegramRelay {
   async pair() { const r = await this.call<{ code: string; link: string; expires: number; bot: string }>("/telegram/pair", {}); this.cached = undefined; return r; }
   async unpair() { await this.call("/telegram/unpair", {}); this.remember({ ...(this.cached?.value || { configured: true }), paired: null }); return this.status(true); }
 
+  // ---------- What Telegram is for, told once ----------
+  private introduced = false;
+  /** Once per person ever (also to people paired before this was said): one plain message on what Telegram does, and
+   *  the same words in the main thread. Not again when the other side (the PC or the VPS) has said it already. */
+  async introduce() {
+    if (this.introduced) return;
+    const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, 'telegram-intro', 'telegram') on conflict do nothing returning 1", [this.owner]);
+    this.introduced = true;
+    if (!fresh.length) return;
+    const ws = await this.host.workspace?.().catch(() => null) as { chats?: { kind?: string; messages?: { content?: string }[] }[] } | null;
+    if (ws?.chats?.find((c) => c.kind === "main")?.messages?.some((m) => m.content === TELEGRAM_INTRO)) return;
+    try { await this.send([plainMessage(TELEGRAM_INTRO)]); }
+    catch (e) { this.introduced = false; await this.db.query("delete from notifications_sent where owner_id = $1 and event_key = 'telegram-intro' and channel = 'telegram'", [this.owner]); throw e; }
+    await this.organizer.announce(TELEGRAM_INTRO, "telegram-intro").catch(() => {});
+  }
+
   // ---------- The inbox ----------
   start() {
     if (!this.host.account || !this.stopped) return;
-    this.stopped = false;
+    this.stopped = false; this.leaving = false;
     this.loop = (async () => {
       let backoff = 15_000;
       while (!this.stopped) {
         try {
           if (!(await this.status(true)).paired) { await this.nap(60_000); continue; }
+          await this.introduce().catch((e) => this.host.log("warn", "[telegram] intro: " + errorText(e)));
           await this.pullOnce(25);
           backoff = 15_000;
         } catch (e) {
@@ -91,22 +110,33 @@ export class TelegramRelay {
       }
     })();
   }
-  async stop() { this.stopped = true; this.abort?.abort(); await this.loop?.catch(() => {}); }
+  /** Stops pulling. A message being answered is finished; what was pulled and not started goes back at once
+   *  (/telegram/release), so the other side (the PC or the VPS, whichever runs Clem now) answers it, never both. */
+  async stop() { this.stopped = true; this.leaving = true; this.abort?.abort(); await this.loop?.catch(() => {}); }
+  /** Pulled and not yet acknowledged: kept leased to this engine while it answers (the typing call holds them). */
+  private holding = new Set<string>();
+  private leaving = false;
   private nap(ms: number) {
     this.abort = new AbortController();
     const signal = this.abort.signal;
     return new Promise<void>((resolve) => { const t = setTimeout(resolve, ms); t.unref?.(); signal.addEventListener("abort", () => { clearTimeout(t); resolve(); }); });
   }
-  /** One pull: everything waiting is handled (each once, ever) and acknowledged. */
+  /** One pull: everything waiting is handled in order (each once, ever), each acknowledged as soon as it's answered. */
   async pullOnce(wait = 0) {
     this.abort = new AbortController();
     const { items, paired } = await this.call<{ items: InboxItem[]; paired: boolean }>(`/telegram/inbox?wait=${wait}`, undefined, { timeout: (wait + 15) * 1000, signal: this.abort.signal });
     if (!paired) { this.cached = undefined; return 0; }
-    for (const item of items) {
-      const fresh = await this.db.query("insert into telegram_seen (owner_id, id) values ($1, $2) on conflict do nothing returning 1", [this.owner, item.id]);
-      if (fresh.length) await this.handle(item).catch((e) => this.host.log("warn", "[telegram] " + errorText(e)));
-    }
-    if (items.length) await this.call("/telegram/ack", { ids: items.map((i) => i.id) });
+    for (const i of items) this.holding.add(i.id);
+    try {
+      for (let n = 0; n < items.length; n++) {
+        const item = items[n];
+        if (this.leaving) { await this.call("/telegram/release", { ids: items.slice(n).map((i) => i.id) }).catch(() => {}); break; }
+        const fresh = await this.db.query("insert into telegram_seen (owner_id, id) values ($1, $2) on conflict do nothing returning 1", [this.owner, item.id]);
+        if (fresh.length) await this.handle(item).catch((e) => this.host.log("warn", "[telegram] " + errorText(e)));
+        await this.call("/telegram/ack", { ids: [item.id] }).catch((e) => this.host.log("warn", "[telegram] ack: " + errorText(e)));
+        this.holding.delete(item.id);
+      }
+    } finally { for (const i of items) this.holding.delete(i.id); }
     await this.db.query("delete from telegram_seen where owner_id = $1 and seen_at < now() - interval '14 days'", [this.owner]);
     return items.length;
   }
@@ -123,19 +153,19 @@ export class TelegramRelay {
   private async answer(turn: TelegramTurn) {
     if (!this.host.converse) return this.say("Clem can't answer here right now. Open Clem on your PC and try again.");
     let done = false, wake = () => {};
-    const typing = (async () => { while (!done) { await this.call("/telegram/typing", {}).catch(() => {}); if (!done) await new Promise<void>((r) => { wake = r; const t = setTimeout(r, TYPING_MS); t.unref?.(); }); } })();
+    const typing = (async () => { while (!done) { await this.call("/telegram/typing", { hold: [...this.holding] }).catch(() => {}); if (!done) await new Promise<void>((r) => { wake = r; const t = setTimeout(r, TYPING_MS); t.unref?.(); }); } })();
     try {
       const reply = await Promise.race([this.host.converse(turn), new Promise<never>((_, no) => { const t = setTimeout(() => no(Error("timeout")), ANSWER_MS); t.unref?.(); })]);
       done = true;
-      await this.post(reply.text || "Done.", reply.files || []);
+      await this.post(reply.text || "Done.");
     } catch (e) {
       done = true;
       this.host.log("warn", "[telegram] answer: " + errorText(e));
       await this.say(errorText(e) === "timeout" ? "This is taking longer than it should. You'll find the answer in Clem's main thread." : "Clem couldn't answer that just now. Try again in a moment.");
     } finally { done = true; wake(); await typing; }
   }
-  /** A tap: the organizer's own buttons run here; the ones that change the workspace or need the agent go to the
-   *  window (desktop/main.ts → the same appliers as its buttons). */
+  /** A tap on an older message's button: the organizer's own buttons run here; Undo and Do it go to the main thread
+   *  (the window or the worker, the same appliers as its buttons); Summarize and Make flashcards are declined there. */
   private async tap(id: string, tap: Tap) {
     const o = this.organizer;
     switch (tap.t) {
@@ -183,20 +213,12 @@ export class TelegramRelay {
     if (n.cards && cardsIn(n.cards).some((c) => c.type === "guc_password")) return this.reply(n.cards);
     return this.send([plainMessage(n.title === "Clem" || !n.title ? n.body : `${n.title}: ${n.body}`)]);
   }
-  /** An answer as Telegram messages: its text, then the files it made, then its visuals and figures as photos. A
-   *  visual-only answer is just its photos. */
-  async post(text: string, files: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] = []) {
-    const photos = files.filter((f) => f.photo);
-    if (!photos.length || replyMessages(text).length) await this.reply(text);
-    for (const f of files.filter((f) => !f.photo)) await this.upload(f.name, f.type, f.bytes);
-    for (const f of photos) await this.upload(f.name, f.type, f.bytes, undefined, true);
-  }
-  private async upload(name: string, type: string, bytes: Uint8Array, caption?: string, photo = false) {
+  /** An answer as Telegram messages: its text (split at paragraphs when long), cards as text. Telegram makes no files. */
+  async post(text: string) { await this.reply(text); }
+  private async upload(name: string, type: string, bytes: Uint8Array, caption?: string) {
     const form = new FormData();
     form.set("file", new Blob([new Uint8Array(bytes)], { type: type || "application/octet-stream" }), name);
     if (caption) form.set("caption", caption);
-    // A visual goes as a photo (shown inline); the Worker falls back to a document when Telegram refuses it as one.
-    if (photo) form.set("as", "photo");
     await this.call("/telegram/file", undefined, { form, timeout: 180_000 });
   }
   /** A CMS file to the paired chat (the AI's telegram.sendFile, or Send me the file). Telegram takes 50 MB; a bigger file
@@ -210,5 +232,12 @@ export class TelegramRelay {
     }
     await this.upload(f.name, f.type, new Uint8Array(await readFile(f.path)), f.name);
     return { sent: true, name: f.name, size: f.size };
+  }
+  /** One of the person's own files in Clem to the paired chat (telegram.sendFile by its name). Over 50 MB it stays. */
+  async sendBytes(name: string, type: string, bytes: Uint8Array): Promise<{ sent: boolean; name: string; size: number }> {
+    if (!(await this.paired())) throw Error("Telegram isn't paired. The person can pair it from their main thread or Settings → Channels → Telegram.");
+    if (bytes.byteLength > TG_FILE_LIMIT) return { sent: false, name, size: bytes.byteLength };
+    await this.upload(name, type, bytes, name);
+    return { sent: true, name, size: bytes.byteLength };
   }
 }

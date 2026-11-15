@@ -64,3 +64,31 @@ test("Telegram gets visuals as photos, never their JSON as text", () => {
   assert.doesNotMatch(html, /<pre>|"title"/);
   assert.deepEqual(replyMessages("```visual\n{}\n```"), []);
 });
+
+test("naming a subject never starts a chat there: planning stays in the main thread, curriculum work goes (0.3.35 regression guard)", async () => {
+  const { handsOff } = await import("../core/main-thread/handoff.ts");
+  const subjects: RouteSpace[] = [
+    { id: "math", name: "Math", kind: "subject", description: "MATH 203" }, { id: "phys", name: "Physics", kind: "subject" }, { id: "chem", name: "Chemistry", kind: "subject" }, ...spaces,
+  ];
+  for (const t of ["plan my week for Math", "when is the Physics quiz", "move my Chemistry revision to Thursday", "help me plan revision for Physics", "reschedule my Math study session to Friday", "block 2 hours for Chemistry tomorrow",
+    "what does the Physics midterm cover", "remind me about the Math sheet", "what are my grades in Chemistry", "how is Math going this week", "Math", "physics"])
+    assert.equal(handsOff(t, subjects), undefined, t);
+  for (const t of ["what's next in Math"]) assert.equal(handsOff(t, subjects, ["math"]), undefined, "an @mention alone isn't work: " + t);
+  for (const [t, id] of [["explain Newton's second law from Physics", "phys"], ["solve question 3 of the Math sheet", "math"], ["make me a PDF summary of Chemistry lecture 2", "chem"], ["make flashcards for MATH 203 chapter 4", "math"], ["draw a visual of a titration curve for Chemistry", "chem"]])
+    assert.equal(handsOff(t, subjects), id, t);
+  assert.equal(handsOff("summarize lecture 5", subjects, ["phys"]), "phys", "@mentioned curriculum work goes");
+  assert.match(HANDOFF_GUIDE, /Naming a subject is never by itself a reason to hand off/);
+});
+
+test("a hand-off's result in the main thread: its files posted with it, its visuals left in the chat it opened", async () => {
+  const { broughtMessage } = await import("../core/main-thread/handoff.ts");
+  assert.deepEqual(broughtMessage({ content: "Here is your summary.", attachments: ["pdf-1", "deck-2"] }, "Circuits"), { content: "Here is your summary.", attachments: ["pdf-1", "deck-2"] }, "files come into the main thread");
+  const visual = broughtMessage({ content: "A heap, drawn:\n\n```visual\n{\"title\":\"Heap\"}\n```" }, "Data Structures");
+  assert.doesNotMatch(visual.content, /```visual/);
+  assert.match(visual.content, /^A heap, drawn:\n\nDone: the visual is in the Data Structures chat\. Open it to see it\.$/);
+  assert.equal(broughtMessage({ content: "```kinetra\n{}\n```" }, "Physics").content, "Done: the visual is in the Physics chat. Open it to see it.");
+  assert.equal("attachments" in visual, false);
+  const app = await import("node:fs/promises").then((f) => f.readFile("src/App.tsx", "utf8"));
+  assert.match(app, /const brought = broughtMessage\(reply, h\.name\)/, "the window posts exactly that");
+  assert.match(app, /type: "handoff", spaceId: space\.id[^\n]*chatId: id/, "the card links the chat the person can open");
+});

@@ -1,4 +1,4 @@
-// Clem's storage limit on the VPS (docs/GUC-VPS-ENGINE.md "Storage limit"): the disk never passes 75% full because of
+// Clem's storage limit on the VPS (docs/GUC-VPS-ENGINE.md "Storage limit"): the disk never passes 82% full because of
 // Clem. Under, at and over the limit; a move that stops at it; the disk measured again; the worker past the limit with
 // the laptop off. All on the fake VPS (its df counts the files put on it).
 import { test } from "node:test";
@@ -26,12 +26,12 @@ import { FakeLocal, FakeVps, bytesOf } from "./vps-fake.ts";
 const OWNER = "owner-1", KB = 1024;
 const full = (vps: FakeVps) => vps.diskUsed / vps.diskTotal;
 
-test("the limit: Clem writes only while the disk stays at or under 75% full, whatever else is on it", () => {
-  const d = { total: 1000 * KB, free: 300 * KB };
-  assert.equal(DISK_SHARE, 0.75);
+test("the limit: Clem writes only while the disk stays at or under 82% full, whatever else is on it", () => {
+  const d = { total: 1000 * KB, free: 230 * KB };
+  assert.equal(DISK_SHARE, 0.82);
   assert.equal(roomOn(d), 50 * KB);
   assert.ok(fits(d, 49 * KB), "under"); assert.ok(fits(d, 50 * KB), "at"); assert.ok(!fits(d, 50 * KB + 1), "over");
-  assert.equal(roomOn({ total: 1000 * KB, free: 100 * KB }), 0, "already past 75% because of other things: no room, never negative");
+  assert.equal(roomOn({ total: 1000 * KB, free: 100 * KB }), 0, "already past 82% because of other things: no room, never negative");
   assert.deepEqual(parseDf("Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda1 1000 700 300 70% /\n"), { total: 1000 * KB, free: 300 * KB });
   assert.equal(parseDf("df: no such file"), null);
 });
@@ -44,22 +44,22 @@ async function setup(o: { other: number; total?: number; ttl?: number }) {
   let now = 1_000_000;
   const store = new VpsStore(() => vps, vpsRoot(OWNER));
   const limit = new DiskLimit({ measure: sshDisk(async () => vps, vpsRoot(OWNER)), clock: () => now, ttl: o.ttl });
-  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => store, mode: () => "vps", cap: 10 * 1024 * KB, limit }).init();
+  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => store, mode: () => "vps", limit }).init();
   return { db, backend, vps, local, store, router, limit, tick: (ms: number) => { now += ms; } };
 }
 
 test("under, at and over the limit: the file that would pass it stays on this PC, with no error, and Settings has the numbers", async () => {
-  const s = await setup({ other: 700 * KB });
+  const s = await setup({ other: 770 * KB });
   try {
-    await s.router.writeFile("a", bytesOf(30 * KB, 1));
-    assert.equal((await s.router.row("a"))?.location, "vps", "under the limit: on the VPS");
-    await s.router.writeFile("b", bytesOf(20 * KB, 2));
+    await s.router.writeFile("a", bytesOf(30 * KB, 1)); await s.router.idle();
+    assert.equal((await s.router.row("a"))?.location, "vps", "under the limit: a copy on the VPS");
+    await s.router.writeFile("b", bytesOf(20 * KB, 2)); await s.router.idle();
     assert.equal((await s.router.row("b"))?.location, "vps", "exactly at the limit: still on the VPS");
-    assert.ok(full(s.vps) <= 0.75, `the disk is ${full(s.vps)} full`);
-    await s.router.writeFile("c", bytesOf(1, 3));
-    assert.equal(await s.router.row("c"), undefined, "over the limit: this PC keeps it (no row on the VPS)");
+    assert.ok(full(s.vps) <= 0.82, `the disk is ${full(s.vps)} full`);
+    await s.router.writeFile("c", bytesOf(1, 3)); await s.router.idle();
+    assert.equal(await s.router.row("c"), undefined, "over the limit: this PC only (no copy on the VPS)");
     assert.deepEqual(await s.router.readFile("c"), bytesOf(1, 3), "and it reads as any file");
-    assert.ok(full(s.vps) <= 0.75, "never past 75%");
+    assert.ok(full(s.vps) <= 0.82, "never past 82%");
     const u = await s.router.usage();
     assert.equal(u.vpsLimit?.used, 50 * KB);
     assert.equal(u.vpsLimit?.max, 50 * KB, "Using 50 KB of 50 KB on your VPS");
@@ -69,22 +69,22 @@ test("under, at and over the limit: the file that would pass it stays on this PC
 });
 
 test("the disk is measured again: space freed on the server is used again after a few minutes", async () => {
-  const s = await setup({ other: 750 * KB, ttl: 5 * 60_000 });
+  const s = await setup({ other: 820 * KB, ttl: 5 * 60_000 });
   try {
-    await s.router.writeFile("x", bytesOf(10 * KB, 4));
+    await s.router.writeFile("x", bytesOf(10 * KB, 4)); await s.router.idle();
     assert.equal(await s.router.row("x"), undefined, "no room");
-    s.vps.diskOther = 600 * KB; // the person cleaned up their server
-    await s.router.writeFile("y", bytesOf(10 * KB, 5));
+    s.vps.diskOther = 670 * KB; // the person cleaned up their server
+    await s.router.writeFile("y", bytesOf(10 * KB, 5)); await s.router.idle();
     assert.equal(await s.router.row("y"), undefined, "the old measurement still holds for a few minutes");
     s.tick(5 * 60_000 + 1);
-    await s.router.writeFile("z", bytesOf(10 * KB, 6));
+    await s.router.writeFile("z", bytesOf(10 * KB, 6)); await s.router.idle();
     assert.equal((await s.router.row("z"))?.location, "vps", "measured again: room again");
-    assert.ok(full(s.vps) <= 0.75);
+    assert.ok(full(s.vps) <= 0.82);
   } finally { await s.backend.close(); }
 });
 
 test("a move to the VPS stops at the limit: what fits moves, the rest stays on this PC, and the run says how many", async () => {
-  const s = await setup({ other: 700 * KB });
+  const s = await setup({ other: 770 * KB });
   try {
     for (let i = 0; i < 5; i++) await s.local.write("f" + i, bytesOf(20 * KB, 10 + i));
     const m = new Migrator({ db: s.db, owner: OWNER, router: s.router, local: s.local, remote: () => s.store, device: new DeviceStore(tmpdir()), limit: s.limit });
@@ -94,7 +94,7 @@ test("a move to the VPS stops at the limit: what fits moves, the rest stays on t
     assert.equal(v.done, 2, "two files of 20 KB fit in the 50 KB Clem may use");
     assert.equal(v.atLimit, 3, "three stay on this PC");
     assert.ok(!v.error, "no error: nothing went wrong");
-    assert.ok(full(s.vps) <= 0.75, `the disk is ${full(s.vps)} full`);
+    assert.ok(full(s.vps) <= 0.82, `the disk is ${full(s.vps)} full`);
     for (let i = 0; i < 5; i++) assert.deepEqual(await s.router.readFile("f" + i), bytesOf(20 * KB, 10 + i), "every file reads where its row points");
     // Reading a cached file notes its last use in the background: let that finish before the database closes.
     await new Promise((r) => setTimeout(r, 200));
@@ -106,7 +106,7 @@ test("the worker's store past the limit keeps the CMS file on the CMS and notes 
   await migrate(backend, "desktop/engine/migrations");
   const root = await mkdtemp(join(tmpdir(), "clem-limit-"));
   try {
-    const limit = new DiskLimit({ measure: async () => ({ total: 1000 * KB, free: 260 * KB }) });
+    const limit = new DiskLimit({ measure: async () => ({ total: 1000 * KB, free: 190 * KB }) });
     const waiting = new Waiting(db, OWNER);
     const store = new LimitedStore({ inner: new DeviceStore(root, { location: "vps", sub: "" }), limit, root, waiting });
     const small = bytesOf(5 * KB, 1), big = bytesOf(8 * KB, 2);
@@ -114,52 +114,4 @@ test("the worker's store past the limit keeps the CMS file on the CMS and notes 
     await assert.rejects(store.put(sha256(big), "pdf", big), /stays on the CMS/);
     assert.deepEqual(await waiting.sentences(), ["A CMS file (1 MB) wasn't kept on your VPS because it's at Clem's storage limit; it stays on the CMS and Clem reads it from there."]);
   } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
-});
-
-test("with the laptop off and the VPS at its limit, the worker keeps a note's text for the PC, says so, and the PC saves it", { timeout: 120_000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), "clem-limit-w-"));
-  const data = join(root, "worker", "state"), files = join(root, "files");
-  await mkdir(join(data, "secrets"), { recursive: true });
-  const key = randomBytes(32), rpc = randomBytes(16).toString("hex");
-  const port = await new Promise<number>((r) => { const s = createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => r(p)); }); });
-  await writeFile(join(data, "secrets", secretFile("rpc")), seal(key, "rpc", rpc));
-  let step = 0;
-  const complete = async () => (++step === 1 ? '{"kinetra":{"action":"ws.note","subject":"Math","name":"Formulas.md","content":"# Formulas\\nd/dx x^2 = 2x"}}' : "Saved Formulas.md; it goes to your PC when Clem opens there.");
-  const { backend: wb } = await openPglite();
-  const worker = await startWorker({ config: { owner: OWNER, accountService: "http://127.0.0.1:9" }, key, env: { CLEM_DATA: data, CLEM_FILES: files, CLEM_PORT: String(port), CLEM_HOOK_PORT: "0", PATH: process.env.PATH }, migrations: "desktop/engine/migrations", backend: wb, beat: 3_600_000, complete,
-    // 80% full already: no room for Clem at all.
-    disk: async () => ({ total: 1000 * KB, free: 200 * KB }) });
-  const { backend: db0, db } = await openPglite();
-  await migrate(db0, "desktop/engine/migrations");
-  const engine = { db, isRunner: false, runner: async () => {}, telegram: { start() {} }, organizer: { announce: async () => {} } } as unknown as Engine;
-  const link = new (class extends FakeVps { async tunnel() { return { port, close() {} }; } })();
-  const kept = new Map<string, unknown>([["vps-" + OWNER, { config: { host: "vps.test", port: 22, user: "u", auth: "key" }, privateKey: "k", storage: { mode: "vps" }, worker: { enabled: true, kind: "docker", key: key.toString("base64"), rpc, installedAt: 1 } } satisfies VpsVault]]);
-  const local = new FakeLocal();
-  const m = new VpsManager({ owner: OWNER, secrets: { get: async <T,>(k: string) => kept.get(k) as T, set: async (k, v) => { kept.set(k, v); }, delete: async (k) => { kept.delete(k); } }, local, files: root, engine: async () => engine, bundle: "", accountService: "", connect: async () => link });
-  let desk: any = { name: "Sam", memory: "", automations: [], studySets: [], plans: [], files: [],
-    spaces: [{ id: "math", name: "Math", kind: "subject", description: "", memory: "", sources: [] }],
-    chats: [{ id: "main", kind: "main", title: "Clem", spaceId: null, updated: 1, messages: [] }] };
-  try {
-    await m.ready();
-    await m.pushWorkspace(true, desk);
-    const reply = await worker.host.converse!({ id: "tg-2", text: "save my formulas as a note in Math" });
-    assert.equal(reply.files?.[0]?.name, "Formulas.md", "the note still goes to Telegram with the answer");
-    const copy = (await worker.ws.state())!;
-    const note = copy.files.find((f: any) => f.name === "Formulas.md") as any;
-    assert.ok(note.inline && !note.blob, "nothing written to the full disk: its text is kept for the PC");
-    await m.heartbeat();
-    const st = await m.status();
-    assert.match(st.storage.vpsLimit?.waiting?.[0] || "", /“Formulas\.md” waits for your PC/);
-    // The laptop opens and pulls: the note is a file on this PC; the copy it keeps has no bytes inline any more.
-    desk = applyPull(desk, (await m.pullOps(desk.vpsSync))!);
-    const f = desk.files.find((x: any) => x.name === "Formulas.md");
-    assert.ok(f && !("inline" in f) && !("blob" in f));
-    assert.equal(new TextDecoder().decode((await local.read(f.id))!), "# Formulas\nd/dx x^2 = 2x");
-    // Its next push tells the worker it's on the PC now: nothing waits any more.
-    await m.pushWorkspace(true, desk);
-    assert.deepEqual((await new WorkerClient(`http://127.0.0.1:${port}`, rpc).health()).waiting, []);
-  } finally {
-    await worker.stop(); await m.close(); await db0.close().catch(() => {});
-    await rm(root, { recursive: true, force: true }).catch(() => {});
-  }
 });

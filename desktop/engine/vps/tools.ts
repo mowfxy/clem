@@ -1,7 +1,10 @@
 // vps.* actions (core/vps/tools.ts) over the person's SSH connection. Destructive commands and overwrites wait for a
 // one-tap confirm card (vps_confirm); the pending action lives here for 15 minutes, keyed by an id only the card has.
+// On the worker (`words`), where no one can tap, they are asked in words instead (core/vps/ask.ts): the action comes
+// back as `ask` for the agent to keep and say, and `perform` runs it once the person says yes.
 import { randomUUID } from "node:crypto";
 import { capOutput, classifyCommand } from "../../../core/vps/commands.ts";
+import { askQuestion, type VpsAsk } from "../../../core/vps/ask.ts";
 import { q, type VpsLink } from "./link.ts";
 
 type Pending = { owner: string; at: number } & ({ kind: "run"; command: string } | { kind: "write"; path: string; content: string });
@@ -9,12 +12,17 @@ const PENDING_MS = 15 * 60_000, MAX_FILE = 200_000;
 export class VpsTools {
   private pending = new Map<string, Pending>();
   private link: (owner: string) => Promise<VpsLink>;
-  constructor(link: (owner: string) => Promise<VpsLink>) { this.link = link; }
+  private words: boolean;
+  constructor(link: (owner: string) => Promise<VpsLink>, o: { words?: boolean } = {}) { this.link = link; this.words = !!o.words; }
   private card(id: string, p: Pending, reason?: string) {
     const body = p.kind === "run" ? { type: "vps_confirm", id, action: "run", command: p.command.slice(0, 600), ...(reason ? { reason } : {}) } : { type: "vps_confirm", id, action: "write", path: p.path.slice(0, 300) };
     return "```clem-card\n" + JSON.stringify(body) + "\n```";
   }
   private hold(p: Pending, reason?: string) {
+    if (this.words) {
+      const ask: VpsAsk = p.kind === "run" ? { kind: "run", command: p.command, ...(reason ? { reason } : {}), at: p.at } : { kind: "write", path: p.path, content: p.content, at: p.at };
+      return { needsYes: true, reason, ask, question: askQuestion(ask) };
+    }
     for (const [k, v] of this.pending) if (Date.now() - v.at > PENDING_MS) this.pending.delete(k);
     const id = randomUUID().replace(/-/g, "").slice(0, 16);
     this.pending.set(id, p);
@@ -72,6 +80,14 @@ export class VpsTools {
     await link.put(tmp, new TextEncoder().encode(p.content));
     await link.exec(`mv -f -- ${q(tmp)} ${q(p.path)}`);
     return { ok: true, path: p.path, bytes: p.content.length };
+  }
+  /** A change the person said yes to, in words (the worker): run once, its output reported. */
+  async perform(owner: string, a: VpsAsk) {
+    if (a.kind === "run") return this.exec(owner, a.command);
+    const link = await this.link(owner), tmp = a.path + ".clem-" + randomUUID().slice(0, 8);
+    await link.put(tmp, new TextEncoder().encode(a.content));
+    await link.exec(`mv -f -- ${q(tmp)} ${q(a.path)}`);
+    return { ok: true, path: a.path, bytes: a.content.length };
   }
   cancel(owner: string, id: string) { const p = this.pending.get(id); if (p?.owner === owner) this.pending.delete(id); return { ok: true }; }
 }

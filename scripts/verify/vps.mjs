@@ -1,7 +1,7 @@
 // Settings → Connectors → VPS against the real App with fixture answers (no SSH, no server): the guided setup, a key
-// made here with its one-line command, the test result with the trusted fingerprint, storage usage, a move in
-// progress and done, the background worker's status, and the main-thread cards (moved, and a command waiting for a
-// tap), in dark and light.
+// made here with its one-line command, the test result with the trusted fingerprint, the one switch (Run Clem on my
+// VPS) and its one small option (Keep a copy of my files on the VPS, with Clem's share of the disk), no storage moves,
+// cache or pins, and the main-thread card for a command waiting for a tap, in dark and light.
 // Usage: node scripts/verify/vps.mjs [out-dir]   (screenshots are vps-*.png)
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -18,31 +18,25 @@ const FP = "SHA256:vnI285M7Yzvb1krF1Ty9Q6LisO9mWIszzruC4nx3lTY";
 
 /** The main process's VPS answers, as a small state machine. */
 function fakeMain() {
-  const s = { config: undefined, test: undefined, mode: "device", move: undefined, worker: false, ticks: 0 };
-  const storage = () => s.mode === "vps" ? { mode: "vps", device: 1.4 * GB, vps: 6.2 * GB, cache: 1.4 * GB, cap: 2 * GB, pinned: 120 * MB, files: { device: 3, vps: 412 } } : { mode: "device", device: 6.3 * GB, vps: 0, cache: 0, cap: 2 * GB, pinned: 0, files: { device: 415, vps: 0 } };
+  const s = { config: undefined, test: undefined, mode: "device", worker: false };
+  // This PC keeps every file; with copies on the VPS holds a copy of each, within Clem's 82% of its disk.
+  const storage = () => s.mode === "vps" ? { mode: "vps", device: 6.3 * GB, vps: 6.2 * GB, files: { device: 415, vps: 412 }, vpsLimit: { used: 6.2 * GB, max: 65.6 * GB, diskTotal: 80 * GB, diskFree: 61.5 * GB, measuredAt: Date.now(), heldHere: 3, heldBytes: 100 * MB } } : { mode: "device", device: 6.3 * GB, vps: 0, files: { device: 415, vps: 0 } };
   const status = () => ({
     connected: !!s.config, ...(s.config ? { config: { ...s.config, publicKey: PUB, ...(s.test ? { fingerprint: FP } : {}) }, online: !!s.test } : {}), ...(s.test ? { lastTest: s.test } : {}),
-    storage: storage(), ...(s.move ? { migration: s.move } : {}),
+    storage: storage(),
     worker: s.worker ? { enabled: true, installed: true, kind: "docker", runner: "worker", heartbeat: Date.now() - 40_000, model: "cli" } : { enabled: false, installed: false, runner: "desktop", model: "none" },
     passwordAllowed: false,
   });
   return {
     s, status,
-    vpsStatus: () => {
-      // A move in progress advances each time the window looks.
-      if (s.move?.status === "running" && ++s.ticks > 3) { s.move = { ...s.move, status: "done", done: s.move.total, bytesDone: s.move.bytesTotal, finishedAt: Date.now() }; s.mode = "vps"; }
-      return status();
-    },
+    vpsStatus: () => status(),
     vpsGenerateKey: () => ({ publicKey: PUB }),
     vpsPasteKey: () => ({ publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOwnKey own-key" }),
     vpsSetup: (r) => { s.config = { host: r.host, port: r.port, user: r.user, auth: r.auth }; return status(); },
     vpsTest: () => (s.test = { ok: true, ms: 38, os: "Ubuntu 24.04.1 LTS", diskFree: 61.5 * GB, diskTotal: 80 * GB, docker: true, systemd: true, node: "v22.11.0", fingerprint: FP, firstTime: true }),
-    vpsMove: (r) => { s.move = { direction: r.direction, status: "running", total: 415, done: 168, failed: 0, bytesTotal: 6.3 * GB, bytesDone: 2.5 * GB, startedAt: Date.now() }; s.ticks = 0; return s.move; },
-    vpsAbortMove: () => s.move,
-    vpsCap: () => status(),
-    vpsPinned: () => ["file-notes"],
-    vpsPin: () => ({ ok: true }),
-    vpsWorker: async (r) => { await new Promise((ok) => setTimeout(ok, 700)); s.worker = r.on; return status(); },
+    // The switch turns copies on too; off stops both.
+    vpsWorker: async (r) => { await new Promise((ok) => setTimeout(ok, 700)); s.worker = r.on; s.mode = r.on ? "vps" : "device"; return status(); },
+    vpsCopies: (r) => { s.mode = r.on ? "vps" : "device"; return status(); },
     vpsConfirm: () => ({ exitCode: 0, output: "Removed 3 old log files." }),
     vpsCancel: () => ({ ok: true }),
   };
@@ -103,22 +97,10 @@ try {
       check(text.includes(FP) && /Fingerprint saved/.test(text), `${theme}: the fingerprint, trusted on first use`);
       check(await dialog.locator(".vps-dot.is-on").count() >= 1, `${theme}: a live status dot`);
       await shot("tested", ".app-modal");
-      // Storage: usage, then Move everything with its progress, then done.
-      check(/This PC/.test(text) && /6\.3 GB/.test(text), `${theme}: storage usage on this PC`);
-      await dialog.getByRole("button", { name: "Move everything to my VPS" }).click();
-      await dialog.locator(".vps-moving").waitFor({ timeout: 4000 });
-      check(/168 of 415 files/.test(await dialog.locator(".vps-moving").textContent()), `${theme}: the move's progress`);
-      await dialog.locator(".vps-moving").scrollIntoViewIfNeeded();
-      await shot("moving", ".app-modal");
-      for (let i = 0; i < 4; i++) { await dialog.getByRole("button", { name: "Test connection" }).click(); await page.waitForTimeout(150); }
-      await dialog.getByRole("button", { name: "Move back to this PC" }).waitFor({ timeout: 5000 });
-      const after = await dialog.textContent();
-      check(/415 files moved to your VPS/.test(after) && /Your VPS6\.2 GB/.test(after.replace(/\s/g, "")) || /6\.2 GB/.test(after), `${theme}: done, usage split between this PC and the VPS`);
-      check(await dialog.getByLabel("Cache limit").count() === 1 && /Pinned to this PC/.test(after), `${theme}: the cache limit and pinned files`);
-      await dialog.locator(".vps-usage").scrollIntoViewIfNeeded();
-      await shot("stored", ".app-modal");
+      // One switch, nothing else to move: no storage moves, no cache limit, no pins.
+      check(!/Move everything|Move back|Keep on this PC|Pinned to this PC/.test(text) && await dialog.getByLabel("Cache limit").count() === 0, `${theme}: one switch, no storage moves, cache or pins`);
       // The worker. Pressing the switch moves it at once and locks it; nothing else in the pop-up moves or dims.
-      const sw = dialog.locator(".vps-section .mw-switch").last();
+      const sw = dialog.locator(".vps-section > header .mw-switch").last();
       await sw.scrollIntoViewIfNeeded();
       const where = () => dialog.evaluate((d) => ({ below: Math.round(d.querySelector(".vps-section:last-of-type details").getBoundingClientRect().top), dim: [...d.querySelectorAll(".vps-manage button")].filter((b) => getComputedStyle(b).opacity !== "1").length }));
       const before = await where();
@@ -130,14 +112,24 @@ try {
       await dialog.locator(".vps-status", { hasText: "Running on your VPS" }).waitFor({ timeout: 4000 });
       const facts = await dialog.locator(".vps-status").textContent();
       check(/Running on your VPS/.test(facts) && /min ago|just now/.test(facts) && /AI signed in/.test(facts), `${theme}: the worker runs on the VPS, its heartbeat and model, in one line`);
+      // The one small option, on with the switch, with Clem's share of the disk; off says the PC keeps them anyway.
+      const copies = dialog.getByLabel("Keep a copy of my files on the VPS"), copiesSwitch = dialog.locator(".st-row", { hasText: "Keep a copy of my files on the VPS" }).locator(".mw-switch");
+      check(await copies.isChecked(), `${theme}: copies on with the switch`);
+      check(/6\.2 GB of 65\.6 GB used on your VPS/.test(await dialog.textContent()), `${theme}: one storage line, X of Y used on your VPS`);
       await dialog.locator(".vps-status").scrollIntoViewIfNeeded();
       await shot("worker", ".app-modal");
+      await copiesSwitch.click();
+      await dialog.getByText("This PC keeps them either way.").waitFor({ timeout: 4000 });
+      check(!(await copies.isChecked()), `${theme}: copies off by the small option`);
+      await copiesSwitch.click();
+      await dialog.getByText(/used on your VPS/).waitFor({ timeout: 4000 });
       const lay = await dialog.evaluate((d) => {
         const r = (el) => el.getBoundingClientRect(), box = r(d), head = r(d.querySelector(".modal-heading"));
         const h = d.querySelectorAll(".vps-section>header"), last = h[h.length - 1], title = r(last.querySelector("h4")), sw = r(last.querySelector(".mw-switch"));
-        return { scrolled: d.querySelector(".vps-manage").scrollTop, headTop: head.top - box.top, off: Math.abs((title.top + title.bottom) / 2 - (sw.top + sw.bottom) / 2), pageScroll: d.scrollTop };
+        const card = d.querySelector(".vps-manage");
+        return { scrolled: card.scrollTop, overflows: card.scrollHeight > card.clientHeight + 1, headTop: head.top - box.top, off: Math.abs((title.top + title.bottom) / 2 - (sw.top + sw.bottom) / 2), pageScroll: d.scrollTop };
       });
-      check(lay.scrolled > 0 && lay.pageScroll === 0 && lay.headTop < 40, `${theme}: the heading and close button stay put while the card scrolls`);
+      check((lay.scrolled > 0 || !lay.overflows) && lay.pageScroll === 0 && lay.headTop < 40, `${theme}: the heading and close button stay put (the short pop-up scrolls only when it must)`);
       check(lay.off <= 2, `${theme}: the Background jobs switch sits level with its title (off by ${lay.off.toFixed(1)}px)`);
       check(!m.s.config?.privateKey && !JSON.stringify((await page.evaluate(() => window.requests)).filter((r) => r?.action !== "vpsPasteKey")).includes("PRIVATE KEY"), `${theme}: no private key crosses to the window`);
       await page.keyboard.press("Escape"); await page.keyboard.press("Escape");
@@ -145,11 +137,6 @@ try {
       // The main thread's cards.
       await page.locator(".nav-item", { hasText: "Clem" }).click();
       await page.locator(".chat-view.main-thread").waitFor({ timeout: 4000 });
-      const moved = page.locator(".clem-card", { hasText: "Your files are on your VPS" }).last();
-      await moved.waitFor({ timeout: 4000 });
-      check(/415 files · 6\.3 GB/.test(await moved.textContent()), `${theme}: the moved card says how much`);
-      await moved.scrollIntoViewIfNeeded();
-      await shot("card-moved", ".chat-view.main-thread");
       const ask = page.locator(".clem-card", { hasText: "rm ~/clem/logs" }).last();
       check(/Run this on your VPS?/.test(await ask.textContent()), `${theme}: the card asks first`);
       check(/rm ~\/clem\/logs/.test(await ask.textContent()), `${theme}: the command waits for a tap`);

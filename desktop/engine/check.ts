@@ -79,7 +79,7 @@ async function keep(o: { db: Db; owner: string; subjectId: string; courseKey: st
   const mime = type === "application/octet-stream" && file.type ? file.type : type, ext = /\.([a-z0-9]{1,5})$/i.exec(name)?.[1]?.toLowerCase() || "";
   // The same bytes saved before (another entry, or the same file posted again): no second copy.
   const [twin] = await db.query<{ path: string }>("select path from file_objects where owner_id = $1 and sha256 = $2 and location = $3 limit 1", [owner, hash, store.location]);
-  const path = twin && await store.has(twin.path) ? twin.path : await store.put(hash, ext, file.bytes);
+  const path = twin && await store.has(twin.path) ? twin.path : await store.put(hash, ext, file.bytes, { item: "cms:" + m.material_id, name });
   if (twin?.path === path) stats.deduped++;
   const [was] = await db.query<{ path: string; sha256: string }>("select path, sha256 from file_objects where owner_id = $1 and file_id = $2", [owner, "guc:" + m.material_id]);
   if (was?.sha256 === hash && was.path === path) {

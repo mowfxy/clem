@@ -3,7 +3,7 @@ import { comingUp, materialFile, semesterOrder, type HubMail, type HubTerm, type
 import { normCode, withCode } from "../../core/guc/codes.ts";
 import type { GucSlot, GucSnapshot } from "../../core/guc/types.ts";
 import type { Db } from "./db.ts";
-import { applyCorrections } from "../../core/guc/corrections.ts";
+import { applyCorrections, applyRecordCorrections } from "../../core/guc/corrections.ts";
 import { loadCorrections } from "./corrections.ts";
 
 export const ANNOUNCEMENT_PAGE = 40;
@@ -38,7 +38,9 @@ export async function schedule(db: Db, owner: string, weekStart: string): Promis
   const rows = await db.query<{ slot_id: string; day: string; period: number; starts: string; ends: string; code: string; name: string; kind: string; grp: string; location: string }>(
     "select * from guc_schedule_slots where owner_id = $1 order by period, day", [owner]);
   const slots: GucSlot[] = rows.map((r) => ({ id: r.slot_id, day: r.day, period: r.period, start: r.starts, end: r.ends, code: canon(r.code), name: withCode(r.name), type: r.kind, group: r.grp, location: r.location }));
-  return { weekStart, slots };
+  // The person's changes to Clem's copy of the timetable (a class hidden, moved or annotated): the hub, the AI, the Now
+  // card and the organizer's calendar all read it here.
+  return { weekStart, slots: applyRecordCorrections(slots, await loadCorrections(db, owner), "class") };
 }
 
 /** Newest first, `ANNOUNCEMENT_PAGE` at a time; posts first seen together keep their order on the course page (then id,
@@ -57,7 +59,8 @@ export async function announcements(db: Db, owner: string, o: { courseKey?: stri
   const rows = await db.query<{ announcement_id: string; course_key: string; code: string | null; name: string | null; scope: "course" | "week"; week: string | null; body: string; first_seen: Date; read_at: Date | null; pos: number }>(`select a.announcement_id, a.course_key, c.code, c.name, a.scope, a.week, a.body, ${seenAt} as first_seen, a.read_at, ${pos} as pos
     from guc_announcements a left join guc_courses c on c.owner_id = a.owner_id and c.course_key = a.course_key
     where ${where} order by ${seenAt} desc, ${pos}, a.announcement_id desc limit $2`, params);
-  const items = rows.slice(0, ANNOUNCEMENT_PAGE).map((r): HubAnnouncement => ({ id: r.announcement_id, courseKey: r.course_key, code: canon(r.code), course: r.name || "A course", scope: r.scope, week: r.week || undefined, text: r.body, firstSeen: ms(r.first_seen), read: !!r.read_at }));
+  const fixes = await loadCorrections(db, owner);
+  const items = applyRecordCorrections(rows.slice(0, ANNOUNCEMENT_PAGE).map((r): HubAnnouncement => ({ id: r.announcement_id, courseKey: r.course_key, code: canon(r.code), course: r.name || "A course", scope: r.scope, week: r.week || undefined, text: r.body, firstSeen: ms(r.first_seen), read: !!r.read_at })), fixes, "announcement");
   const last = items.at(-1), lastPos = rows[ANNOUNCEMENT_PAGE - 1]?.pos;
   return { items, next: rows.length > ANNOUNCEMENT_PAGE && last ? `${last.firstSeen}.${lastPos}.${last.id}` : undefined };
 }
@@ -123,7 +126,8 @@ export async function grades(db: Db, owner: string, courseKey?: string): Promise
   ]);
   const fresh = new Set(events.map((e) => e.event_key.split(":")[1]));
   const latest = Math.max(0, ...rows.map((r) => semesterOrder(r.semester)));
-  return rows.map((r): HubGrade => ({ id: r.grade_id, semester: r.semester, code: canon(r.code), name: r.name, hours: r.hours, numeric: r.numeric_grade, letter: r.letter, latest: semesterOrder(r.semester) === latest, fresh: fresh.has(r.grade_id) }))
+  const fixes = await loadCorrections(db, owner);
+  return applyRecordCorrections(rows.map((r): HubGrade => ({ id: r.grade_id, semester: r.semester, code: canon(r.code), name: r.name, hours: r.hours, numeric: r.numeric_grade, letter: r.letter, latest: semesterOrder(r.semester) === latest, fresh: fresh.has(r.grade_id) })), fixes, "grade")
     .sort((a, b) => semesterOrder(b.semester) - semesterOrder(a.semester) || Number(b.fresh) - Number(a.fresh) || a.code.localeCompare(b.code));
 }
 
@@ -151,7 +155,7 @@ export async function term(db: Db, owner: string): Promise<HubTerm> {
   const row = await latest(db, owner), d = row?.data || {};
   const fresh = new Set((await db.query<{ event_key: string }>("select event_key from guc_events where owner_id = $1 and kind in ('new_grade', 'exam_posted') and created_at > now() - interval '7 days'", [owner])).map((e) => e.event_key));
   const freshMid = new Set([...fresh].filter((k) => k.startsWith("mid:")).map((k) => k.split(":")[1]));
-  return { midterms: (d.midterms || []).map((m) => ({ ...m, fresh: freshMid.has(m.id) })), coursework: d.coursework || [], exams: d.exams || [] };
+  return { midterms: applyRecordCorrections((d.midterms || []).map((m) => ({ ...m, fresh: freshMid.has(m.id) })), await loadCorrections(db, owner), "midterm"), coursework: d.coursework || [], exams: d.exams || [] };
 }
 export async function mail(db: Db, owner: string): Promise<HubMail> {
   const row = await latest(db, owner);

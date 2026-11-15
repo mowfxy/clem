@@ -118,7 +118,7 @@ dialog.app-modal .gd-picker.vps-manage{flex:1 1 auto;min-height:0;overflow:auto;
 .vps-steps li>.vps-act.vps-small{display:grid;margin:0 0 12px}
 .vps-steps li>.gd-google.vps-act{display:grid}
 /* The worker's one status line: the same height whatever it says, so the switch never moves what is under it. */
-.vps-status{display:flex;align-items:center;gap:8px;min-height:22px;margin:0 0 4px;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.vps-status{display:flex;align-items:center;gap:8px;min-height:42px;margin:0 0 4px;font-size:12.5px;line-height:1.4;color:var(--muted)}
 .vps-status>span:last-child{min-width:0}
 .vps-status .gd-sync{width:14px;height:14px}
 .vps-status.is-warn{color:var(--ink)}

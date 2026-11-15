@@ -80,8 +80,9 @@ import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool } from './engine/ai-tools';
+import { runThreadTool, sendFileTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
+import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
-import { TG_FILE_LIMIT } from '../core/telegram/pairing';
 import { isGucAction } from '../core/guc/ai-tools';
 import { serveHooks } from './engine/hooks';
 /** Routines' webhooks on this PC (desktop/engine/hooks.ts). */
@@ -1245,8 +1246,9 @@ void app.whenReady().then(async () => {
       setTimeout(() => { if (telegramWaits.delete(turn.id)) reject(Error("timeout")); }, ANSWER_MS).unref();
     }),
     open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
-    // Files live on the VPS while "Store my files on my VPS" is on and it answers (desktop/engine/vps).
-    fileStore: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
+    // This PC keeps every file; "Keep a copy of my files on the VPS" copies them there too (desktop/engine/vps/router.ts).
+    // Saved CMS files stay on this PC (it keeps everything; the VPS fetches from the CMS when it needs one).
+    fileStore: () => undefined,
     fileStores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
     vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
     hookBase: () => "http://127.0.0.1:" + HOOK_PORT,
@@ -1272,6 +1274,15 @@ void app.whenReady().then(async () => {
         bundle: join(__dirname, "worker"), accountService: config.service, version: app.isPackaged ? app.getVersion() : undefined,
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
+        // A file asked for on Telegram while this PC was off: sent from here now that it's on (once, no question).
+        sendToTelegram: async (fileId) => {
+          const state = await disk.readState(owner).catch(() => null) as { files?: { id: string; name: string; type?: string }[] } | null;
+          const f = state?.files?.find((x) => x.id === fileId);
+          const bytes = f ? await blobs.readFile(owner, f.id).catch(() => null) : null;
+          if (!f || !bytes) return "gone";
+          try { await (await rawEngineFor(owner)).telegram.sendBytes(f.name, f.type || "application/octet-stream", new Uint8Array(bytes)); return "sent"; }
+          catch { return "later"; }
+        },
         openSignIn: claudeSignInPage,
         preferredCli: async () => (await (await claudeFor(owner)).status().catch(() => null))?.connected ? "claude" : (await codex.status().catch(() => false)) ? "codex" : undefined,
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },
@@ -1313,6 +1324,37 @@ void app.whenReady().then(async () => {
     });
     return wrap(engine, "");
   };
+  /** What the Telegram main thread's actions need on this PC: the subjects, the person's files (their bytes here or on
+   *  the VPS), and the VPS with server changes asked in words, as on the worker. */
+  const threadCtx = async (owner: string, engine: Engine): Promise<ThreadToolCtx> => {
+    const state = await disk.readState(owner).catch(() => null) as { spaces?: { id: string; name: string; kind?: string; description?: string; examDate?: string }[]; files?: { id: string; name: string; type?: string }[] } | null;
+    const files = state?.files || [];
+    const named = (name: string) => { const want = name.trim().toLowerCase(), exact = files.filter((f) => f.id === name || f.name.toLowerCase() === want), near = exact.length ? exact : files.filter((f) => f.name.toLowerCase().includes(want)); return want ? near : []; };
+    const m = await vpsConfigured(owner) ? vpsFor(owner) : undefined;
+    return {
+      engine, owner, subjects: (state?.spaces || []).filter((s) => s.kind === "subject").map(({ id, name, description, examDate }) => ({ id, name, description, examDate })),
+      changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }),
+      workspaceFile: async (name) => {
+        const near = named(name);
+        if (!near.length) return null;
+        if (near.length > 1) return { error: `"${name}" matches ${near.length} files: ${near.slice(0, 8).map((f) => f.name).join(", ")}. Use the exact name.` };
+        const bytes = await blobs.readFile(owner, near[0].id).catch(() => null);
+        if (!bytes) return { error: `${near[0].name} isn't available on this PC right now.` };
+        return { name: near[0].name, type: near[0].type || "application/octet-stream", bytes: new Uint8Array(bytes) };
+      },
+      ...(m ? { vps: {
+        run: (tool: Record<string, unknown>) => m.wordTools.run(owner, tool),
+        hold: (ask: VpsAsk) => vault.write("tg-vps-ask-" + owner, ask),
+        waiting: () => m.waiting(),
+        copies: async (on: boolean) => { await m.setCopies(on); vpsModes.set(owner, on ? "vps" : "device"); return { ok: true, copies: on, note: on ? "Their files are copied to the VPS in the background, under its limit; the PC keeps everything. Say so in one plain sentence." : "The VPS copies are removed once this PC holds each file; the PC keeps everything. Say so in one plain sentence." }; },
+        keep: async (file: string, where: "pc" | "vps" | "auto") => {
+          const near = named(file);
+          if (near.length !== 1) return { error: near.length ? `"${file}" matches ${near.length} files. Use the exact name.` : `No file named "${file}".` };
+          return { ok: true, file: near[0].name, done: await m.keep(near[0].id, where), note: "Say so in one plain sentence." };
+        },
+      } } : {}),
+    };
+  };
   closeEngines = async () => { const open = [...engines.values()]; engines.clear(); await Promise.all([...vpsManagers.values()].map((m) => m.close().catch(() => {}))); await Promise.all(open.map((e) => e.then((x) => x.close()).catch(() => {}))); };
   // A VPS set up earlier: carry on a move that was interrupted, and the worker's heartbeat.
   void authReady.then(async () => {
@@ -1338,7 +1380,8 @@ void app.whenReady().then(async () => {
     const o = (await engineFor(user.id)).organizer;
     return (id, key, payload) => o.hook(id, key, payload);
   } }).catch((e) => console.warn("[hooks] off: " + (e as Error).message));
-  const reminderTick = () => void auth.user(false).then((user) => user && reminders.tick(user.id)).catch((error) => console.warn("[reminders]", (error as Error)?.message));
+  // While the VPS worker runs Clem's jobs it sends this reminder (to this PC as a notice, and to Telegram): never both.
+  const reminderTick = () => void auth.user(false).then((user) => user && !vpsManagers.get(user.id)?.workerRuns() ? reminders.tick(user.id) : null).catch((error) => console.warn("[reminders]", (error as Error)?.message));
   setTimeout(reminderTick, 90_000).unref();
   setInterval(reminderTick, 5 * 60_000).unref();
   // Signing out or shutting down Windows must never be held up by hiding to the tray.
@@ -1589,12 +1632,9 @@ void app.whenReady().then(async () => {
       if (request.action === "vpsCli") return m.connectCli(request.cli);
       if (request.action === "vpsCliCode") return m.pasteCliCode(request.code);
       if (request.action === "vpsForget") { const r = await m.forget(); vpsManagers.delete(user.id); await reset(); return r; }
-      if (request.action === "vpsMove") { const r = await m.move(request.direction); vpsModes.set(user.id, request.direction === "up" ? "vps" : "device"); return r; }
-      if (request.action === "vpsAbortMove") { const r = await m.abortMove(); vpsModes.set(user.id, await m.mode()); return r; }
-      if (request.action === "vpsCap") return m.setCap(request.bytes);
-      if (request.action === "vpsPin") return { ok: await m.pin(request.id, request.on) };
-      if (request.action === "vpsPinned") return (await vpsConfigured(user.id)) ? (await m.router()).pinned() : [];
-      if (request.action === "vpsWorker") return request.on ? m.enableWorker((label) => vpsEvent("progress:" + label)) : m.disableWorker();
+      // "Keep a copy of my files on the VPS": the PC keeps everything either way (docs/GUC-VPS-ENGINE.md "Storage").
+      if (request.action === "vpsCopies") { const r = await m.setCopies(request.on); vpsModes.set(user.id, await m.mode()); return r; }
+      if (request.action === "vpsWorker") { const r = request.on ? await m.enableWorker((label) => vpsEvent("progress:" + label)) : await m.disableWorker(); vpsModes.set(user.id, await m.mode()); return r; }
       if (request.action === "vpsModelKey") return m.setModelKey(request.key ? { key: request.key, model: request.model } : undefined);
       if (request.action === "vpsConfirm") return m.tools.confirm(user.id, request.id);
       if (request.action === "vpsCancel") return m.tools.cancel(user.id, request.id);
@@ -1634,29 +1674,24 @@ void app.whenReady().then(async () => {
       if (request.action === "tgPair") return t.pair();
       if (request.action === "tgUnpair") return t.unpair();
       if (request.action === "tgOffer") return engine.organizer.offerTelegram("asked");
-      // Files an answer made go with it (each within Telegram's 50 MB); its visuals and figures, drawn by the window as
-      // PNGs, go as photos.
-      const outgoing = async (r: { files?: { id: string; name: string; type: string }[]; photos?: { name: string; data: string }[] }) => {
-        const files: { name: string; type: string; bytes: Uint8Array; photo?: boolean }[] = [];
-        for (const f of r.files || []) {
-          const bytes = await blobs.readFile(user.id, f.id).catch(() => null);
-          if (bytes && bytes.byteLength <= TG_FILE_LIMIT) files.push({ name: f.name, type: f.type, bytes: new Uint8Array(bytes) });
-        }
-        for (const p of r.photos || []) files.push({ name: p.name, type: "image/png", bytes: new Uint8Array(Buffer.from(p.data, "base64")), photo: true });
-        return files;
-      };
       if (request.action === "tgAnswered") {
         const wait = telegramWaits.get(request.id);
         if (!wait || wait.owner !== user.id) return { ok: false };
         telegramWaits.delete(request.id);
-        wait.resolve({ text: request.text, files: await outgoing(request) });
+        wait.resolve({ text: request.text });
         return { ok: true };
       }
-      // A hand-off asked from Telegram finished after its turn was answered: its result is sent as its own message.
-      if (request.action === "tgPost") {
-        if (!(await t.paired())) return { ok: false };
-        await t.post(request.text, await outgoing(request));
-        return { ok: true };
+      // The Telegram main thread the window runs (src/telegram/thread.ts, desktop/telegram-thread.ts): one step of its
+      // model (no tools, no working folder: Telegram makes no files), the engine's actions (desktop/engine/thread-tools.ts,
+      // the same as the VPS worker's), and the step before the model (a "yes" to a server change, the VPS-full answer).
+      if (request.action === "tgComplete") return engineHost(user.id).complete!({ system: request.system, user: request.user, model: request.model, reasoning: request.reasoning });
+      if (request.action === "tgTool") return runThreadTool(await threadCtx(user.id, engine), request.tool);
+      if (request.action === "tgBefore") {
+        const vps = await vpsConfigured(user.id) ? vpsFor(user.id) : undefined, askKey = "tg-vps-ask-" + user.id;
+        return threadBefore({
+          take: async () => { const a = await vault.read<VpsAsk | undefined>(askKey, undefined); if (a) await vault.remove(askKey); return a; },
+          perform: async (ask) => vps ? vps.wordTools.perform(user.id, ask) : { error: "No VPS is connected." },
+        }, request.text);
       }
     }
     if (request.action.startsWith("guc")) {
@@ -1937,7 +1972,13 @@ void app.whenReady().then(async () => {
         worker.once("error", () => { clearTimeout(timer); reject(Error("This deck couldn't be read. It may be too large or damaged.")); });
       });
     }
-    if (request.action === "reminders") return request.set ? reminders.configure(user.id, request.set) : reminders.settings(user.id);
+    if (request.action === "reminders") {
+      if (!request.set) return reminders.settings(user.id);
+      const next = await reminders.configure(user.id, request.set);
+      // The worker sends the same reminder while it runs Clem's jobs: it gets the person's choice (sealed, like a secret).
+      void vpsManagers.get(user.id)?.secretChanged("reminders-" + user.id, await vault.read("reminders-" + user.id, {})).catch(() => {});
+      return next;
+    }
     if (request.action === "backupStatus") return backups.status(user.id);
     if (request.action === "backupConfigure") {
       let destination: BackupDestination | null | undefined = request.destination;
@@ -2587,9 +2628,21 @@ void app.whenReady().then(async () => {
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
         // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
         if (isClemAction(tool?.action)) {
-          return (await engineFor(user.id)).organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
+          const engine = await engineFor(user.id);
+          // A routine run by hand from a chat here is thought by this PC's AI (the chat's model), even while the VPS
+          // worker keeps the routines: the worker builds the prompt and records the run, the laptop writes the words.
+          if (tool.action === "clem.run_routine" && typeof tool.id === "string" && await vpsManagers.get(user.id)?.remote()) {
+            try {
+              const prompt = await engine.organizer.routinePrompt(tool.id);
+              const reply = prompt ? await engineHost(user.id).complete!({ ...prompt, model: request.model, reasoning: request.reasoning }) : undefined;
+              return await engine.organizer.runRoutine(tool.id, { kind: "manual" }, reply === undefined ? {} : { reply });
+            } catch (e) { return { error: (e as Error).message }; }
+          }
+          return engine.organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
         }
         // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
+        // telegram.sendFile: one of their files in Clem or a CMS file, the same tool as Telegram's main thread uses.
+        if (tool?.action === "telegram.sendFile") return sendFileTool(await threadCtx(user.id, await engineFor(user.id)), tool);
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
           return runTelegramTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);
@@ -2597,6 +2650,16 @@ void app.whenReady().then(async () => {
         // The person's VPS (desktop/engine/vps/tools.ts): anything that could change it waits for their tap on a card.
         if (isVpsAction(tool?.action)) {
           if (!(await vpsConfigured(user.id))) return { error: "No VPS is connected. The person can add one in Settings → Connectors → VPS." };
+          // What was left off the VPS at its limit, and copies on or off: the same as on Telegram (thread-tools.ts).
+          if (tool.action === "vps.waiting" || tool.action === "vps.copies") return runThreadTool(await threadCtx(user.id, await engineFor(user.id)), tool);
+          // Where one file is kept, overriding the storage move (the router and the move to the VPS follow it).
+          if (tool.action === "vps.keep") {
+            const want = String(tool.file || "").trim().toLowerCase(), state = await disk.readState(user.id).catch(() => null) as { files?: { id: string; name: string }[] } | null;
+            const files = state?.files || [], f = files.find((x) => x.id === tool.file || x.name.toLowerCase() === want) || (files.filter((x) => x.name.toLowerCase().includes(want)).length === 1 ? files.find((x) => x.name.toLowerCase().includes(want)) : undefined);
+            if (!want || !f) return { error: `No single file named "${tool.file}".` };
+            try { return { ok: true, file: f.name, done: await vpsFor(user.id).keep(f.id, tool.where === "pc" || tool.where === "vps" ? tool.where : "auto"), note: "Say so in one plain sentence." }; }
+            catch (e) { return { error: (e as Error).message }; }
+          }
           return vpsFor(user.id).tools.run(user.id, tool).catch((e: Error) => ({ error: e.message }));
         }
         // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.
