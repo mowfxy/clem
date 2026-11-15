@@ -21,7 +21,8 @@ import { GUC_GUIDE } from "../core/guc/ai-tools.ts";
 import { CALENDAR_GUIDE } from "../core/proactivity/calendar.ts";
 import { isClemAction } from "../core/proactivity/tools.ts";
 import { runGucTool } from "../desktop/engine/ai-tools.ts";
-import { headlessConverse } from "../desktop/engine/vps/headless.ts";
+import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
+import { WorkerWorkspace } from "../desktop/engine/vps/workspace.ts";
 
 // Saturday 14 November 2026, 10:00 in Cairo.
 const NOW = Date.parse("2026-11-14T08:00:00Z");
@@ -432,17 +433,17 @@ test("an ignore rule taught with one item hides the next similar one; resync and
   } finally { await t.close(); }
 });
 
-test("the corrections run through the VPS worker's headless path too", async () => {
+test("the corrections run through the VPS worker's agent too", async () => {
   const t = await owner("cu-headless");
   try {
-    const ctx = { engine: t.engine, owner: "cu-headless", subjects: [] };
     const replies = ['{"kinetra":{"action":"guc.correct","item":"Quiz 3","subject":"MATH 301","do":"remove"}}', "Removed MATH 301 Quiz 3 from Coming up.", '{"kinetra":{"action":"clem.undo"}}', "Brought it back."];
-    // As worker/index.ts wires it: clem.* to the organizer, the rest to the GUC tools.
-    const converse = headlessConverse({ complete: async () => replies.shift()!, guide: GUC_GUIDE + "\n" + CALENDAR_GUIDE, context: async () => "",
-      tools: async (tool) => (isClemAction(tool.action) ? t.engine.organizer.tool(tool) : runGucTool(ctx, tool)) });
-    assert.deepEqual(await converse({ text: "Quiz 3 in math is cancelled" } as any), { text: "Removed MATH 301 Quiz 3 from Coming up." });
+    // As worker/index.ts wires it (desktop/engine/vps/agent.ts): the window's loop, guc.* to the GUC tools, clem.* to the organizer.
+    const ws = new WorkerWorkspace({ db: t.engine.db, owner: "cu-headless" });
+    await ws.receive({ name: "", memory: "", spaces: [], files: [], plans: [], studySets: [], automations: [], chats: [{ id: "main", kind: "main", title: "Clem", spaceId: null, updated: 1, messages: [] }] });
+    const agent = new WorkerAgent({ owner: "cu-headless", ws, files: "/nowhere", engine: () => t.engine, complete: async () => replies.shift()! });
+    assert.deepEqual(await agent.converse({ id: "tg-1", text: "Quiz 3 in math is cancelled" }), { text: "Removed MATH 301 Quiz 3 from Coming up." });
     assert.ok(!(await t.engine.deadlines()).some((d) => d.title === "Quiz 3"));
-    assert.deepEqual(await converse({ text: "undo that" } as any), { text: "Brought it back." });
+    assert.deepEqual(await agent.converse({ id: "tg-2", text: "undo that" }), { text: "Brought it back." });
     assert.ok((await t.engine.deadlines()).some((d) => d.title === "Quiz 3"));
     assert.ok(GUC_GUIDE.includes('never answer that something "is synced automatically"'), "the worker's guide carries the correction rules");
   } finally { await t.close(); }
