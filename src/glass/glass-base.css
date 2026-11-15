@@ -14,6 +14,8 @@ html:root{
   --sky:#7fb2ff;--sky-deep:#3f6fd8;--ember:#ff9a5c;
   --scroll-thumb:#ffffff29;--scroll-thumb-hover:#ffffff52;--menu-bg:#0d1524f7;--menu-line:#ffffff1f;--menu-ink:#eef3fa;--menu-hint:#9eabc0;--menu-hover:#ffffff14;--menu-danger:#ff9a8c;
   --sheet-bg:#0b1424f5;--sheet-line:#ffffff1a;
+  /* A pop-up's edge: one quiet, even 1px line all round. No sheen and no brighter top or left, which read as a light in the corner. */
+  --sheet-edge:inset 0 0 0 1px var(--sheet-line);
   --rail:clamp(232px,18vw,262px);--side:calc(var(--rail) + 20px);
   --row:38px;--row-s:34px;--text:14px;--text-s:13.5px;--text-label:12px;--icon:18px;
   background:var(--bg)
@@ -28,7 +30,7 @@ html:root[data-theme=light]{
   --glass-drop:0 18px 44px -20px #1b274059,0 2px 8px #1b27401a;
   --glass-sheen:linear-gradient(155deg,#ffffff8c 0%,#ffffff26 30%,#ffffff00 60%);
   --scroll-thumb:#1b27402e;--scroll-thumb-hover:#1b274061;--menu-bg:#f8fafdf7;--menu-line:#1b27401f;--menu-ink:#141e33;--menu-hint:#5b6880;--menu-hover:#1b27400f;--menu-danger:#c0392b;
-  --sheet-bg:#f4f7fbf7;--sheet-line:#1b27401a;
+  --sheet-bg:#f4f7fbf7;--sheet-line:#1b27401a;--sheet-edge:inset 0 0 0 1px var(--sheet-line);
   --sky:#2f6fe0;--sky-deep:#2f6fe0;--ember:#c9561c
 }
 html:root body,html:root[data-theme=light] body{background:var(--bg)}
@@ -42,7 +44,7 @@ html:root .desktop-titlebar,html:root .desktop-content,html:root[data-theme=ligh
 /* ---------- Sign-in and first-run setup: one sheet of glass over the horizon ---------- */
 html:root .desktop-setup,html:root[data-theme=light] .desktop-setup{--setup-ink:var(--ink);--setup-muted:var(--muted);position:relative;background:transparent}
 .desktop-setup>.setup-layout{position:relative;z-index:1}
-html:root .setup-card{padding:28px 32px;border-radius:26px;background:var(--glass-sheen),#0a101c8c;-webkit-backdrop-filter:blur(30px) saturate(1.9) brightness(.6);backdrop-filter:blur(30px) saturate(1.9) brightness(.6);box-shadow:var(--glass-rim),var(--glass-drop)}
-html:root[data-theme=light] .setup-card{background:var(--glass-sheen),#ffffff9e;-webkit-backdrop-filter:blur(30px) saturate(1.7);backdrop-filter:blur(30px) saturate(1.7)}
+html:root .setup-card{padding:28px 32px;border-radius:26px;background:#0a101c8c;-webkit-backdrop-filter:blur(30px) saturate(1.9) brightness(.6);backdrop-filter:blur(30px) saturate(1.9) brightness(.6);box-shadow:var(--sheet-edge),var(--glass-drop)}
+html:root[data-theme=light] .setup-card{background:#ffffff9e;-webkit-backdrop-filter:blur(30px) saturate(1.7);backdrop-filter:blur(30px) saturate(1.7)}
 html:root .setup-card button.primary,html:root .setup-card .primary{background:#ffffffeb;border:0;color:#0a1020}
 html:root[data-theme=light] .setup-card button.primary,html:root[data-theme=light] .setup-card .primary{background:#141e33;color:#fff}

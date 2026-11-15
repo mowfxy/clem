@@ -103,3 +103,24 @@ dialog.app-modal .gd-picker.vps-manage{flex:1 1 auto;min-height:0;overflow:auto;
 .vps-section .gd-google{margin:6px 0 10px}
 .vps-again{display:block;margin:-4px 0 10px -8px}
 .vps-steps .vps-advanced{margin-top:10px}
+/* A pressed button keeps its size: the busy label shares the label's grid cell (the wider of the two sets the width),
+   and only the words cross-fade, on the label itself. The button running stays at full strength; the others in the
+   pop-up stay as they look, only inert, so nothing dims and comes back on every press. */
+.vps-manage .vps-act{display:inline-grid;grid-template-areas:"x";place-items:center;width:max-content;max-width:100%}
+.vps-manage .vps-act>span{grid-area:x;white-space:nowrap;transition:opacity .15s ease}
+.vps-manage .vps-act>.vps-act-busy,.vps-manage .vps-act[data-busy]>.vps-act-label{opacity:0}
+.vps-manage .vps-act[data-busy]>.vps-act-busy{opacity:1}
+.vps-manage .vps-act[data-busy]{opacity:1;cursor:progress}
+.vps-manage[data-busy] :is(button,select,summary,a):disabled,.vps-manage[data-busy] input:disabled:not(.mw-switch input){opacity:1;cursor:progress}
+.vps-manage[data-busy] .mw-switch{cursor:progress}
+.vps-manage .mw-switch input:disabled{cursor:progress}
+.vps-manage .gd-google.vps-act{display:inline-grid}
+.vps-steps li>.vps-act.vps-small{display:grid;margin:0 0 12px}
+.vps-steps li>.gd-google.vps-act{display:grid}
+/* The worker's one status line: the same height whatever it says, so the switch never moves what is under it. */
+.vps-status{display:flex;align-items:center;gap:8px;min-height:22px;margin:0 0 4px;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.vps-status>span:last-child{min-width:0}
+.vps-status .gd-sync{width:14px;height:14px}
+.vps-status.is-warn{color:var(--ink)}
+.vps-status.is-warn .drawn-icon{flex:none;color:var(--ember)}
+.vps-ai{margin:8px 0 0}

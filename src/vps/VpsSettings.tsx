@@ -1,5 +1,7 @@
 // Settings → Connectors → VPS (docs/GUC-VPS-ENGINE.md "VPS"): a guided setup (server, key, test), then where files
 // live, moving them, the cache, and Clem's background worker. The key and passwords never come back from main.
+// Copy is one short line per state. A pressed button keeps its width (its busy label sits in the same cell) and the
+// others stay as they are, only inert, while it runs.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { authorizeLine, WORKER_SECRETS, type MigrationView, type VpsStatus, type VpsTest } from "../../core/vps/types";
 import type { StoredFile } from "../../core/types";
@@ -15,6 +17,18 @@ import { StatusDot, bytes, dotOf, useVps } from "./VpsRow";
 const message = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 const ago = (t?: number) => { if (!t) return "not yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 const CAPS = [0.5, 1, 2, 5, 10, 20].map((g) => g * 1024 ** 3);
+
+/** A button whose busy label shares its grid cell with the label, so pressing it never changes its width. */
+function Act({ label, busyLabel, busy, disabled, className = "", onClick, type = "button" }: { label: ReactNode; busyLabel: string; busy: boolean; disabled?: boolean; className?: string; onClick?: () => void; type?: "button" | "submit" }) {
+  return <button type={type} className={`vps-act ${className}`} onClick={onClick} disabled={busy || disabled} aria-busy={busy || undefined} data-busy={busy || undefined}>
+    <span className="vps-act-label" aria-hidden={busy || undefined}>{label}</span>
+    <span className="vps-act-busy" aria-hidden={!busy || undefined}>{busyLabel}</span>
+  </button>;
+}
+/** The one line that says what is happening; it keeps its height whatever it says. */
+function Status({ spin, warn, children }: { spin?: boolean; warn?: boolean; children: ReactNode }) {
+  return <p className={`vps-status${warn ? " is-warn" : ""}`} role="status">{spin ? <span className="gd-sync is-uploading" aria-hidden="true" /> : warn ? <Icon name="alert" size={14} /> : null}<span>{children}</span></p>;
+}
 
 /** The dialog behind Settings → Connectors → VPS → Manage (loaded when it opens; the row is VpsRow.tsx). */
 export function VpsManage({ files = [] }: { files?: StoredFile[] }) {
@@ -36,10 +50,10 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
   const [pasted, setPasted] = useState(""), [passphrase, setPassphrase] = useState("");
   const [advanced, setAdvanced] = useState(status.passwordAllowed), [password, setPassword] = useState("");
   const [busy, setBusy] = useState(""), [error, setError] = useState(""), [test, setTest] = useState<VpsTest | undefined>(status.lastTest);
-  const run = async (label: string, task: () => Promise<void>) => { setBusy(label); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { setBusy(""); } };
-  const generate = () => run("Making a key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsGenerateKey" })).publicKey); setKeyFrom("make"); });
-  const usePasted = () => run("Reading the key…", async () => { setPublicKey((await desktop!.invoke({ action: "vpsPasteKey", privateKey: pasted, ...(passphrase ? { passphrase } : {}) })).publicKey); setKeyFrom("paste"); setPasted(""); setPassphrase(""); });
-  const save = () => run("Connecting…", async () => {
+  const run = async (what: string, task: () => Promise<void>) => { if (busy) return; setBusy(what); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { setBusy(""); } };
+  const generate = () => run("key", async () => { setPublicKey((await desktop!.invoke({ action: "vpsGenerateKey" })).publicKey); setKeyFrom("make"); });
+  const usePasted = () => run("paste", async () => { setPublicKey((await desktop!.invoke({ action: "vpsPasteKey", privateKey: pasted, ...(passphrase ? { passphrase } : {}) })).publicKey); setKeyFrom("paste"); setPasted(""); setPassphrase(""); });
+  const save = () => run("save", async () => {
     const p = Number(port);
     if (!host.trim()) throw Error("Enter your server's address.");
     if (!Number.isInteger(p) || p < 1 || p > 65535) throw Error("The port is a number, usually 22.");
@@ -49,10 +63,10 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
     setTest(t);
     if (t.ok) { await refresh(); onDone(await desktop!.invoke({ action: "vpsStatus" })); }
   });
-  return <form className="gd-picker gd-connect vps-manage vps-setup" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+  return <form className="gd-picker gd-connect vps-manage vps-setup" data-busy={busy || undefined} onSubmit={(e) => { e.preventDefault(); void save(); }}>
     <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile vps-tile"><Icon name="server" size={34} /></span></div>
     <h3>Connect your VPS</h3>
-    <p>Clem keeps your files and runs its background work on your own server, so it is on even when this PC is off.</p>
+    <p>Clem stays on when this PC is off.</p>
     <ol className="vps-steps">
       <li><h4><span>1</span>Your server</h4>
         <div className="vps-fields">
@@ -63,27 +77,27 @@ function VpsSetup({ status, onDone, refresh }: { status: VpsStatus; onDone: (s: 
       </li>
       <li><h4><span>2</span>A key to sign in</h4>
         <div className="vps-choice" role="radiogroup" aria-label="Key">
-          <button type="button" role="radio" aria-checked={keyMode === "make"} onClick={() => setKeyMode("make")}>Make one for me</button>
-          <button type="button" role="radio" aria-checked={keyMode === "paste"} onClick={() => setKeyMode("paste")}>Use my own</button>
+          <button type="button" role="radio" aria-checked={keyMode === "make"} onClick={() => setKeyMode("make")} disabled={!!busy}>Make one for me</button>
+          <button type="button" role="radio" aria-checked={keyMode === "paste"} onClick={() => setKeyMode("paste")} disabled={!!busy}>Use my own</button>
         </div>
         {key ? <AddKey publicKey={key} />
-          : keyMode === "make" ? <button type="button" className="secondary vps-small" onClick={() => void generate()} disabled={!!busy}>Generate a key for me</button>
+          : keyMode === "make" ? <Act className="secondary vps-small" label="Generate a key for me" busyLabel="Making a key…" busy={busy === "key"} disabled={!!busy} onClick={() => void generate()} />
           : <>
             <label className="guc-field vps-wide"><span>Private key</span><textarea rows={4} value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellCheck={false} disabled={!!busy} /></label>
             <label className="guc-field"><span>Passphrase (if it has one)</span><input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} disabled={!!busy} /></label>
-            <button type="button" className="secondary vps-small" onClick={() => void usePasted()} disabled={!pasted || !!busy}>Use this key</button>
+            <Act className="secondary vps-small" label="Use this key" busyLabel="Reading…" busy={busy === "paste"} disabled={!pasted || !!busy} onClick={() => void usePasted()} />
           </>}
         {key && keyMode === "paste" && <button type="button" className="vps-link vps-again" onClick={() => setKeyFrom("")} disabled={!!busy}>Use a different key</button>}
-        <p className="guc-note"><Icon name="lock" size={14} />The private key stays encrypted on this PC. Clem never shows it again or sends it to the AI.</p>
+        <p className="guc-note"><Icon name="lock" size={14} />The private key stays on this PC, encrypted.</p>
         <details className="vps-advanced" open={advanced}>
-          <summary>Sign in with a password instead</summary>
-          <SettingRow title="Allow password sign-in" description="Less safe than a key. Off unless you need it."><Switch checked={advanced} onChange={setAdvanced} label="Allow password sign-in" /></SettingRow>
+          <summary>Use a password instead</summary>
+          <SettingRow title="Allow password sign-in" description="Less safe than a key."><Switch checked={advanced} onChange={setAdvanced} label="Allow password sign-in" disabled={!!busy} /></SettingRow>
           {advanced && <label className="guc-field"><span>Server password</span><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!!busy} /></label>}
         </details>
       </li>
       <li><h4><span>3</span>Check it works</h4>
         {test && <TestResult test={test} />}
-        {busy ? <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />{busy}</p> : <button className="gd-google" type="submit">Save and test</button>}
+        <Act type="submit" className="gd-google" label="Save and test" busyLabel="Connecting…" busy={busy === "save"} disabled={!!busy} />
         {error && <p className="gd-error" role="alert">{error}</p>}
       </li>
     </ol>
@@ -97,26 +111,22 @@ function Copy({ text, label }: { text: string; label: string }) {
 /** The public key, and the one line that adds it on the server. */
 function AddKey({ publicKey }: { publicKey: string }) {
   return <div className="vps-key">
-    <p>Run this once on your server (in its terminal, signed in as that user):</p>
+    <p>Run this once on your server:</p>
     <pre className="vps-code"><code>{authorizeLine(publicKey)}</code><Copy text={authorizeLine(publicKey)} label="Copy the command" /></pre>
-    <p>Or add this public key to <code>~/.ssh/authorized_keys</code> yourself:</p>
+    <p>Or add this key to <code>~/.ssh/authorized_keys</code>:</p>
     <pre className="vps-code"><code>{publicKey}</code><Copy text={publicKey} label="Copy the public key" /></pre>
   </div>;
 }
 
 function TestResult({ test }: { test: VpsTest }) {
-  if (!test.ok) return <div className="vps-test is-bad" role="alert"><Icon name="alert" size={15} /><div><b>Couldn't connect</b><p>{test.error}</p>{test.fingerprint && <small>Server fingerprint: <code>{test.fingerprint}</code></small>}</div></div>;
+  if (!test.ok) return <div className="vps-test is-bad" role="alert"><Icon name="alert" size={15} /><div><b>Couldn't connect</b><p>{test.error}</p>{test.fingerprint && <small>Fingerprint: <code>{test.fingerprint}</code></small>}</div></div>;
+  const facts = [test.os, test.diskFree !== undefined ? `${bytes(test.diskFree)} free of ${bytes(test.diskTotal)}` : "", test.docker ? "Docker ready" : ""].filter(Boolean).join(" · ");
   return <div className="vps-test" role="status">
     <Icon name="check" size={15} />
     <div>
       <b>Connected in {test.ms} ms</b>
-      <ul>
-        <li>{test.os}</li>
-        {test.diskFree !== undefined && <li>{bytes(test.diskFree)} free of {bytes(test.diskTotal)}</li>}
-        <li>{test.docker ? "Docker is ready" : "No Docker"} · {test.systemd ? "systemd is ready" : "no systemd"}{test.node ? ` · Node ${test.node}` : ""}</li>
-      </ul>
-      {test.canInstallDocker && <small>No Docker yet: Clem installs it when you turn on Run Clem on my VPS.</small>}
-      {test.firstTime && <small>First time here. Clem now trusts this server's fingerprint <code>{test.fingerprint}</code> and will refuse to connect if it changes.</small>}
+      <p>{facts}</p>
+      {test.firstTime && <small>Fingerprint saved: <code>{test.fingerprint}</code></small>}
     </div>
   </div>;
 }
@@ -127,51 +137,51 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
 
 function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; refresh: () => Promise<void>; step: string; files: StoredFile[] }) {
   const [busy, setBusy] = useState(""), [error, setError] = useState("");
-  const run = async (label: string, task: () => Promise<unknown>) => { setBusy(label); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { setBusy(""); await refresh(); } };
+  // One task at a time: a second press while one runs does nothing.
+  const run = async (what: string, task: () => Promise<unknown>) => { if (busy) return; setBusy(what); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { await refresh(); setBusy(""); } };
   const c = status.config!, s = status.storage, m = status.migration, w = status.worker, d = dotOf(status);
   const moving = m && ["running", "paused"].includes(m.status);
   const toVps = s.mode === "vps";
-  return <div className="gd-picker gd-connect vps-manage">
+  // The switch moves the moment it is pressed and stays there while Clem works on it.
+  const on = busy === "worker-on" ? true : busy === "worker-off" ? false : w.enabled;
+  const ai = w.model === "api" ? "AI on your key" : w.model === "cli" ? "AI signed in" : "no AI yet";
+  return <div className="gd-picker gd-connect vps-manage" data-busy={busy || undefined}>
     <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile vps-tile"><Icon name="server" size={34} /></span></div>
     <h3>Your VPS</h3>
     <p className="vps-where"><StatusDot dot={d} label={d === "on" ? "Online" : d === "warn" ? "Needs attention" : "Not checked yet"} /><b>{c.user}@{c.host}{c.port !== 22 ? ":" + c.port : ""}</b><span>{d === "on" ? "Online" : d === "warn" ? "Can't reach it" : "Not checked yet"}</span></p>
     {status.lastTest && <TestResult test={status.lastTest} />}
-    <button className="secondary vps-small" disabled={!!busy} onClick={() => void run("Testing…", () => desktop!.invoke({ action: "vpsTest" }))}>{busy === "Testing…" ? "Testing…" : "Test connection"}</button>
+    <Act className="secondary vps-small" label="Test connection" busyLabel="Testing…" busy={busy === "test"} disabled={!!busy} onClick={() => void run("test", () => desktop!.invoke({ action: "vpsTest" }))} />
 
     <Section title="Where your files live" aside={<span className="vps-pill">{toVps ? "On your VPS" : "On this PC"}</span>}>
       <Usage status={status} />
-      {moving ? <Moving m={m!} onStop={() => void run("Stopping…", () => desktop!.invoke({ action: "vpsAbortMove" }))} />
+      {moving ? <Moving m={m!} stopping={busy === "stop"} onStop={() => void run("stop", () => desktop!.invoke({ action: "vpsAbortMove" }))} />
         : <>
           {m && (m.status === "done" || m.status === "failed") && <p className={`vps-line${m.failed ? " is-warn" : ""}`}><Icon name={m.failed ? "alert" : "check"} size={14} />{m.error || `${m.done} file${m.done === 1 ? "" : "s"} moved ${m.direction === "up" ? "to your VPS" : "back to this PC"}.`}</p>}
-          <button className="gd-google" disabled={!!busy} onClick={() => void (toVps
-            ? confirmDialog({ title: "Move your files back to this PC?", message: `Clem copies ${s.files.vps} file${s.files.vps === 1 ? "" : "s"} (${bytes(s.vps)}) here, checks each one, then removes it from your VPS.`, confirm: "Move back" }).then((yes) => { if (yes) void run("Starting…", () => desktop!.invoke({ action: "vpsMove", direction: "down" })); })
-            : run("Starting…", () => desktop!.invoke({ action: "vpsMove", direction: "up" })))}>{toVps ? "Move back to this PC" : "Move everything to my VPS"}</button>
-          <p className="vps-fine">{toVps ? "New files go to your VPS. This PC keeps recent and pinned files so they open instantly." : "Each file is checked on your VPS before this PC lets go of it. You can keep using Clem while it moves."}</p>
+          <Act className="gd-google" label={toVps ? "Move back to this PC" : "Move everything to my VPS"} busyLabel="Starting…" busy={busy === "move"} disabled={!!busy} onClick={() => void (toVps
+            ? confirmDialog({ title: "Move your files back to this PC?", message: `${s.files.vps} file${s.files.vps === 1 ? "" : "s"} (${bytes(s.vps)}) come back here, then leave your VPS.`, confirm: "Move back" }).then((yes) => { if (yes) void run("move", () => desktop!.invoke({ action: "vpsMove", direction: "down" })); })
+            : run("move", () => desktop!.invoke({ action: "vpsMove", direction: "up" })))} />
+          <p className="vps-fine">{toVps ? "New files go to your VPS." : "Each file is checked before it leaves this PC."}</p>
         </>}
-      {toVps && <Cache status={status} onCap={(n) => void run("Saving…", () => desktop!.invoke({ action: "vpsCap", bytes: n }))} />}
+      {toVps && <Cache status={status} disabled={!!busy} onCap={(n) => void run("cap", () => desktop!.invoke({ action: "vpsCap", bytes: n }))} />}
       {toVps && <Pinned files={files} />}
     </Section>
 
-    <Section title="Run Clem on my VPS" aside={<Switch checked={w.enabled} label="Run Clem on my VPS" onChange={(on) => void run(on ? "Installing…" : "Stopping…", () => desktop!.invoke({ action: "vpsWorker", on }))} />}>
-      <p className="vps-fine">Clem sets up everything on your server: GUC checks, reminders, the organizer, the AI and Telegram keep going while this PC is off.</p>
-      {busy === "Installing…" && <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />{step || "Installing…"}</p>}
-      {w.enabled && <ul className="vps-facts">
-        <li><span>Running on</span><b>{w.runner === "worker" ? "Your VPS" : w.runner === "desktop" ? "This PC (until your VPS answers)" : "Checking…"}</b></li>
-        <li><span>How</span><b>{w.kind === "docker" ? "Docker, with Postgres" : w.kind === "systemd" ? "systemd and Node" : "—"}</b></li>
-        <li><span>Last heartbeat</span><b>{ago(w.heartbeat)}</b></li>
-        <li><span>AI on the VPS</span><b>{w.model === "api" ? "Your API key" : w.model === "cli" ? "Signed in on your VPS" : "None yet: rules only, Telegram replies wait for this PC"}</b></li>
-      </ul>}
-      {w.error && <p className="vps-line is-warn"><Icon name="alert" size={14} />{w.error}</p>}
+    <Section title="Run Clem on my VPS" aside={<Switch checked={on} label="Run Clem on my VPS" disabled={!!busy} onChange={(v) => void run(v ? "worker-on" : "worker-off", () => desktop!.invoke({ action: "vpsWorker", on: v }))} />}>
+      {busy === "worker-on" ? <Status spin>{step || "Setting up your VPS…"}</Status>
+        : busy === "worker-off" ? <Status spin>Turning off…</Status>
+        : w.error ? <Status warn>{w.error}</Status>
+        : w.enabled ? <Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
+        : <Status>Keeps Clem going while this PC is off.</Status>}
       {w.enabled && w.model !== "api" && <ServerAi w={w} />}
-      <ModelKey has={w.model === "api"} onSave={(key, model) => run("Saving…", () => desktop!.invoke({ action: "vpsModelKey", ...(key ? { key } : {}), ...(model ? { model } : {}) }))} />
+      <ModelKey has={w.model === "api"} busy={busy === "model"} disabled={!!busy} onSave={(key, model) => run("model", () => desktop!.invoke({ action: "vpsModelKey", ...(key ? { key } : {}), ...(model ? { model } : {}) }))} />
       <details className="vps-advanced"><summary>What Clem sends to your VPS</summary>
         <ul className="vps-sent">{WORKER_SECRETS.map((x) => <li key={x.name}><b>{x.what}</b><small>{x.when}</small></li>)}</ul>
-        <p className="vps-fine">Each is encrypted (AES-256-GCM) before it leaves this PC and travels over SSH. The worker listens only on the server itself; Clem reaches it through the SSH connection.</p>
+        <p className="vps-fine">Encrypted before it leaves this PC, sent over SSH.</p>
       </details>
     </Section>
     {error && <p className="gd-error" role="alert">{error}</p>}
     <footer className="gd-foot guc-foot">
-      <button className="gd-disconnect" disabled={!!busy} onClick={() => void confirmDialog({ title: "Forget this server?", message: toVps ? "Move your files back to this PC first." : "Clem forgets the address, key and fingerprint. Nothing on the server is deleted.", confirm: "Forget", danger: true }).then((yes) => { if (yes) void run("Forgetting…", () => desktop!.invoke({ action: "vpsForget" })); })}>Forget this server</button>
+      <button className="gd-disconnect" disabled={!!busy} onClick={() => void confirmDialog({ title: "Forget this server?", message: toVps ? "Move your files back to this PC first." : "Clem forgets the address, key and fingerprint. Nothing on the server is deleted.", confirm: "Forget", danger: true }).then((yes) => { if (yes) void run("forget", () => desktop!.invoke({ action: "vpsForget" })); })}>Forget this server</button>
     </footer>
   </div>;
 }
@@ -184,19 +194,19 @@ function Usage({ status }: { status: VpsStatus }) {
     <dl><div><dt><i className="is-device" />This PC</dt><dd>{bytes(s.device)}{s.cache ? ` (${bytes(s.cache)} cached)` : ""}</dd></div><div><dt><i className="is-vps" />Your VPS</dt><dd>{bytes(s.vps)}</dd></div></dl>
   </div>;
 }
-function Cache({ status, onCap }: { status: VpsStatus; onCap: (n: number) => void }) {
+function Cache({ status, onCap, disabled }: { status: VpsStatus; onCap: (n: number) => void; disabled?: boolean }) {
   const s = status.storage;
-  return <SettingRow title="Keep on this PC" description={`Recent files, up to the limit (${bytes(s.cache)} used). Pinned files always stay.`}>
-    <select className="vps-select" value={CAPS.reduce((a, b) => (Math.abs(b - s.cap) < Math.abs(a - s.cap) ? b : a))} onChange={(e) => onCap(Number(e.target.value))} aria-label="Cache limit">{CAPS.map((n) => <option key={n} value={n}>{bytes(n)}</option>)}</select>
+  return <SettingRow title="Keep on this PC" description={`Recent files, ${bytes(s.cache)} used. Pinned files always stay.`}>
+    <select className="vps-select" value={CAPS.reduce((a, b) => (Math.abs(b - s.cap) < Math.abs(a - s.cap) ? b : a))} onChange={(e) => onCap(Number(e.target.value))} disabled={disabled} aria-label="Cache limit">{CAPS.map((n) => <option key={n} value={n}>{bytes(n)}</option>)}</select>
   </SettingRow>;
 }
-function Moving({ m, onStop }: { m: MigrationView; onStop: () => void }) {
+function Moving({ m, onStop, stopping }: { m: MigrationView; onStop: () => void; stopping: boolean }) {
   const pct = m.bytesTotal ? Math.round((m.bytesDone / m.bytesTotal) * 100) : m.total ? Math.round((m.done / m.total) * 100) : 0;
   return <div className="vps-moving" role="status">
     <div className="vps-progress" aria-hidden="true"><span style={{ width: pct + "%" }} /></div>
-    <p><b>{m.status === "paused" ? "Paused" : m.direction === "up" ? "Moving to your VPS" : "Moving back to this PC"}</b> · {m.done} of {m.total} files · {bytes(m.bytesDone)} of {bytes(m.bytesTotal)}</p>
-    {m.error && <p className="vps-fine">{m.error.replace(/^Paused: /, "")} It carries on by itself once the server answers.</p>}
-    <button className="secondary vps-small" onClick={onStop}>Stop</button>
+    <p><b>{m.status === "paused" ? "Paused" : m.direction === "up" ? "Moving to your VPS" : "Moving back to this PC"}</b> · {m.done} of {m.total} files</p>
+    {m.error && <p className="vps-fine">{m.error.replace(/^Paused: /, "")} It carries on once the server answers.</p>}
+    <Act className="secondary vps-small" label="Stop" busyLabel="Stopping…" busy={stopping} onClick={onStop} />
   </div>;
 }
 /** Files that always stay on this PC. */
@@ -208,7 +218,7 @@ function Pinned({ files }: { files: StoredFile[] }) {
   if (!pinned) return <div className="gd-skeleton" />;
   return <div className="vps-pins">
     <h5>Pinned to this PC</h5>
-    {pinned.length ? <ul>{pinned.map((id) => <li key={id}><Icon name="pin" size={13} /><span>{files.find((f) => f.id === id)?.name || id}</span><button type="button" className="vps-link" onClick={() => void toggle(id, false)}>Unpin</button></li>)}</ul> : <p className="vps-fine">Nothing pinned. Pin a file to keep it here for offline use.</p>}
+    {pinned.length ? <ul>{pinned.map((id) => <li key={id}><Icon name="pin" size={13} /><span>{files.find((f) => f.id === id)?.name || id}</span><button type="button" className="vps-link" onClick={() => void toggle(id, false)}>Unpin</button></li>)}</ul> : <p className="vps-fine">Nothing pinned yet.</p>}
     <input className="vps-find" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a file to pin" aria-label="Find a file to pin" />
     {hits.length > 0 && <ul>{hits.map((f) => <li key={f.id}><span>{f.name}</span><button type="button" className="vps-link" onClick={() => { void toggle(f.id, true); setQ(""); }}>Pin</button></li>)}</ul>}
   </div>;
@@ -216,38 +226,37 @@ function Pinned({ files }: { files: StoredFile[] }) {
 /** The AI on the server (Claude Code or Codex, the one this PC uses), set up by the switch; here only its progress,
  *  the one sign-in, and a retry. */
 function ServerAi({ w }: { w: VpsStatus["worker"] }) {
-  const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false);
-  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT (Codex)" : "Claude";
-  const start = (cli: "claude" | "codex") => { setError(""); void desktop!.invoke({ action: "vpsCli", cli }).catch((e) => setError(message(e))); };
+  const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false), [sent, setSent] = useState(false);
+  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : "Claude";
+  const start = (cli: "claude" | "codex") => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli", cli }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
   const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
   if (w.model === "cli" && !s) return null;
   return <div className="vps-ai">
     {!s || s.step === "failed" ? <>
-      {s?.error && <p className="vps-line is-warn"><Icon name="alert" size={14} />{s.error}</p>}
-      <button type="button" className="secondary vps-small" onClick={() => start(s?.cli || "claude")}>{s ? "Try again" : "Set up the AI on my VPS"}</button>
-    </> : s.step === "installing" ? <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Installing {name} on your VPS… this takes a minute or two</p>
-      : s.step === "finishing" ? <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Signed in. Restarting Clem on your VPS…</p>
+      {s?.error && <Status warn>{s.error}</Status>}
+      <Act className="secondary vps-small" label={s ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={() => start(s?.cli || "claude")} />
+    </> : s.step === "installing" ? <Status spin>Installing {name} on your VPS…</Status>
+      : s.step === "finishing" ? <Status spin>Signed in. Restarting…</Status>
       : s.cli === "codex" ? <div className="provider-challenge cx-challenge">
-        <p>Enter this code on the OpenAI sign-in page</p>
+        <p>Enter this code on the OpenAI page</p>
         <button type="button" className="cx-code" onClick={() => void navigator.clipboard.writeText(s.code || "").then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600); })}><code>{s.code}</code><span>{copied ? "Copied" : "Copy"}</span></button>
         <a className="primary cx-go" href={s.url} target="_blank" rel="noreferrer">Open sign-in page<Icon name="arrow" size={15} /></a>
         <p className="provider-wait"><Icon name="hourglass" size={14} />Waiting for your account…</p>
       </div>
       : <div>
-        <p className="guc-progress" role="status"><span className="gd-sync is-uploading" aria-hidden="true" />Sign in with your Claude account in the window that opened. Clem passes the sign-in to your VPS.</p>
-        <details className="vps-advanced"><summary>The page shows a code instead?</summary>
-          <label className="guc-field"><span>Code from the page</span><input value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} autoComplete="off" /></label>
-          <button type="button" className="secondary vps-small" disabled={code.trim().length < 4} onClick={paste}>Send it to my VPS</button>
+        <Status spin>Sign in to Claude in the window that opened.</Status>
+        <details className="vps-advanced"><summary>Got a code instead?</summary>
+          <label className="guc-field"><span>Code</span><input value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} autoComplete="off" /></label>
+          <button type="button" className="secondary vps-small" disabled={code.trim().length < 4} onClick={paste}>Send</button>
         </details>
       </div>}
     {error && <p className="gd-error" role="alert">{error}</p>}
   </div>;
 }
-function ModelKey({ has, onSave }: { has: boolean; onSave: (key?: string, model?: string) => Promise<void> }) {
+function ModelKey({ has, onSave, busy, disabled }: { has: boolean; onSave: (key?: string, model?: string) => Promise<void>; busy: boolean; disabled?: boolean }) {
   const [key, setKey] = useState("");
-  return <details className="vps-advanced"><summary>{has ? "Model key for the VPS (saved)" : "Add a model key for the VPS (optional)"}</summary>
-    <p className="vps-fine">Instead of signing in on your VPS above. Clem never copies keys or sign-ins from your PC's apps.</p>
-    <label className="guc-field"><span>Anthropic API key</span><input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" /></label>
-    <div className="vps-row-buttons"><button type="button" className="secondary vps-small" disabled={!key} onClick={() => void onSave(key).then(() => setKey(""))}>Save key</button>{has && <button type="button" className="vps-link" onClick={() => void onSave()}>Remove key</button>}</div>
+  return <details className="vps-advanced"><summary>{has ? "API key for the VPS (saved)" : "Use an API key instead"}</summary>
+    <label className="guc-field"><span>Anthropic API key</span><input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" disabled={disabled} /></label>
+    <div className="vps-row-buttons"><Act className="secondary vps-small" label="Save key" busyLabel="Saving…" busy={busy} disabled={!key || disabled} onClick={() => void onSave(key).then(() => setKey(""))} />{has && <button type="button" className="vps-link" disabled={disabled} onClick={() => void onSave()}>Remove key</button>}</div>
   </details>;
 }

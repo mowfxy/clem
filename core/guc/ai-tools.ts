@@ -11,12 +11,15 @@ import { matchCourse } from "./match.ts";
 import type { SubjectLink } from "./settings.ts";
 import type { GucSlot } from "./types.ts";
 
-export const GUC_ACTIONS = ["guc.schedule", "guc.announcements", "guc.materials", "guc.read", "guc.grades", "guc.deadlines", "guc.search", "guc.mail", "guc.save", "guc.settings", "guc.help"] as const;
+export const GUC_ACTIONS = ["guc.schedule", "guc.announcements", "guc.materials", "guc.read", "guc.grades", "guc.deadlines", "guc.search", "guc.mail", "guc.save", "guc.settings", "guc.help",
+  "guc.correct", "guc.learn", "guc.corrections", "guc.uncorrect", "guc.resync", "guc.reread", "guc.rebuild", "guc.link"] as const;
 export type GucAction = (typeof GUC_ACTIONS)[number];
 /** The names in the spec and a few a model may guess, read as the action they mean. */
 const ALIASES: Record<string, GucAction> = {
   get_schedule: "guc.schedule", get_announcements: "guc.announcements", list_course_materials: "guc.materials", materials: "guc.materials", read_file: "guc.read",
   get_grades: "guc.grades", read_mail: "guc.mail", mail: "guc.mail", save_file: "guc.save", download_file: "guc.save", get_deadlines: "guc.deadlines", search_materials: "guc.search", update_subject_settings: "guc.settings", help: "guc.help",
+  fix: "guc.correct", edit: "guc.correct", remove: "guc.correct", correct_deadline: "guc.correct", edit_deadline: "guc.correct", remove_deadline: "guc.correct", teach: "guc.learn", rule: "guc.learn",
+  undo_correction: "guc.uncorrect", sync: "guc.resync", sync_now: "guc.resync", refresh: "guc.resync", reread_deadlines: "guc.reread", read_again: "guc.reread", reset: "guc.rebuild", relink: "guc.link",
 };
 export function gucAction(action: unknown): GucAction | null {
   const a = String(action || "");
@@ -24,6 +27,15 @@ export function gucAction(action: unknown): GucAction | null {
   return /^guc[._]/.test(a) ? ALIASES[a.slice(4)] || null : null;
 }
 export const isGucAction = (action: unknown) => gucAction(action) !== null;
+
+/** Correcting what Clem synced or worked out (docs/GUC-VPS-ENGINE.md → Corrections), and running the systems themselves.
+ *  Also in the main thread's guide (core/proactivity/calendar.ts CALENDAR_GUIDE points here). */
+export const CORRECT_GUIDE = `Clem can correct anything it shows, at once, when the person says it is wrong; never answer that something "is synced automatically" or "can't be changed". Do it, then say what you changed in one plain sentence. A correction holds through every sync and can be undone ("undo that", "bring it back").
+- {"kinetra":{"action":"guc.correct","item":"<its id from guc.deadlines (the #/app/guc/deadlines/<id> link) or its title words>","subject":…,"do":"remove"|"edit"|"done"|"note"|"restore","title":"…","date":"YYYY-MM-DD","time":"HH:MM" or "" (no time),"place":"…","note":"…","why":"their words","learn":"<the general rule behind the mistake, one sentence>","rule":{"type":"max_age","days":N}|{"type":"ignore","from":"<sender>","words":["…"],"message":true}}}: removes an item from Coming up, changes its title, date, time or place, marks it done, adds a note, or brings back one removed ("restore"). Add "learn" (and "rule" when it fits) whenever the mistake could happen again: an old mail read as new ({"type":"max_age","days":14}), a sender or thread that isn't about deadlines ({"type":"ignore","from":…,"words":…}), a misread post ({"type":"ignore","message":true}). If Clem also put something in their plan or a reminder for it, take that out too (clem.undo, clem.unremind).
+- {"kinetra":{"action":"guc.learn","text":"<the rule in one sentence>","rule":{…as above},"subject":…}}: teaches Clem a rule without a single item ("ignore mail from the library about deadlines"). {"kinetra":{"action":"guc.corrections"}} lists corrections and rules with ids; {"kinetra":{"action":"guc.uncorrect","id":"<id>"}} lifts one.
+- The portal's own records (grades, the official timetable, exam seats) can't be changed: say so plainly; an exam seat can be hidden ("remove") or annotated ("note"), and any of them re-read with guc.resync.
+- {"kinetra":{"action":"guc.link","subject":"<subject>","course":"<course code>"|"none"}}: fixes which GUC course a subject is linked to (or unlinks it).
+- {"kinetra":{"action":"guc.resync","subject":…}}: reads GUC now (all of it, or one course). {"kinetra":{"action":"guc.reread","subject":…,"message":"<mail id or announcement id, optional>"}}: reads a course's posts and mail (or one message) again for dates. {"kinetra":{"action":"guc.rebuild","subject":…}}: clears what Clem worked out for one course and reads it again from GUC. Each answers with what changed: say it plainly.`;
 
 /** The guide (like FIND_GUIDE in core/file-tools.ts): one line per action. Byte-stable, so a prompt that carries it caches. */
 export const GUC_GUIDE = `GUC (the person's university: CMS courses, schedule, grades; Cairo time; the GUC week is Sat–Thu). Read it with these kinetra requests, never from memory; cite what you use by its #/app/guc/… link. "subject" is a subject's name, @mention, id or a course code ("CSEN 701"); in a subject's chat it defaults to that subject.
@@ -37,6 +49,7 @@ export const GUC_GUIDE = `GUC (the person's university: CMS courses, schedule, g
 - {"kinetra":{"action":"guc.search","query":"words","subject":…}}: file names and announcements.
 - {"kinetra":{"action":"guc.grades","subject":…}}: grades, newest semester first.
 - {"kinetra":{"action":"guc.settings","subject":…,"saveText":"their words","checkText":"their words","rules":{…},"check":{…},"drive":{"enabled":true|false}}}: changes what Clem saves from CMS, when it checks, and the Drive copy, only when the person asks; give their own words in saveText/checkText. When they mean every course ("keep everything from all my courses", "never save videos"), send "everywhere":true instead of "subject": every linked subject changes and subjects linked later start from it. Never ask them the same thing per subject.
+${CORRECT_GUIDE}
 ${WATCH_GUIDE}
 ${TELEGRAM_GUIDE}`;
 
@@ -54,12 +67,28 @@ export const gucArgs = {
   "guc.save": z.object({ file: z.string().trim().min(1).max(300), drive: z.string().trim().max(300).optional(), subject }),
   "guc.settings": settingsUpdateCard.omit({ type: true, subjectId: true, unlink: true, checkNow: true, storage: true }).extend({ subject }),
   "guc.help": z.object({}),
+  "guc.correct": z.object({ item: z.string().trim().min(1).max(300), subject, do: z.enum(["remove", "edit", "done", "note", "restore"]), title: z.string().trim().min(1).max(80).optional(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    time: z.union([z.string().regex(/^\d{1,2}:\d{2}$/), z.literal("")]).optional(), place: z.string().trim().max(60).optional(), note: z.string().trim().min(1).max(300).optional(), why: z.string().trim().max(300).optional(), learn: z.string().trim().min(3).max(300).optional(), rule: z.lazy(() => ruleArg).optional() }),
+  "guc.learn": z.object({ text: z.string().trim().min(3).max(300), rule: z.lazy(() => ruleArg).optional(), subject }),
+  "guc.corrections": z.object({ subject }),
+  "guc.uncorrect": z.object({ id: z.string().trim().regex(/^fix\w{4,20}$/) }),
+  "guc.resync": z.object({ subject }),
+  "guc.reread": z.object({ subject, message: z.string().trim().regex(/^[\w:-]{1,120}$/).optional() }),
+  "guc.rebuild": z.object({ subject }),
+  "guc.link": z.object({ subject: z.string().trim().min(1).max(200), course: z.string().trim().min(1).max(200) }),
 } satisfies Record<GucAction, z.ZodType>;
+/** A rule the model gives with a correction: checked here, stored as core/guc/corrections.ts Rule. */
+export const ruleArg = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("max_age"), days: z.number().int().min(1).max(180) }),
+  z.object({ type: z.literal("ignore"), from: z.string().trim().min(2).max(120).optional(), words: z.array(z.string().trim().min(2).max(40)).max(5).optional(), message: z.boolean().optional() }),
+  z.object({ type: z.literal("note") }),
+]);
 
 /** A request's fields for `action`, checked; an error says what was wrong in one line. */
 export function readArgs<A extends GucAction>(action: A, request: Record<string, unknown>): { ok: true; args: z.infer<(typeof gucArgs)[A]> } | { ok: false; error: string } {
   const { action: _a, ...rest } = request;
   if (typeof rest.from === "string" && /^\d+$/.test(rest.from)) rest.from = Number(rest.from);
+  if (rest.rule && typeof rest.rule === "object" && typeof (rest.rule as { days?: unknown }).days === "string") (rest.rule as { days?: unknown }).days = Number((rest.rule as { days: string }).days);
   const r = (gucArgs[action] as z.ZodType).safeParse(rest);
   if (r.success) return { ok: true, args: r.data as any };
   const i = r.error.issues[0];
@@ -241,4 +270,26 @@ export function gucNow(d: { slots: GucSlot[]; deadlines: HubDeadline[]; unread: 
       .map((x) => ({ title: clip(x.title + (x.place ? " · " + x.place : ""), 80), due: x.timeKnown === false ? relativeDue(x.due, now).date.replace(/, \d{2}:\d{2}$/, "") : relativeDue(x.due, now).date, ...(x.code ? { space: x.code } : {}) })),
     unread: d.unread,
   };
+}
+
+// ---------- Corrections ----------
+/** The Coming up item a correction names: its id (or its #/app/guc/deadlines/<id> link), else the one whose title (and
+ *  course) has every word, in the course when one is named. An error names the candidates. */
+export function findItem<T extends Pick<HubDeadline, "id" | "title" | "code" | "courseKey" | "due">>(list: T[], arg: string, course?: Resolved): T | { error: string } {
+  const id = arg.trim().replace(/^#?\/?app\/guc\/deadlines\//, "");
+  const exact = list.find((d) => d.id === id);
+  if (exact) return exact;
+  const words = arg.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, " ").split(" ").filter((w) => w.length > 1 || /\d/.test(w));
+  const pool = list.filter((d) => !course || d.courseKey === course.courseKey);
+  const hits = pool.filter((d) => { const t = `${d.title} ${d.code}`.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, " "); return words.length > 0 && words.every((w) => ` ${t} `.includes(` ${w} `) || (w.length > 3 && t.includes(w))); });
+  if (hits.length === 1) return hits[0];
+  const say = (d: T) => `${d.code || "Course"} ${d.title} (${relativeDue(d.due, Date.now()).date}, id ${d.id})`;
+  if (hits.length > 1) return { error: `"${arg}" could be ${hits.slice(0, 5).map(say).join(" or ")}: give the id.` };
+  return { error: `Nothing in Coming up matches "${arg}"${course ? " in " + label(course) : ""}. List them with guc.deadlines (range "all" or "past") and give the id.` };
+}
+/** The corrections and rules in force, one line each with its id. */
+export function correctionsText(list: { id: string; kind: string; label: string; at: number; courseKey?: string }[], course?: Resolved) {
+  const mine = list.filter((c) => !course || !c.courseKey || c.courseKey === course.courseKey);
+  if (!mine.length) return "No corrections or learned rules yet.";
+  return "Corrections and learned rules (newest first; lift one with guc.uncorrect):\n" + [...mine].reverse().slice(0, 40).map((c) => `- ${c.id} · ${c.kind === "rule" ? "rule: " : ""}${clip(c.label, 200)} · ${new Date(c.at).toISOString().slice(0, 10)}`).join("\n");
 }
