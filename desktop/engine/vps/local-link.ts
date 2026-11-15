@@ -19,6 +19,8 @@ export class LocalLink implements VpsLink {
       p.stdout.on("data", (b: Buffer) => { out = add(out, b); }); p.stderr.on("data", (b: Buffer) => { err = add(err, b); });
       p.on("error", (e) => { clearTimeout(timer); reject(e); });
       p.on("close", (code) => { clearTimeout(timer); resolve({ code: code ?? -1, stdout: out.slice(0, cap), stderr: err.slice(0, cap), truncated }); });
+      // A command that ends without reading its input closes the pipe first (EPIPE on Linux): that is not a failure.
+      p.stdin.on("error", () => {});
       p.stdin.end(o.stdin ?? "");
     });
   }
