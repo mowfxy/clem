@@ -95,7 +95,7 @@ When the person says something Clem shows is wrong (an item in Coming up, a date
 
 ## The AI comes first (owner, 2026-11-15)
 The main thread's guide opens with `AI_FIRST` (`core/main-thread/context.ts`), in the window (`MAIN_THREAD_NOTE`, `core/main-thread/guide.ts`) and on Telegram from either side (`telegramGuide()`): nothing automated blocks, overrides or undoes what the person tells the AI; each automated system has a tool (listed in the guide), the change holds through later automated runs and "undo that" reverses it; the portal's own records are changed in Clem's copy, said plainly; never "it's automatic" or "it can't be changed". The audit and what changed are in docs/GUC-VPS-ENGINE.md "The AI comes first".
-- On Telegram, two of Clem's own messages ask something, each once, in words, in the main thread and on Telegram: a command that would change the server (exactly what will run; "yes" runs it, anything else drops it), and the VPS being full (what waits; "yes"/"no" is the standing answer, `vps.waiting` changes it later). The answer is the person's next message; neither is ever asked twice.
+- On Telegram, one of Clem's own messages asks something, once, in words: a command that would change the server (exactly what will run; "yes" runs it, anything else drops it). The VPS being full is only told, once (the PC keeps every file, so nothing is asked). Copies of files on the VPS are the person's to switch, in words too (`vps.copies`).
 
 ## Telegram (owner, 2026-11-15)
 "When clem is texted from laptop it runs on laptop normally, only main thread runs on telegram. no questions nor pdfs." Telegram is this main thread for managing the day and term, and nothing else.

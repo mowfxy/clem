@@ -36,8 +36,6 @@ export type AgentDeps = {
   vpsPerform?: (ask: VpsAsk) => Promise<unknown>;
   /** The worker's standing state (a question waiting for its answer). */
   state?: WorkerState;
-  /** The VPS-full question and its standing answer (desktop/engine/vps/full.ts). */
-  full?: import("./full.ts").FullNotice;
   /** What waits for the PC past the storage limit. */
   waiting?: () => Promise<{ item: string; name: string; bytes: number }[]>;
   log?: (m: string) => void;
@@ -89,7 +87,9 @@ export class WorkerAgent {
     const vps: ThreadVps | undefined = this.d.vps ? {
       run: (tool) => this.d.vps!(tool),
       hold: async (ask) => { await this.d.state?.set("vps-ask", ask); },
-      waiting: async (send) => { if (send !== undefined && this.d.full) await this.d.full.set(send ? "send" : "keep"); return { items: await this.d.waiting?.().catch(() => []) || [], answer: await this.d.full?.answer() }; },
+      waiting: async () => ({ items: await this.d.waiting?.().catch(() => []) || [] }),
+      // With the PC off, copies on or off is a wish the PC carries out when it is next on (it holds the files).
+      copies: async (on) => { await this.d.state?.set("copies-wish", on); return { ok: true, copies: on, note: "Done when their PC is next on: " + (on ? "it copies their files to the VPS." : "the VPS copies are removed once the PC has each file.") + " Say so in one plain sentence." }; },
       keep: (file, where) => this.keepFile(file, where),
     } : undefined;
     return {
@@ -110,7 +110,6 @@ export class WorkerAgent {
       before: (text) => threadBefore({
         take: async () => this.d.state?.take<VpsAsk>("vps-ask"),
         perform: async (ask) => this.d.vpsPerform ? this.d.vpsPerform(ask) : { error: "The VPS tools aren't available here." },
-        fullReply: async (t) => this.d.full?.reply(t),
         clock: this.clock,
       }, text),
       guc: async () => await engine.now().catch(() => null) as Awaited<ReturnType<NonNullable<ThreadDeps["guc"]>>>,

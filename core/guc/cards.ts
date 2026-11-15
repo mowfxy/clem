@@ -81,7 +81,7 @@ export const telegramPairCard = z.object({ type: z.literal('telegram_pair') });
  *  live from the engine, so an old card says it works again once it does. */
 export const gucPasswordCard = z.object({ type: z.literal('guc_password') });
 
-/** "Move everything to my VPS" (up) or back (down) finished: how many files, and any left where they were. */
+/** An older version's "Move everything to my VPS" (up) or back (down) finished; older posts still render it. */
 export const vpsMovedCard = z.object({ type: z.literal('vps_moved'), direction: z.enum(['up', 'down']), files: z.number().int().min(0), bytes: z.number().min(0), failed: z.number().int().min(0).optional() });
 /** A VPS command or overwrite the AI asked for that waits for the person's tap (Run it / Cancel); the action itself
  *  stays in the main process under `id`. */

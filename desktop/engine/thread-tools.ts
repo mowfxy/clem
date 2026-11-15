@@ -12,14 +12,15 @@ import type { Engine } from "./index.ts";
 
 /** A question about a server change is answered within a day, or it lapses. */
 export const ASK_MS = 24 * 3_600_000;
-type Answer = "send" | "keep" | null | undefined;
 export type ThreadVps = {
   /** vps.run_command, read_file, write_file, service_status, asking in words (VpsTools with `words`). */
   run(tool: Record<string, unknown>): Promise<unknown>;
   /** Keeps a server change Clem asked about until the person's next message. */
   hold(ask: VpsAsk): Promise<void>;
-  /** What waits past the storage limit, and the standing answer (set it with `send`). */
-  waiting(send?: boolean): Promise<{ items: { name: string }[]; answer: Answer }>;
+  /** What was left off the VPS at its limit (the PC keeps everything, so this is information only). */
+  waiting(): Promise<{ items: { name: string }[] }>;
+  /** "Keep a copy of my files on the VPS", on or off (the person said so in words). */
+  copies(on: boolean): Promise<unknown>;
   /** Where one file is kept. */
   keep(file: string, where: "pc" | "vps" | "auto"): Promise<unknown>;
 };
@@ -35,10 +36,9 @@ export type ThreadToolCtx = {
   vps?: ThreadVps;
 };
 
-const waitingText = (w: { items: { name: string }[]; answer: Answer }, set: boolean) => ({
-  waiting: w.items.slice(0, 20).map((i) => i.name), count: w.items.length,
-  answer: w.answer === "send" ? "they go to the PC whenever it's online" : w.answer === "keep" ? "they stay; Clem doesn't ask" : "not answered yet",
-  ...(set ? { note: "Saved as the standing answer. Say so in one plain sentence." } : {}),
+const waitingText = (w: { items: { name: string }[] }) => ({
+  leftOff: w.items.slice(0, 20).map((i) => i.name), count: w.items.length,
+  note: "The PC keeps every file; these weren't copied to the VPS because it's at Clem's limit (CMS files among them are saved on the PC when it's on). Nothing to do.",
 });
 
 /** One action of the Telegram main thread, on this side's engine. */
@@ -52,7 +52,8 @@ export async function runThreadTool(ctx: ThreadToolCtx, tool: Record<string, any
   if (isVpsAction(action)) {
     if (!ctx.vps) return { error: "No VPS is connected. The person can add one in Clem on their PC: Settings → Connectors → VPS." };
     try {
-      if (action === "vps.waiting") { const set = typeof tool.send === "boolean"; return waitingText(await ctx.vps.waiting(set ? tool.send : undefined), set); }
+      if (action === "vps.waiting") return waitingText(await ctx.vps.waiting());
+      if (action === "vps.copies") { if (typeof tool.on !== "boolean") return { error: 'vps.copies needs "on": true or false.' }; return await ctx.vps.copies(tool.on); }
       if (action === "vps.keep") return await ctx.vps.keep(String(tool.file || ""), tool.where === "pc" || tool.where === "vps" ? tool.where : "auto");
       const r = await ctx.vps.run(tool) as { needsYes?: boolean; ask?: VpsAsk; question?: string };
       if (!r?.needsYes || !r.ask) return r;
@@ -87,13 +88,13 @@ export async function sendFileTool(ctx: Pick<ThreadToolCtx, "engine" | "owner" |
   return cms;
 }
 
-/** Before the model: a "yes" to the server change Clem asked about runs it (anything else drops it), and the answer to
- *  the VPS-full question is the standing answer. The same on both sides. */
-export async function threadBefore(o: { take(): Promise<VpsAsk | undefined>; perform(ask: VpsAsk): Promise<unknown>; fullReply?(text: string): Promise<string | null | undefined>; clock?: () => number }, text: string): Promise<string | null> {
+/** Before the model: a "yes" to the server change Clem asked about runs it (anything else drops it). The same on both
+ *  sides. */
+export async function threadBefore(o: { take(): Promise<VpsAsk | undefined>; perform(ask: VpsAsk): Promise<unknown>; clock?: () => number }, text: string): Promise<string | null> {
   const ask = await o.take().catch(() => undefined);
   if (ask && (o.clock || Date.now)() - ask.at < ASK_MS && isYes(text)) {
     const r = await o.perform(ask).catch((e: Error) => ({ error: e.message })) as { exitCode?: number; output?: string; error?: string };
     return ranReport(ask, r);
   }
-  return (await o.fullReply?.(text).catch(() => null)) || null;
+  return null;
 }

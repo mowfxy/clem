@@ -5,7 +5,9 @@ export type VpsAuth = "key" | "password";
 export type VpsConfig = { host: string; port: number; user: string; auth: VpsAuth; /** "SHA256:…", trusted on first use. */ fingerprint?: string; publicKey?: string };
 export type VpsTest = { ok: true; ms: number; os: string; diskFree?: number; diskTotal?: number; docker: boolean; systemd: boolean; node?: string; /** No Docker, but the user is root or has passwordless sudo, so Clem can install it. */ canInstallDocker?: boolean; fingerprint: string; firstTime: boolean } | { ok: false; error: string; fingerprint?: string };
 export type StorageMode = "device" | "vps";
-export type StorageUsage = { mode: StorageMode; device: number; vps: number; cache: number; cap: number; pinned: number; files: { device: number; vps: number };
+/** This PC keeps every file; `mode` "vps" = copies on the VPS too. `device`/`vps`: bytes here and copied there;
+ *  `files`: how many here, how many with a VPS copy. */
+export type StorageUsage = { mode: StorageMode; device: number; vps: number; files: { device: number; vps: number };
   /** Clem's storage limit on the VPS (core/vps/limit.ts): at most 82% of its disk full because of Clem. Settings says
    *  "Using `used` of `max` on your VPS; the rest stays on this PC" (`heldHere` files, `heldBytes`, are on this PC
    *  only). `waiting`: what the worker couldn't keep there with the laptop off, in plain sentences. Absent until the

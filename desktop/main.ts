@@ -1246,8 +1246,9 @@ void app.whenReady().then(async () => {
       setTimeout(() => { if (telegramWaits.delete(turn.id)) reject(Error("timeout")); }, ANSWER_MS).unref();
     }),
     open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
-    // Files live on the VPS while "Store my files on my VPS" is on and it answers (desktop/engine/vps).
-    fileStore: () => { const m = vpsManagers.get(owner); return m && vpsModes.get(owner) === "vps" ? m.vpsStore() : undefined; },
+    // This PC keeps every file; "Keep a copy of my files on the VPS" copies them there too (desktop/engine/vps/router.ts).
+    // Saved CMS files stay on this PC (it keeps everything; the VPS fetches from the CMS when it needs one).
+    fileStore: () => undefined,
     fileStores: () => { const s = vpsManagers.get(owner)?.vpsStore(); return s ? { vps: s } : {}; },
     vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
     hookBase: () => "http://127.0.0.1:" + HOOK_PORT,
@@ -1344,7 +1345,8 @@ void app.whenReady().then(async () => {
       ...(m ? { vps: {
         run: (tool: Record<string, unknown>) => m.wordTools.run(owner, tool),
         hold: (ask: VpsAsk) => vault.write("tg-vps-ask-" + owner, ask),
-        waiting: (send?: boolean) => m.waiting(send),
+        waiting: () => m.waiting(),
+        copies: async (on: boolean) => { await m.setCopies(on); vpsModes.set(owner, on ? "vps" : "device"); return { ok: true, copies: on, note: on ? "Their files are copied to the VPS in the background, under its limit; the PC keeps everything. Say so in one plain sentence." : "The VPS copies are removed once this PC holds each file; the PC keeps everything. Say so in one plain sentence." }; },
         keep: async (file: string, where: "pc" | "vps" | "auto") => {
           const near = named(file);
           if (near.length !== 1) return { error: near.length ? `"${file}" matches ${near.length} files. Use the exact name.` : `No file named "${file}".` };
@@ -1630,12 +1632,9 @@ void app.whenReady().then(async () => {
       if (request.action === "vpsCli") return m.connectCli(request.cli);
       if (request.action === "vpsCliCode") return m.pasteCliCode(request.code);
       if (request.action === "vpsForget") { const r = await m.forget(); vpsManagers.delete(user.id); await reset(); return r; }
-      if (request.action === "vpsMove") { const r = await m.move(request.direction); vpsModes.set(user.id, request.direction === "up" ? "vps" : "device"); return r; }
-      if (request.action === "vpsAbortMove") { const r = await m.abortMove(); vpsModes.set(user.id, await m.mode()); return r; }
-      if (request.action === "vpsCap") return m.setCap(request.bytes);
-      if (request.action === "vpsPin") return { ok: await m.pin(request.id, request.on) };
-      if (request.action === "vpsPinned") return (await vpsConfigured(user.id)) ? (await m.router()).pinned() : [];
-      if (request.action === "vpsWorker") return request.on ? m.enableWorker((label) => vpsEvent("progress:" + label)) : m.disableWorker();
+      // "Keep a copy of my files on the VPS": the PC keeps everything either way (docs/GUC-VPS-ENGINE.md "Storage").
+      if (request.action === "vpsCopies") { const r = await m.setCopies(request.on); vpsModes.set(user.id, await m.mode()); return r; }
+      if (request.action === "vpsWorker") { const r = request.on ? await m.enableWorker((label) => vpsEvent("progress:" + label)) : await m.disableWorker(); vpsModes.set(user.id, await m.mode()); return r; }
       if (request.action === "vpsModelKey") return m.setModelKey(request.key ? { key: request.key, model: request.model } : undefined);
       if (request.action === "vpsConfirm") return m.tools.confirm(user.id, request.id);
       if (request.action === "vpsCancel") return m.tools.cancel(user.id, request.id);
@@ -1692,7 +1691,6 @@ void app.whenReady().then(async () => {
         return threadBefore({
           take: async () => { const a = await vault.read<VpsAsk | undefined>(askKey, undefined); if (a) await vault.remove(askKey); return a; },
           perform: async (ask) => vps ? vps.wordTools.perform(user.id, ask) : { error: "No VPS is connected." },
-          ...(vps ? { fullReply: (text: string) => vps.fullReply(text) } : {}),
         }, request.text);
       }
     }
@@ -2652,13 +2650,8 @@ void app.whenReady().then(async () => {
         // The person's VPS (desktop/engine/vps/tools.ts): anything that could change it waits for their tap on a card.
         if (isVpsAction(tool?.action)) {
           if (!(await vpsConfigured(user.id))) return { error: "No VPS is connected. The person can add one in Settings → Connectors → VPS." };
-          // Files waiting past the storage limit, and the person's standing answer about them (desktop/engine/vps/full.ts).
-          if (tool.action === "vps.waiting") {
-            try {
-              const w = await vpsFor(user.id).waiting(typeof tool.send === "boolean" ? tool.send : undefined);
-              return { waiting: w.items.slice(0, 20).map((i) => i.name), count: w.items.length, answer: w.answer === "send" ? "they go to the PC whenever it's online" : w.answer === "keep" ? "they stay; Clem doesn't ask" : "not answered yet", ...(typeof tool.send === "boolean" ? { note: "Saved as the standing answer. Say so in one plain sentence." } : {}) };
-            } catch (e) { return { error: (e as Error).message }; }
-          }
+          // What was left off the VPS at its limit, and copies on or off: the same as on Telegram (thread-tools.ts).
+          if (tool.action === "vps.waiting" || tool.action === "vps.copies") return runThreadTool(await threadCtx(user.id, await engineFor(user.id)), tool);
           // Where one file is kept, overriding the storage move (the router and the move to the VPS follow it).
           if (tool.action === "vps.keep") {
             const want = String(tool.file || "").trim().toLowerCase(), state = await disk.readState(user.id).catch(() => null) as { files?: { id: string; name: string }[] } | null;

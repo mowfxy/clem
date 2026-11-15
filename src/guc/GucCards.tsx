@@ -177,7 +177,7 @@ export function Storage({ subjectId, setup = false, actions }: { subjectId: stri
   const { location } = v.data.settings.storage, s = v.data.storage, waiting = setup && pendingStep(v.data) === "storage";
   const pick = (to: "device" | "vps") => void editSubject(subjectId, { storage: { location: to } }).catch(fail(actions));
   const split = s.files ? (s.onVps ? `${s.onVps} on your VPS, ${s.files - s.onVps} on this device · ${sizeLabel(s.bytes)}` : `${s.files} file${s.files === 1 ? "" : "s"}, ${sizeLabel(s.bytes)}`) : "nothing saved yet";
-  // "Store my files on my VPS" (Settings → Connectors → VPS) decides for every file, so there is nothing to pick here.
+  // "Keep a copy of my files on the VPS" (Settings → Connectors → VPS) decides for every file, so there is nothing to pick here.
   if (v.data.vpsFiles) return <Frame icon="server" title="Where files live" sub={`On your VPS · ${split}`} footer={waiting && <SetupButtons subjectId={subjectId} step="storage" actions={actions} busy={false} confirm="Sounds good" />}>
     <p className="guc-card-line">Files will be stored on your VPS. This device keeps recent and pinned ones so they open instantly.</p>
   </Frame>;
@@ -199,7 +199,7 @@ export function SetupDone({ subjectId, actions }: { subjectId: string; actions?:
     ["link", "CMS course", v.data.course ? `${v.data.course.code} ${v.data.course.name}` : "Not linked"],
     ...(v.data.course ? [["save", "Saving", describeSaveRules(s.save)]] as [string, string, string][] : []),
     ["drive", "Google Drive", s.drive.enabled ? "Copying" : "Off"],
-    ...(v.data.vps ? [["storage", "Files live", s.storage.location === "vps" ? "On your VPS" : "On this device"]] as [string, string, string][] : []),
+    ...(v.data.vps ? [["storage", "Files live", s.storage.location === "vps" ? "This PC, copied to your VPS" : "On this device"]] as [string, string, string][] : []),
   ];
   const Card = { link: CourseLink, save: SaveRules, check: CheckSchedule, drive: DriveFolder, storage: Storage }[open as SetupStep];
   return <Frame icon="check" title={`${actions?.spaceName(subjectId) || "This subject"} is set up`} sub="Tap a line to change it">

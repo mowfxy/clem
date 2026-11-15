@@ -48,7 +48,7 @@ export type SetupInfo = {
   /** The linked course, or the best guess at it. */
   course?: { key: string; code: string; name: string }; linked: boolean; sure?: boolean; others?: number;
   save: string; check: string; first?: boolean;
-  /** "Store my files on my VPS" is on: files go there, so the step only says so. */
+  /** "Keep a copy of my files on the VPS" is on: files are copied there, so the step only says so. */
   vpsFiles?: boolean;
   /** This term's other courses, for a link question with no sure match ("CSEN 301 Data Structures"). */
   choices?: string[];

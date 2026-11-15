@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import type { Engine } from "../index.ts";
 import { DeviceStore, sha256 } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
-import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
+import { WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
 import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
 import { generateKey, publicOf } from "./keys.ts";
 import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
@@ -22,7 +22,8 @@ import { DiskLimit, sshDisk } from "./limit.ts";
 /** Everything kept in the Vault under vps-<owner>: the connection, its key or password, and the worker's secrets. */
 export type VpsVault = {
   config?: VpsConfig; privateKey?: string; passphrase?: string; password?: string; allowPassword?: boolean;
-  storage?: { mode: StorageMode; cap?: number };
+  /** mode "vps": files are copied to the VPS too (the PC always keeps them). `off`: the person turned copies off. */
+  storage?: { mode: StorageMode; cap?: number; off?: boolean };
   worker?: { enabled: boolean; kind?: "docker" | "systemd"; key: string; rpc: string; installedAt?: number; /** The app version whose bundle it runs. */ version?: string };
   modelKey?: { provider: "anthropic"; key: string; model?: string };
 };
@@ -142,13 +143,15 @@ export class VpsManager {
     this.d.changed?.("status");
     return this.lastTest;
   }
-  /** Forgets the server, its key, the worker's secrets here and the stored fingerprint. Files on the VPS stay there
-   *  (moving them back first is the person's call; Settings asks). */
+  /** Forgets the server, its key, the worker's secrets here and the stored fingerprint. The PC keeps every file; one
+   *  still only on the VPS (an older install) is brought here first, so nothing is lost. The VPS copies stay there. */
   async forget() {
+    if (await this.vpsOnly().catch(() => 0)) {
+      void this.fillLocal().catch(() => {});
+      throw Error("A few files are still only on your VPS. Clem is copying them to this PC; try again in a moment.");
+    }
     this.stopHeartbeat();
     await this.drop();
-    const v = await this.vault();
-    if (v.storage?.mode === "vps") throw Error("Move your files back to this device first.");
     await this.d.secrets.delete(this.key());
     this.lastTest = undefined; this.online = undefined;
     await (await this.d.engine()).runner(true);
@@ -175,49 +178,70 @@ export class VpsManager {
     this.routerJob ||= (async () => {
       const v = await this.vault(); this.modeNow = v.storage?.mode || "device";
       const engine = await this.d.engine();
-      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, cap: v.storage?.cap || DEFAULT_CACHE_CAP, log: (m) => this.log(m), limit: this.limit }).init();
+      return new StorageRouter({ db: engine.db as Db, owner: this.owner, local: this.d.local, remote: () => this.vpsStore(), mode: () => this.modeNow, log: (m) => this.log(m), limit: this.limit }).init();
     })().catch((e) => { this.routerJob = undefined; throw e; });
     return this.routerJob;
-  }
-  async setCap(bytes: number) {
-    const cap = Math.max(MIN_CACHE_CAP, Math.round(bytes));
-    const v = await this.vault();
-    await this.save({ storage: { mode: v.storage?.mode || "device", cap } });
-    (await this.router()).setCap(cap);
-    return this.status();
   }
   private async migratorFor() {
     if (!this.migrator) {
       const engine = await this.d.engine();
       this.migrator = new Migrator({ db: engine.db, owner: this.owner, router: await this.router(), local: this.d.local, remote: () => this.vpsStore(), device: new DeviceStore(this.d.files), log: (m) => this.log(m), limit: this.limit,
-        onProgress: (m) => { this.d.changed?.("migration"); if (m && ["done", "failed"].includes(m.status)) void this.moved(m.direction, m.done, m.bytesDone, m.failed); } });
+        onProgress: () => { this.d.changed?.("migration"); } });
     }
     return this.migrator;
   }
-  /** "Move everything to my VPS" (up) or "Move back to device" (down). Writes go to the new place from now on. */
-  async move(direction: "up" | "down") {
-    if (direction === "up" && !(await this.ready())) throw Error("Your VPS isn't reachable right now. Test the connection first.");
+  /** "Keep a copy of my files on the VPS" (owner, 2026-11-15: files live on both). On: every file is copied there too,
+   *  quietly, under the 82% limit (the mover "up"). Off: the VPS copies are removed, each only once this PC holds it
+   *  (the mover "down"). The PC always keeps everything. `person`: they chose it (remembered, so the switch respects it). */
+  async setCopies(on: boolean, o: { person?: boolean } = {}) {
     const v = await this.vault();
-    this.modeNow = direction === "up" ? "vps" : "device";
-    await this.save({ storage: { mode: this.modeNow, cap: v.storage?.cap } });
-    const m = await this.migratorFor();
-    const view = await m.start(direction);
-    this.d.changed?.("migration");
-    return view;
+    this.modeNow = on ? "vps" : "device";
+    // Off by the person's word is remembered (the switch then leaves copies off); on, or off by the switch, isn't.
+    const off = on ? false : (o.person ?? true) ? true : !!v.storage?.off;
+    await this.save({ storage: { mode: this.modeNow, ...(off ? { off: true } : {}) } });
+    this.d.changed?.("status");
+    // The worker keeps files (CMS ones it saves) only with copies on.
+    void this.secretChanged("copies", on).catch((e) => this.log("[vps] copies: " + (e as Error).message));
+    if (await this.ready()) void (await this.migratorFor()).start(on ? "up" : "down").catch((e) => this.log("[vps] copies: " + (e as Error).message));
+    return this.status();
   }
-  /** Stops moving. Files already moved stay where they were checked; the rest stay where they are. */
-  async abortMove() {
-    const m = await this.migratorFor(), view = await m.view();
-    if (view?.direction === "up") { const v = await this.vault(); this.modeNow = "device"; await this.save({ storage: { mode: "device", cap: v.storage?.cap } }); }
-    return m.abort();
-  }
-  /** After a restart: carry on a move that was running or paused. */
-  async resumeMove() { if (!(await this.vault()).config) return; if (await this.ready()) await (await this.migratorFor()).resume(); }
-  async pin(id: string, on: boolean) { return (await this.router()).pin(id, on); }
-  private async moved(direction: "up" | "down", files: number, bytes: number, failed: number) {
+  async copies() { return (await this.mode()) === "vps"; }
+  /** Files whose only copy is on the VPS (installs from before the PC kept everything). */
+  async vpsOnly() {
     const engine = await this.d.engine();
-    await engine.organizer.announce("```clem-card\n" + JSON.stringify({ type: "vps_moved", direction, files, bytes, ...(failed ? { failed } : {}) }) + "\n```", `vps-moved:${direction}:${Date.now()}`).catch(() => {});
+    const rows = await engine.db.query<{ file_id: string }>("select file_id from file_objects where owner_id = $1 and location = 'vps' and (file_id like 'ws:%' or file_id like 'guc:%')", [this.owner]);
+    let n = 0;
+    for (const r of rows) if (r.file_id.startsWith("guc:") || !(await this.d.local.has(r.file_id.slice(3)))) n++;
+    return n;
   }
+  private filling?: Promise<number>;
+  /** Brings every file that is only on the VPS to this PC, quietly (resumed on the next beat after a dropped link).
+   *  A workspace file keeps its VPS copy; a CMS file's VPS copy goes once this PC's copy is checked. */
+  fillLocal() {
+    return (this.filling ||= (async () => {
+      const engine = await this.d.engine(), r = await this.router();
+      const rows = await engine.db.query<{ file_id: string }>("select file_id from file_objects where owner_id = $1 and location = 'vps' and (file_id like 'ws:%' or file_id like 'guc:%')", [this.owner]);
+      let n = 0;
+      for (const row of rows) {
+        if (row.file_id.startsWith("ws:")) { const id = row.file_id.slice(3); if (!(await this.d.local.has(id))) { await r.readFile(id); n++; } }
+        else { await (await this.migratorFor()).bringDown(row.file_id); n++; }
+      }
+      return n;
+    })().finally(() => { this.filling = undefined; }));
+  }
+  private copiedAt = 0;
+  /** On the heartbeat, at most every ten minutes: files only on the VPS come here, and with copies on, files without
+   *  a VPS copy (new ones a dropped link left out, ones that didn't fit before) are copied. Never blocks anything. */
+  private async keepCopies() {
+    if (this.now() - this.copiedAt < 10 * 60_000) return;
+    this.copiedAt = this.now();
+    const m = await this.migratorFor();
+    if (m.busy) return;
+    await this.fillLocal();
+    if (this.modeNow === "vps") await m.start("up");
+  }
+  /** After a restart: carry on a copy or a removal that was running or paused. */
+  async resumeMove() { if (!(await this.vault()).config) return; if (await this.ready()) await (await this.migratorFor()).resume(); }
 
   // ---------- Worker ----------
   /** "Run Clem's background jobs on my VPS": install or refresh the worker, send its secrets sealed, start the
@@ -231,6 +255,8 @@ export class VpsManager {
     await this.handover().catch((e) => this.log("[vps] handover: " + (e as Error).message));
     this.startHeartbeat();
     await this.pushWorkspace(true);
+    // …and files kept on the VPS as well (copied, never moved), unless the person turned that off…
+    if (!(await this.vault()).storage?.off) await this.setCopies(true, { person: false }).catch((e) => this.log("[vps] copies: " + (e as Error).message));
     // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once).
     const v = await this.vault();
     if (!v.modelKey && this.workerModel !== "cli") await this.connectCli((await this.d.preferredCli?.().catch(() => undefined)) || "claude").catch((e) => this.log("[vps] ai: " + (e as Error).message));
@@ -279,6 +305,8 @@ export class VpsManager {
     const v = await this.vault();
     if (v.worker?.kind) await stopWorker(await this.link(), this.owner, v.worker.kind).catch((e) => this.log("[vps] stop worker: " + (e as Error).message));
     await this.save({ worker: v.worker ? { ...v.worker, enabled: false } : undefined });
+    // Off is off: the VPS copies go too (each only once this PC holds it); the person's own choice is remembered.
+    if (v.storage?.mode === "vps") await this.setCopies(false, { person: false }).catch((e) => this.log("[vps] copies: " + (e as Error).message));
     this.stopHeartbeat(); this.tunnel?.close(); this.tunnel = undefined; this.client = undefined;
     this.workerRunner = false;
     await (await this.d.engine()).runner(true);
@@ -369,7 +397,11 @@ export class VpsManager {
       // Deletes made while the VPS was out of reach are applied now, once, never on bytes the worker uses again.
       void this.sweepDeletes(c).catch((e) => this.log("[vps] deletes: " + (e as Error).message));
       // The person's standing answer is "send them to my PC": CMS files the worker skipped at the limit are fetched here.
-      if (health.fullAnswer === "send" && Number(health.waitingCms) > 0) void this.fetchWaiting(c).catch((e) => this.log("[vps] waiting: " + (e as Error).message));
+      if (Number(health.waitingCms) > 0) void this.fetchWaiting(c).catch((e) => this.log("[vps] waiting: " + (e as Error).message));
+      // Copies kept or not, by the person's word on Telegram with this PC off: carried out now.
+      if (typeof health.copiesWish === "boolean") { const want = health.copiesWish; void this.setCopies(want).then(() => c.call("worker.copiesDone")).catch((e) => this.log("[vps] copies: " + (e as Error).message)); }
+      // Files only on the VPS come here; files without a VPS copy go there (copies on), quietly.
+      void this.keepCopies().catch((e) => this.log("[vps] copies: " + (e as Error).message));
       // Files asked for on Telegram while only on this PC: sent now that the PC is online, each once, no question.
       if (Number(health.pendingSends) > 0 && this.d.sendToTelegram) void this.sendPending(c).catch((e) => this.log("[vps] telegram: " + (e as Error).message));
       // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
@@ -456,22 +488,20 @@ export class VpsManager {
     const used = new Set(await c.call<string[]>("worker.blobs").catch(() => null) || []);
     return r.sweepDeletes((path) => used.has((path.split("/").pop() || "").split(".")[0]));
   }
-  /** vps.waiting from the window's AI: what waits past the storage limit, and (with `send`) the standing answer. */
-  async waiting(send?: boolean) {
-    const w = await (await this.worker()).call<{ answer: "send" | "keep" | null; items: { item: string; name: string; bytes: number }[] }>("worker.waiting", send === undefined ? [] : [send]);
-    if (send) void this.worker().then((c) => this.fetchWaiting(c)).catch(() => {});
-    return w;
+  /** vps.waiting from the window's AI: what the worker left off the VPS at its limit (information only). */
+  async waiting() {
+    const w = await (await this.worker()).call<{ items: { item: string; name: string; bytes: number }[] }>("worker.waiting");
+    return { items: w.items };
   }
   /** CMS files the worker couldn't keep past the limit, fetched by this PC (through the worker, from the CMS) and kept in
-   *  its own Files, once the person said to send waiting files to the PC. */
+   *  its own Files: the PC keeps everything. */
   private fetching?: Promise<void>;
   private fetchWaiting(c: WorkerClient) {
     return (this.fetching ||= (async () => {
-      const w = await c.call<{ answer: string | null; items: { item: string; name: string }[] }>("worker.waiting");
-      if (w.answer !== "send") return;
+      const w = await c.call<{ items: { item: string; name: string }[]; cms?: { item: string; name: string }[] }>("worker.waiting");
       const engine = await this.d.engine(), store = new DeviceStore(this.d.files), done: { item: string; path: string; sha256: string; size: number }[] = [];
-      for (const it of w.items.filter((i) => i.item.startsWith("cms:")).slice(0, 25)) {
-        const id = it.item.slice(4);
+      for (const it of (w.cms || w.items.filter((i) => i.item.startsWith("cms:"))).slice(0, 25)) {
+        const id = it.item.replace(/^(cms|pc):/, "");
         try {
           const f = await c.call<{ data: string; name: string; type: string }>("fileBytes", [id]);
           const bytes = new Uint8Array(Buffer.from(f.data, "base64")), hash = sha256(bytes), ext = /\.([a-z0-9]{1,5})$/i.exec(f.name)?.[1]?.toLowerCase() || "";
@@ -493,14 +523,6 @@ export class VpsManager {
       for (const f of list) { const r = await this.d.sendToTelegram!(f.id).catch(() => "later" as const); if (r !== "later") done.push(f.id); }
       if (done.length) await c.call("worker.sendsDone", [done]);
     })().finally(() => { this.sending = undefined; }));
-  }
-  /** The person's answer on Telegram to the worker's VPS-full question, while this PC's window answers Telegram: the
-   *  worker keeps it as the standing answer (desktop/engine/vps/full.ts). Its reply, or null when it wasn't that. */
-  async fullReply(text: string): Promise<string | null> {
-    if (!(await this.vault()).worker?.enabled) return null;
-    // Never holds the answer back for long: a worker out of reach is taken as "not that".
-    const asked = this.worker().then((c) => c.call<string | null>("worker.fullReply", [text])).catch(() => null);
-    return Promise.race([asked, new Promise<null>((r) => { const t = setTimeout(() => r(null), 10_000); t.unref?.(); })]);
   }
   async keep(fileId: string, where: "pc" | "vps" | "auto") { return (await this.router()).keepOn(fileId, where === "auto" ? undefined : where); }
 
@@ -555,7 +577,7 @@ export class VpsManager {
 
   async status(): Promise<VpsStatus> {
     const v = await this.vault();
-    const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, cache: 0, cap: v.storage?.cap || DEFAULT_CACHE_CAP, pinned: 0, files: { device: 0, vps: 0 } };
+    const none = { mode: v.storage?.mode || "device" as const, device: 0, vps: 0, files: { device: 0, vps: 0 } };
     // The disk is measured (again every 5 minutes) while the VPS answers; Settings shows Clem's share of it.
     if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;

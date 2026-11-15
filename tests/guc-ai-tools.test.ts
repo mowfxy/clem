@@ -23,7 +23,7 @@ async function open(o: { owner?: string; text?: TextCacheOptions } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "clem-ai-")), owner = o.owner || "owner-a";
   const files = { [U("lecture-3.pdf")]: await fixtureBytes("lecture.pdf"), [U("lecture-1.pdf")]: await fixtureBytes("lecture.pdf"), [U("deck.pptx")]: await fixtureBytes("deck.pptx") };
   const guc = fakeGuc(site(), { files });
-  const engine = await Engine.open(owner, host({ files: join(dir, "Files"), temp: join(dir, "temp") }), { http: guc.http, sleep: noWait, memory: true, jobs: false, text: o.text });
+  const engine = await Engine.open(owner, host({ files: join(dir, "Files"), temp: join(dir, "temp") }), { http: guc.http, sleep: noWait, memory: true, jobs: false, text: o.text, clock: () => NOW });
   await engine.connect("student.name", "secret");
   await engine.link("subj-emb", "1201:64");
   await engine.link("subj-mp", "1202:64");

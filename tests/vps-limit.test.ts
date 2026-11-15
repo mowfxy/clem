@@ -44,20 +44,20 @@ async function setup(o: { other: number; total?: number; ttl?: number }) {
   let now = 1_000_000;
   const store = new VpsStore(() => vps, vpsRoot(OWNER));
   const limit = new DiskLimit({ measure: sshDisk(async () => vps, vpsRoot(OWNER)), clock: () => now, ttl: o.ttl });
-  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => store, mode: () => "vps", cap: 10 * 1024 * KB, limit }).init();
+  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => store, mode: () => "vps", limit }).init();
   return { db, backend, vps, local, store, router, limit, tick: (ms: number) => { now += ms; } };
 }
 
 test("under, at and over the limit: the file that would pass it stays on this PC, with no error, and Settings has the numbers", async () => {
   const s = await setup({ other: 770 * KB });
   try {
-    await s.router.writeFile("a", bytesOf(30 * KB, 1));
-    assert.equal((await s.router.row("a"))?.location, "vps", "under the limit: on the VPS");
-    await s.router.writeFile("b", bytesOf(20 * KB, 2));
+    await s.router.writeFile("a", bytesOf(30 * KB, 1)); await s.router.idle();
+    assert.equal((await s.router.row("a"))?.location, "vps", "under the limit: a copy on the VPS");
+    await s.router.writeFile("b", bytesOf(20 * KB, 2)); await s.router.idle();
     assert.equal((await s.router.row("b"))?.location, "vps", "exactly at the limit: still on the VPS");
     assert.ok(full(s.vps) <= 0.82, `the disk is ${full(s.vps)} full`);
-    await s.router.writeFile("c", bytesOf(1, 3));
-    assert.equal(await s.router.row("c"), undefined, "over the limit: this PC keeps it (no row on the VPS)");
+    await s.router.writeFile("c", bytesOf(1, 3)); await s.router.idle();
+    assert.equal(await s.router.row("c"), undefined, "over the limit: this PC only (no copy on the VPS)");
     assert.deepEqual(await s.router.readFile("c"), bytesOf(1, 3), "and it reads as any file");
     assert.ok(full(s.vps) <= 0.82, "never past 82%");
     const u = await s.router.usage();
@@ -71,13 +71,13 @@ test("under, at and over the limit: the file that would pass it stays on this PC
 test("the disk is measured again: space freed on the server is used again after a few minutes", async () => {
   const s = await setup({ other: 820 * KB, ttl: 5 * 60_000 });
   try {
-    await s.router.writeFile("x", bytesOf(10 * KB, 4));
+    await s.router.writeFile("x", bytesOf(10 * KB, 4)); await s.router.idle();
     assert.equal(await s.router.row("x"), undefined, "no room");
     s.vps.diskOther = 670 * KB; // the person cleaned up their server
-    await s.router.writeFile("y", bytesOf(10 * KB, 5));
+    await s.router.writeFile("y", bytesOf(10 * KB, 5)); await s.router.idle();
     assert.equal(await s.router.row("y"), undefined, "the old measurement still holds for a few minutes");
     s.tick(5 * 60_000 + 1);
-    await s.router.writeFile("z", bytesOf(10 * KB, 6));
+    await s.router.writeFile("z", bytesOf(10 * KB, 6)); await s.router.idle();
     assert.equal((await s.router.row("z"))?.location, "vps", "measured again: room again");
     assert.ok(full(s.vps) <= 0.82);
   } finally { await s.backend.close(); }

@@ -39,7 +39,7 @@ export type SubjectView = {
   slots: GucSlot[];
   storage: { files: number; bytes: number; /** Of those, kept on the VPS. */ onVps?: number };
   vps: boolean;
-  /** "Store my files on my VPS" is on (Settings → Connectors → VPS): every saved file goes there. */
+  /** "Keep a copy of my files on the VPS" is on (Settings → Connectors → VPS): saved files are copied there too. */
   vpsFiles?: boolean;
   /** The Drive copy: the folder in use (once made), files copied, waiting, and why the last copy stopped. */
   drive: { folderId?: string; path: string; copied: number; waiting: number; error?: "reconnect" | "full" | "failed"; message?: string };

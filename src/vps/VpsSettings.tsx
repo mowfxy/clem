@@ -1,9 +1,9 @@
-// Settings → Connectors → VPS (docs/GUC-VPS-ENGINE.md "VPS"): a guided setup (server, key, test), then where files
-// live, moving them, the cache, and Clem's background worker. The key and passwords never come back from main.
+// Settings → Connectors → VPS (docs/GUC-VPS-ENGINE.md "VPS"): a guided setup (server, key, test), then one switch,
+// "Run Clem on my VPS", and one small option under it, "Keep a copy of my files on the VPS" (this PC keeps every file). The key and passwords never come back from main.
 // Copy is one short line per state. A pressed button keeps its width (its busy label sits in the same cell) and the
 // others stay as they are, only inert, while it runs.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { authorizeLine, WORKER_SECRETS, type MigrationView, type VpsStatus, type VpsTest } from "../../core/vps/types";
+import { useState, type ReactNode } from "react";
+import { authorizeLine, WORKER_SECRETS, type VpsStatus, type VpsTest } from "../../core/vps/types";
 import type { StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { desktop } from "../desktop/bridge";
@@ -16,7 +16,6 @@ import { StatusDot, bytes, dotOf, useVps } from "./VpsRow";
 
 const message = (e: unknown) => String((e as Error)?.message || e).replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
 const ago = (t?: number) => { if (!t) return "not yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
-const CAPS = [0.5, 1, 2, 5, 10, 20].map((g) => g * 1024 ** 3);
 
 /** A button whose busy label shares its grid cell with the label, so pressing it never changes its width. */
 function Act({ label, busyLabel, busy, disabled, className = "", onClick, type = "button" }: { label: ReactNode; busyLabel: string; busy: boolean; disabled?: boolean; className?: string; onClick?: () => void; type?: "button" | "submit" }) {
@@ -31,12 +30,12 @@ function Status({ spin, warn, children }: { spin?: boolean; warn?: boolean; chil
 }
 
 /** The dialog behind Settings → Connectors → VPS → Manage (loaded when it opens; the row is VpsRow.tsx). */
-export function VpsManage({ files = [] }: { files?: StoredFile[] }) {
+export function VpsManage(_: { files?: StoredFile[] } = {}) {
   const { status, setStatus, refresh, step } = useVps();
   if (!desktop) return <div className="gd-picker gd-connect vps-manage"><p>Your VPS works in the Clem desktop app.</p></div>;
   if (!status) return <div className="gd-picker gd-connect vps-manage" aria-busy="true"><div className="gd-skeleton" /><div className="gd-skeleton" /><div className="gd-skeleton" /></div>;
   if (!status.connected || !status.lastTest?.ok && !status.config?.fingerprint) return <VpsSetup status={status} onDone={(s) => setStatus(s)} refresh={refresh} />;
-  return <VpsConnected status={status} refresh={refresh} step={step} files={files} />;
+  return <VpsConnected status={status} refresh={refresh} step={step} />;
 }
 
 /** Server → key → test, in plain words. */
@@ -135,13 +134,13 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
   return <section className="vps-section"><header><h4>{title}</h4>{aside}</header>{children}</section>;
 }
 
-function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; refresh: () => Promise<void>; step: string; files: StoredFile[] }) {
+function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: () => Promise<void>; step: string }) {
   const [busy, setBusy] = useState(""), [error, setError] = useState("");
   // One task at a time: a second press while one runs does nothing.
   const run = async (what: string, task: () => Promise<unknown>) => { if (busy) return; setBusy(what); setError(""); try { await task(); } catch (e) { setError(message(e)); } finally { await refresh(); setBusy(""); } };
-  const c = status.config!, s = status.storage, m = status.migration, w = status.worker, d = dotOf(status);
-  const moving = m && ["running", "paused"].includes(m.status);
-  const toVps = s.mode === "vps";
+  const c = status.config!, s = status.storage, w = status.worker, d = dotOf(status);
+  // The option moves the moment it is pressed, like the switch.
+  const copies = busy === "copies-on" ? true : busy === "copies-off" ? false : s.mode === "vps";
   // The switch moves the moment it is pressed and stays there while Clem works on it.
   const on = busy === "worker-on" ? true : busy === "worker-off" ? false : w.enabled;
   const ai = w.model === "api" ? "AI on your key" : w.model === "cli" ? "AI signed in" : "no AI yet";
@@ -152,27 +151,15 @@ function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; ref
     {status.lastTest && <TestResult test={status.lastTest} />}
     <Act className="secondary vps-small" label="Test connection" busyLabel="Testing…" busy={busy === "test"} disabled={!!busy} onClick={() => void run("test", () => desktop!.invoke({ action: "vpsTest" }))} />
 
-    <Section title="Where your files live" aside={<span className="vps-pill">{toVps ? "On your VPS" : "On this PC"}</span>}>
-      <Usage status={status} />
-      {toVps && s.vpsLimit && <p className="vps-fine">Using {bytes(s.vpsLimit.used)} of {bytes(s.vpsLimit.max)} on your VPS.{s.vpsLimit.heldHere ? " The rest stays on this PC." : ""}</p>}
-      {moving ? <Moving m={m!} stopping={busy === "stop"} onStop={() => void run("stop", () => desktop!.invoke({ action: "vpsAbortMove" }))} />
-        : <>
-          {m && (m.status === "done" || m.status === "failed") && <p className={`vps-line${m.failed ? " is-warn" : ""}`}><Icon name={m.failed ? "alert" : "check"} size={14} />{m.error || `${m.done} file${m.done === 1 ? "" : "s"} moved ${m.direction === "up" ? "to your VPS" : "back to this PC"}.`}</p>}
-          <Act className="gd-google" label={toVps ? "Move back to this PC" : "Move everything to my VPS"} busyLabel="Starting…" busy={busy === "move"} disabled={!!busy} onClick={() => void (toVps
-            ? confirmDialog({ title: "Move your files back to this PC?", message: `${s.files.vps} file${s.files.vps === 1 ? "" : "s"} (${bytes(s.vps)}) come back here, then leave your VPS.`, confirm: "Move back" }).then((yes) => { if (yes) void run("move", () => desktop!.invoke({ action: "vpsMove", direction: "down" })); })
-            : run("move", () => desktop!.invoke({ action: "vpsMove", direction: "up" })))} />
-          <p className="vps-fine">{toVps ? "New files go to your VPS." : "Each file is checked before it leaves this PC."}</p>
-        </>}
-      {toVps && <Cache status={status} disabled={!!busy} onCap={(n) => void run("cap", () => desktop!.invoke({ action: "vpsCap", bytes: n }))} />}
-      {toVps && <Pinned files={files} />}
-    </Section>
-
     <Section title="Run Clem on my VPS" aside={<Switch checked={on} label="Run Clem on my VPS" disabled={!!busy} onChange={(v) => void run(v ? "worker-on" : "worker-off", () => desktop!.invoke({ action: "vpsWorker", on: v }))} />}>
       {busy === "worker-on" ? <Status spin>{step || "Setting up your VPS…"}</Status>
         : busy === "worker-off" ? <Status spin>Turning off…</Status>
         : w.error ? <Status warn>{w.error}</Status>
         : w.enabled ? <Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
         : <Status>GUC checks, reminders and your main thread on Telegram keep going while this PC is off.</Status>}
+      <SettingRow title="Keep a copy of my files on the VPS" description={copies && s.vpsLimit ? `${bytes(s.vpsLimit.used)} of ${bytes(s.vpsLimit.max)} used on your VPS` : "This PC keeps them either way."}>
+        <Switch checked={copies} label="Keep a copy of my files on the VPS" disabled={!!busy} onChange={(v) => void run(v ? "copies-on" : "copies-off", () => desktop!.invoke({ action: "vpsCopies", on: v }))} />
+      </SettingRow>
       {w.enabled && w.model !== "api" && <ServerAi w={w} />}
       <ModelKey has={w.model === "api"} busy={busy === "model"} disabled={!!busy} onSave={(key, model) => run("model", () => desktop!.invoke({ action: "vpsModelKey", ...(key ? { key } : {}), ...(model ? { model } : {}) }))} />
       <details className="vps-advanced"><summary>What Clem sends to your VPS</summary>
@@ -182,48 +169,11 @@ function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; ref
     </Section>
     {error && <p className="gd-error" role="alert">{error}</p>}
     <footer className="gd-foot guc-foot">
-      <button className="gd-disconnect" disabled={!!busy} onClick={() => void confirmDialog({ title: "Forget this server?", message: toVps ? "Move your files back to this PC first." : "Clem forgets the address, key and fingerprint. Nothing on the server is deleted.", confirm: "Forget", danger: true }).then((yes) => { if (yes) void run("forget", () => desktop!.invoke({ action: "vpsForget" })); })}>Forget this server</button>
+      <button className="gd-disconnect" disabled={!!busy} onClick={() => void confirmDialog({ title: "Forget this server?", message: "Clem forgets the address, key and fingerprint. Your files stay on this PC; nothing on the server is deleted.", confirm: "Forget", danger: true }).then((yes) => { if (yes) void run("forget", () => desktop!.invoke({ action: "vpsForget" })); })}>Forget this server</button>
     </footer>
   </div>;
 }
 
-/** Device vs VPS bars. */
-function Usage({ status }: { status: VpsStatus }) {
-  const s = status.storage, total = Math.max(1, s.device + s.vps);
-  return <div className="vps-usage" aria-label="Storage used">
-    <div className="vps-bar" aria-hidden="true"><span className="is-device" style={{ width: `${(s.device / total) * 100}%` }} /><span className="is-vps" style={{ width: `${(s.vps / total) * 100}%` }} /></div>
-    <dl><div><dt><i className="is-device" />This PC</dt><dd>{bytes(s.device)}{s.cache ? ` (${bytes(s.cache)} cached)` : ""}</dd></div><div><dt><i className="is-vps" />Your VPS</dt><dd>{bytes(s.vps)}</dd></div></dl>
-  </div>;
-}
-function Cache({ status, onCap, disabled }: { status: VpsStatus; onCap: (n: number) => void; disabled?: boolean }) {
-  const s = status.storage;
-  return <SettingRow title="Keep on this PC" description={`Recent files, ${bytes(s.cache)} used. Pinned files always stay.`}>
-    <select className="vps-select" value={CAPS.reduce((a, b) => (Math.abs(b - s.cap) < Math.abs(a - s.cap) ? b : a))} onChange={(e) => onCap(Number(e.target.value))} disabled={disabled} aria-label="Cache limit">{CAPS.map((n) => <option key={n} value={n}>{bytes(n)}</option>)}</select>
-  </SettingRow>;
-}
-function Moving({ m, onStop, stopping }: { m: MigrationView; onStop: () => void; stopping: boolean }) {
-  const pct = m.bytesTotal ? Math.round((m.bytesDone / m.bytesTotal) * 100) : m.total ? Math.round((m.done / m.total) * 100) : 0;
-  return <div className="vps-moving" role="status">
-    <div className="vps-progress" aria-hidden="true"><span style={{ width: pct + "%" }} /></div>
-    <p><b>{m.status === "paused" ? "Paused" : m.direction === "up" ? "Moving to your VPS" : "Moving back to this PC"}</b> · {m.done} of {m.total} files</p>
-    {m.error && <p className="vps-fine">{m.error.replace(/^Paused: /, "")} It carries on once the server answers.</p>}
-    <Act className="secondary vps-small" label="Stop" busyLabel="Stopping…" busy={stopping} onClick={onStop} />
-  </div>;
-}
-/** Files that always stay on this PC. */
-function Pinned({ files }: { files: StoredFile[] }) {
-  const [pinned, setPinned] = useState<string[] | null>(null), [q, setQ] = useState("");
-  useEffect(() => { void desktop!.invoke({ action: "vpsPinned" }).then(setPinned, () => setPinned([])); }, []);
-  const toggle = async (id: string, on: boolean) => { setPinned((p) => (on ? [...(p || []), id] : (p || []).filter((x) => x !== id))); await desktop!.invoke({ action: "vpsPin", id, on }).catch(() => {}); };
-  const hits = useMemo(() => (q.trim() ? files.filter((f) => f.name.toLowerCase().includes(q.trim().toLowerCase()) && !pinned?.includes(f.id)).slice(0, 5) : []), [q, files, pinned]);
-  if (!pinned) return <div className="gd-skeleton" />;
-  return <div className="vps-pins">
-    <h5>Pinned to this PC</h5>
-    {pinned.length ? <ul>{pinned.map((id) => <li key={id}><Icon name="pin" size={13} /><span>{files.find((f) => f.id === id)?.name || id}</span><button type="button" className="vps-link" onClick={() => void toggle(id, false)}>Unpin</button></li>)}</ul> : <p className="vps-fine">Nothing pinned yet.</p>}
-    <input className="vps-find" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a file to pin" aria-label="Find a file to pin" />
-    {hits.length > 0 && <ul>{hits.map((f) => <li key={f.id}><span>{f.name}</span><button type="button" className="vps-link" onClick={() => { void toggle(f.id, true); setQ(""); }}>Pin</button></li>)}</ul>}
-  </div>;
-}
 /** The AI on the server (Claude Code or Codex, the one this PC uses), set up by the switch; here only its progress,
  *  the one sign-in, and a retry. */
 function ServerAi({ w }: { w: VpsStatus["worker"] }) {

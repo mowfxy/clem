@@ -131,7 +131,7 @@ The window uses Electron hidden-title-bar overlay with native minimize, maximize
 
 The three sync collections are `skills`, `memory` and `notes`. Notes contain only an opaque scope identifier and user-entered memory text; no project names, chats, source documents or file lists. Unmatched scope notes stay in the local sync cache so a second device cannot accidentally erase them. Conflicting edits are reported and kept locally, not silently overwritten. Offline changes stay local and retry on the next sync or restart; no guarantee of immediate cross-device refresh is made.
 
-With a VPS connected and "Store my files on my VPS" on (Settings → Connectors → VPS, 11 November 2026), file bytes live on the person's own server and this PC keeps a size-capped cache plus pinned files; the window's file API is unchanged, and the state file stays here. See docs/GUC-VPS-ENGINE.md "VPS".
+With a VPS connected and "Keep a copy of my files on the VPS" on (Settings → Connectors → VPS, under the one switch), this PC still keeps every file; the VPS gets a checked copy of each in the background while Clem's share of its disk stays at or under 82% (docs/GUC-VPS-ENGINE.md "Storage: files live on both").
 
 `core/sync.ts` owns payload validation and merge behavior. `desktop/essential-sync.ts` owns authenticated, serialized sync. `src/essential-state.ts` builds the minimal renderer payload. `src/source-context.ts` caches local text and `core/source-context.ts` selects bounded, labelled excerpts. The desktop cannot invoke whole-workspace upload. Legacy server upload routes return 410 unless an operator explicitly enables migration-only `CLEM_LEGACY_WORKSPACE=true`.
 

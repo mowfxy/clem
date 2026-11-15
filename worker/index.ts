@@ -56,7 +56,9 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   await mkdir(files, { recursive: true });
   const limit = new DiskLimit({ measure: o.disk || localDisk(files), clock: o.clock });
   const plainDisk = new DeviceStore(files, { location: "vps", sub: "" });
-  const disk = new LimitedStore({ inner: plainDisk, limit, root: files });
+  // "Keep a copy of my files on the VPS" (the PC sends the person's choice, sealed): off, the VPS keeps no file.
+  let copiesOn = (await secrets.get<boolean>("copies")) !== false;
+  const disk = new LimitedStore({ inner: plainDisk, limit, root: files, off: () => !copiesOn });
   const workspaceFile = join(data, "workspace.json");
   let engine: Engine | undefined, ws: WorkerWorkspace | undefined, agent: WorkerAgent | undefined;
   let draining = false, again = false, soonTimer: ReturnType<typeof setTimeout> | undefined;
@@ -100,7 +102,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   };
   const vpsTools = new VpsTools(selfLink, { words: true });
   const state = new WorkerState(engine.db, config.owner);
-  // Full: told once, asked once (desktop/engine/vps/full.ts); checked whenever something new waits and on each beat.
+  // Full: told once (desktop/engine/vps/full.ts), nothing asked; checked whenever something is left off and on each beat.
   const full = new FullNotice({ state, waiting, ws, clock: o.clock, log: (m) => log("warn", m),
     full: () => { const d = limit.last; return !!d && roomOn({ total: d.total, free: d.free }) <= 0; },
     post: async (text) => { if ((await engine!.telegram.status().catch(() => null))?.paired) await engine!.telegram.post(text); } });
@@ -119,7 +121,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     owner: config.owner, complete, engine: () => engine!, ws, files, clock: o.clock, log: (m) => log("warn", m),
     vps: (tool) => vpsTools.run(config.owner, tool),
     vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
-    state, full, waiting: () => waiting.items(),
+    state, waiting: () => waiting.items(),
   });
   // The flashcards-due reminder (desktop/study-reminders.ts), as the laptop sends it, while this worker runs Clem's jobs:
   // to the PC as a notice and to Telegram when paired. The person's time and switch come from the PC (a sealed secret).
@@ -149,6 +151,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   });
   const beat = async () => {
     try {
+      copiesOn = (await secrets.get<boolean>("copies").catch(() => undefined)) !== false;
       const { run } = await lease("worker");
       await engine!.runner(run);
       if (run) await work();
@@ -166,18 +169,18 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       // gets them as workspace changes, never twice.
       call: async (path, args) => {
         if (path === "organizer.inbox" && await ws!.ready()) return { posts: [], apply: [], revert: [] };
-        // What waits for the PC, and the standing answer (vps.waiting from the window's AI; Part 4 of the VPS brief).
-        if (path === "worker.waiting") { if (typeof args[0] === "boolean") await full.set(args[0] ? "send" : "keep"); return { answer: (await full.answer()) || null, items: await waiting.items() }; }
+        // What the worker left off the VPS at its limit (the PC fetches CMS files among them by itself).
+        if (path === "worker.waiting") return { items: (await waiting.items()).filter((i) => !i.item.startsWith("pc:")), cms: (await waiting.items()).filter((i) => i.item.startsWith("cms:") || i.item.startsWith("pc:")) };
+        // The person said in words, with the PC off, to keep (or stop keeping) copies of files on the VPS: the PC applies it.
+        if (path === "worker.copiesDone") { await state.delete("copies-wish"); return { ok: true }; }
         // The PC fetched these CMS files itself and keeps them: they wait no more, and the worker knows where they are.
         if (path === "worker.waitingDone") {
           const done = (Array.isArray(args[0]) ? args[0] : []) as { item: string; path: string; sha256: string; size: number }[];
-          for (const d of done) if (d.item.startsWith("cms:")) await engine!.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size, material_id, saved_at) values ($1, $2, 'device', $3, $4, $5, $6, now()) on conflict (owner_id, file_id) do nothing", [config.owner, "guc:" + d.item.slice(4), d.path, d.sha256, d.size, d.item.slice(4)]);
+          for (const d of done) if (d.item.startsWith("cms:") || d.item.startsWith("pc:")) await engine!.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size, material_id, saved_at) values ($1, $2, 'device', $3, $4, $5, $6, now()) on conflict (owner_id, file_id) do nothing", [config.owner, "guc:" + d.item.replace(/^(cms|pc):/, ""), d.path, d.sha256, d.size, d.item.replace(/^(cms|pc):/, "")]);
           await waiting.clear(done.map((d) => d.item));
           return { ok: true };
         }
         // The content this worker's copy still uses, so a delete the PC made offline never removes bytes re-added since.
-        // The person answered the VPS-full question on Telegram while the laptop's window answers it: the standing answer.
-        if (path === "worker.fullReply") return (await full.reply(String(args[0] || "")).catch(() => undefined)) || null;
         // Files asked for on Telegram while only on the PC: the PC sends them when it is online, then says so here.
         if (path === "worker.pendingSends") return (await state.get<PendingSend[]>(PENDING_SENDS)) || [];
         if (path === "worker.sendsDone") { const done = new Set((Array.isArray(args[0]) ? args[0] : []).map(String)); await state.set(PENDING_SENDS, ((await state.get<PendingSend[]>(PENDING_SENDS)) || []).filter((x) => !done.has(x.id))); return { ok: true }; }
@@ -205,7 +208,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
       health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
-        fullAnswer: (await full.answer().catch(() => undefined)) || null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:")).length,
+        copiesWish: (await state.get<boolean>("copies-wish").catch(() => undefined)) ?? null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:") || i.item.startsWith("pc:")).length,
         pendingSends: ((await state.get<PendingSend[]>(PENDING_SENDS).catch(() => undefined)) || []).length }),
       notices: () => notices.splice(0),
     },

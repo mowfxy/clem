@@ -1,5 +1,6 @@
-// The VPS step's storage (docs/GUC-VPS-ENGINE.md "Storage on the VPS", "Moving files"): VpsStore, the router and its
-// cache, and the mover's interruption, resume, checksum rollback and move back. All against a fake VPS.
+// The VPS step's storage (docs/GUC-VPS-ENGINE.md "Storage on the VPS"): VpsStore, the router (this PC keeps every file;
+// with copies on, the VPS gets a checked copy in the background), and the mover's copying, interruption, resume,
+// checksum rollback, copies off and the files of older installs brought back. All against a fake VPS.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readdir } from "node:fs/promises";
@@ -14,13 +15,13 @@ import { likelyNext, chatFiles } from "../core/vps/prefetch.ts";
 import { FakeLocal, FakeVps, bytesOf } from "./vps-fake.ts";
 
 const OWNER = "owner-1";
-async function setup(o: { cap?: number; mode?: "device" | "vps" } = {}) {
+async function setup(o: { mode?: "device" | "vps" } = {}) {
   const { backend, db } = await openPglite();
   await migrate(backend, "desktop/engine/migrations");
   const vps = new FakeVps(), local = new FakeLocal();
   let mode = o.mode || "device";
   const store = new VpsStore(() => vps, vpsRoot(OWNER));
-  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => (vps.offline ? undefined : store), mode: () => mode, cap: o.cap || 10_000 }).init();
+  const router = await new StorageRouter({ db, owner: OWNER, local, remote: () => (vps.offline ? undefined : store), mode: () => mode }).init();
   return { db, backend, vps, local, store, router, setMode: (m: "device" | "vps") => { mode = m; } };
 }
 const until = async (check: () => Promise<boolean>, ms = 10_000) => { for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 20))) if (await check()) return; throw Error("timed out"); };
@@ -44,52 +45,53 @@ test("VpsStore keeps files under their sha256, checks the server's copy, and ref
   await assert.rejects(store.put("0".repeat(64), "pdf", b), ChecksumError);
 });
 
-test("the router: device mode stays local; VPS mode writes there, caches recent files under the cap, keeps pins", async () => {
-  const t = await setup({ cap: 2500 });
-  await t.router.writeFile("a", bytesOf(1000, 1));
-  assert.equal((await t.router.row("a")), undefined, "device mode: no VPS row");
+test("the router: this PC keeps every file; with copies on the VPS gets a checked copy, quietly, never blocking a write", async () => {
+  const t = await setup();
+  await t.router.writeFile("a", bytesOf(1000, 1)); await t.router.idle();
+  assert.equal((await t.router.row("a")), undefined, "copies off: no VPS row");
   assert.equal(t.vps.files.size, 0);
   t.setMode("vps");
-  for (const id of ["b", "c", "d"]) await t.router.writeFile(id, bytesOf(1000, id.charCodeAt(0)));
-  for (const id of ["b", "c", "d"]) assert.equal((await t.router.row(id))?.location, "vps");
-  await until(async () => !(await t.local.has("b")));
-  assert.ok(await t.local.has("a"), "a file only on this device is never evicted");
-  assert.ok(await t.local.has("c") && await t.local.has("d"), "the newest stay cached");
-  // Reading an evicted file brings it back from the VPS (and evicts the oldest).
-  assert.deepEqual(await t.router.readFile("b"), bytesOf(1000, "b".charCodeAt(0)));
-  assert.ok(await t.local.has("b"));
-  await until(async () => !(await t.local.has("c")));
-  // A pinned file is never evicted, whatever the cap.
-  await t.router.pin("c", true);
-  assert.ok(await t.local.has("c"));
-  for (const id of ["e", "f", "g"]) await t.router.writeFile(id, bytesOf(1000, id.charCodeAt(0)));
-  await new Promise((r) => setTimeout(r, 50));
-  assert.ok(await t.local.has("c"), "pinned stays");
-  assert.deepEqual(await t.router.pinned(), ["c"]);
-  const u = await t.router.usage();
-  assert.equal(u.mode, "vps"); assert.equal(u.files.vps, 6); assert.ok(u.cache <= 2500 + 1000, "cache within its cap plus the pinned file");
-  // The VPS gone: a cached file still reads; one that isn't cached says so plainly.
+  // The write returns before the copy: a slow or dropped VPS never holds the app.
   t.vps.offline = true;
-  assert.ok(await t.router.readFile("c"));
-  const missing = ["b", "d", "e", "f", "g"].find((id) => !t.local.files.has(id))!;
-  await assert.rejects(t.router.readFile(missing), /isn't reachable/);
-  // A write while it is gone stays on this device (the mover takes it later).
   await t.router.writeFile("h", bytesOf(10, 9));
-  assert.equal(await t.router.row("h"), undefined);
   assert.ok(await t.local.has("h"));
-  // Deleting removes the VPS copy once nothing uses it.
+  await t.router.idle();
+  assert.equal(await t.router.row("h"), undefined, "out of reach: kept here, copied later by the mover");
   t.vps.offline = false;
-  const path = (await t.router.row("e"))!.path;
-  await t.router.deleteFile("e");
-  assert.ok(!t.vps.files.has(path));
+  for (const id of ["b", "c", "d"]) await t.router.writeFile(id, bytesOf(1000, id.charCodeAt(0)));
+  await t.router.idle();
+  for (const id of ["b", "c", "d"]) { assert.equal((await t.router.row(id))?.location, "vps"); assert.ok(await t.local.has(id), "the PC keeps its own copy"); }
+  assert.ok(await t.local.has("a"));
+  const u = await t.router.usage();
+  assert.equal(u.mode, "vps"); assert.equal(u.files.vps, 3); assert.equal(u.files.device, 5, "every file here");
+  // The VPS gone: everything still reads here.
+  t.vps.offline = true;
+  for (const id of ["a", "b", "c", "d", "h"]) assert.ok(await t.router.readFile(id));
+  t.vps.offline = false;
+  // A changed file: its new bytes are copied and the old copy goes.
+  const old = (await t.router.row("b"))!.path;
+  await t.router.writeFile("b", bytesOf(1000, 77)); await t.router.idle();
+  assert.notEqual((await t.router.row("b"))!.path, old);
+  assert.ok(!t.vps.files.has(old), "the old copy is removed");
+  // Deleting removes both copies.
+  const path = (await t.router.row("c"))!.path;
+  await t.router.deleteFile("c");
+  assert.ok(!t.vps.files.has(path) && !(await t.local.has("c")));
+  // A file only on the VPS (an older install) reads from there once and is kept here from then on.
+  const only = bytesOf(300, 5), op = await t.store.put(sha256(only), "blob", only);
+  await t.router.markVps("old", op, sha256(only), only.length, false);
+  assert.deepEqual(await t.router.readFile("old"), only);
+  assert.ok(await t.local.has("old"));
+  t.vps.offline = true;
+  assert.deepEqual(await t.router.readFile("old"), only, "here now, VPS or not");
   await t.backend.close();
 });
 
-test("the mover: interrupted mid-way, resumed (also after a restart), each file checked before the device lets go", async () => {
-  const t = await setup({ cap: 1_000_000 });
+test("the mover: copies every file to the VPS (interrupted, resumed, also after a restart), the PC keeps its own; copies off removes them only once the PC holds each", async () => {
+  const t = await setup();
   for (let i = 0; i < 6; i++) await t.local.write("f" + i, bytesOf(400 + i, i));
   const dir = await mkdtemp(join(tmpdir(), "clem-vps-")), device = new DeviceStore(dir);
-  // A saved CMS file kept on this device moves too.
+  // A saved CMS file stays on this PC: copies are of the person's own files (the VPS fetches CMS files from the CMS).
   const g = bytesOf(700, 42), gPath = await device.put(sha256(g), "pdf", g);
   await t.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size) values ($1, 'guc:m1', 'device', $2, $3, $4)", [OWNER, gPath, sha256(g), g.length]);
   try {
@@ -98,31 +100,40 @@ test("the mover: interrupted mid-way, resumed (also after a restart), each file 
     let m = new Migrator({ db: t.db, owner: OWNER, router: t.router, local: t.local, remote: () => (t.vps.offline ? undefined : t.store), device });
     await m.start("up"); await m.wait();
     let v = (await m.view())!;
-    assert.equal(v.status, "paused"); assert.equal(v.done, 2); assert.equal(v.total, 7);
-    // While paused, every file still reads where its row points.
+    assert.equal(v.status, "paused"); assert.equal(v.done, 2); assert.equal(v.total, 6);
     for (let i = 0; i < 6; i++) assert.deepEqual(await t.router.readFile("f" + i), bytesOf(400 + i, i));
     // "Restart": a new mover over the same database carries on.
     t.vps.offline = false; t.vps.dropAfter = undefined;
     m = new Migrator({ db: t.db, owner: OWNER, router: t.router, local: t.local, remote: () => t.store, device });
     await m.resume(); await m.wait();
     v = (await m.view())!;
-    assert.equal(v.status, "done"); assert.equal(v.done, 7); assert.equal(v.failed, 0);
-    for (let i = 0; i < 6; i++) assert.equal((await t.router.row("f" + i))?.location, "vps");
-    const [gr] = await t.db.query<{ location: string; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = 'guc:m1'", [OWNER]);
-    assert.equal(gr.location, "vps"); assert.deepEqual(await t.store.read(gr.path), g);
-    assert.deepEqual(await readdir(join(dir, "GUC")), [], "the device copy went only after the VPS copy was checked");
+    assert.equal(v.status, "done"); assert.equal(v.done, 6); assert.equal(v.failed, 0);
+    for (let i = 0; i < 6; i++) { assert.equal((await t.router.row("f" + i))?.location, "vps"); assert.deepEqual(await t.local.read("f" + i), bytesOf(400 + i, i), "copied, not moved"); }
+    const [gr] = await t.db.query<{ location: string }>("select location from file_objects where owner_id = $1 and file_id = 'guc:m1'", [OWNER]);
+    assert.equal(gr.location, "device", "the CMS file stays on this PC");
+    assert.equal((await readdir(join(dir, "GUC"))).length, 1);
 
-    // Move back: every file here again, checked, and gone from the VPS.
+    // Copies off: each VPS copy goes only once this PC is confirmed to hold the file (one missing here is brought back first).
+    await t.local.remove("f3");
     m = new Migrator({ db: t.db, owner: OWNER, router: t.router, local: t.local, remote: () => t.store, device });
     t.setMode("device");
-    for (let i = 0; i < 6; i++) await t.local.remove("f" + i);
     await m.start("down"); await m.wait();
     v = (await m.view())!;
     assert.equal(v.status, "done"); assert.equal(v.direction, "down");
     for (let i = 0; i < 6; i++) { assert.deepEqual(await t.local.read("f" + i), bytesOf(400 + i, i)); assert.equal(await t.router.row("f" + i), undefined); }
     assert.equal(t.vps.files.size, 0, "nothing left on the VPS");
-    const [back] = await t.db.query<{ location: string; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = 'guc:m1'", [OWNER]);
-    assert.equal(back.location, "device"); assert.deepEqual(await device.read(back.path), g);
+
+    // An older install's CMS file only on the VPS: brought here, checked, and only then removed there.
+    const h = bytesOf(500, 7), hp = await t.store.put(sha256(h), "pdf", h);
+    await t.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size) values ($1, 'guc:m2', 'vps', $2, $3, $4)", [OWNER, hp, sha256(h), h.length]);
+    t.vps.files.get(hp)![0] ^= 1;
+    await assert.rejects(m.bringDown("guc:m2"));
+    assert.ok(t.vps.files.has(hp), "a copy that didn't check out: the only copy stays");
+    t.vps.files.get(hp)![0] ^= 1;
+    await m.bringDown("guc:m2");
+    const [mr] = await t.db.query<{ location: string; path: string }>("select location, path from file_objects where owner_id = $1 and file_id = 'guc:m2'", [OWNER]);
+    assert.equal(mr.location, "device"); assert.deepEqual(await device.read(mr.path), h);
+    assert.ok(!t.vps.files.has(hp));
   } finally { await t.backend.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
