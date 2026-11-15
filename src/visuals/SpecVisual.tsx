@@ -10,6 +10,7 @@ import { exportFonts, standardFonts } from '../../core/print-fonts';
 import { CanvasPen, SvgPen, C, H, W, useInk, darkInk } from './pen';
 import { defaultValues, type CompiledVisual } from '../../core/visual-spec';
 import { paintSvg, recordCanvas, videoFormat } from './record';
+import { figurePng, panelPng } from './png-export';
 import './visuals.css';
 
 const Spec3D = lazy(() => import('./Spec3D'));
@@ -101,8 +102,9 @@ export default function SpecVisual({ visual, compact = false, initial, headerAct
   const exportFailed = (e: unknown) => setNote(`That export did not finish${(e as Error)?.message ? ': ' + (e as Error).message : ''}. Try again.`);
   const png = () => {
     setNote('');
-    if (figure) { const out = svg(), m = /viewBox="0 0 (\d+) (\d+)"/.exec(out), c = document.createElement('canvas'); c.width = (m ? +m[1] : 760) * 2; c.height = (m ? +m[2] : 460) * 2; void paintSvg(c, standardFonts(out)).then(() => c.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png')).catch(exportFailed); return; }
-    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const off = document.createElement('canvas'); off.width = W * 2; off.height = H * 2; const ctx = off.getContext('2d')!; ctx.fillStyle = ink(C.bg); ctx.fillRect(0, 0, off.width, off.height); ctx.scale(2, 2); const out = new CanvasPen(ctx, exportFonts, ink); out.keyed = true; visual.draw(out, values, local(), step); off.toBlob(b => b && void downloadMade(b, `${fileName(spec.title)}.png`).catch(exportFailed), 'image/png'); };
+    // The same drawing Telegram's photos use (src/visuals/png-export.ts), from the laptop or the VPS.
+    if (figure) { void figurePng(svg()).then(b => downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; }
+    if (use3d && view3d.current) { void view3d.current.capture().then(b => b && downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); return; } const t = local(); void panelPng(pen => visual.draw(pen, values, t, step), ink).then(b => downloadMade(b, `${fileName(spec.title)}.png`)).catch(exportFailed); };
   // Films the visual as it plays: animations from the start for one loop, still 3D models as a turntable.
   const canFilm = (moving || use3d) && !!videoFormat();
   const video = async () => {

@@ -5,6 +5,7 @@ import { downloadMade } from '../store';
 import { standardFonts } from '../../core/print-fonts';
 import { parseModelJson } from '../../core/model-json';
 import { paintSvg } from '../visuals/record';
+import { figurePng } from '../visuals/png-export';
 import '../visuals/visuals.css';
 
 /**
@@ -71,9 +72,8 @@ export function KinetraFigure({ body, streaming }: { body: string; streaming: bo
   const failed = (e: unknown) => setNote(clean(e) || 'That could not be saved.');
   const png = () => {
     setNote('');
-    const out = standardFonts(svg), box = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) ([\d.]+)"/.exec(out), c = document.createElement('canvas');
-    c.width = Math.round((box ? +box[1] : 760) * 2); c.height = Math.round((box ? +box[2] : 460) * 2);
-    void paintSvg(c, out).then(() => c.toBlob((b) => b && void downloadMade(b, `${fileName(title)}.png`).catch(failed), 'image/png')).catch(failed);
+    // The same drawing Telegram's photos use (src/visuals/png-export.ts), from the laptop or the VPS.
+    void figurePng(svg).then((b) => downloadMade(b, `${fileName(title)}.png`)).catch(failed);
   };
   return <div className="visual-frame">
     <section className="visual-engine v2 spec-visual no-side kinetra-figure" aria-label={`${kindOf(parsed)}: ${title}`}>
