@@ -4,7 +4,7 @@
 import { randomBytes } from "node:crypto";
 import type { Db } from "../db.ts";
 import type { Engine } from "../index.ts";
-import { DeviceStore } from "../storage.ts";
+import { DeviceStore, sha256 } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
 import { DEFAULT_CACHE_CAP, MIN_CACHE_CAP, WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
 import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
@@ -360,6 +360,10 @@ export class VpsManager {
       this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
       // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
       if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
+      // Deletes made while the VPS was out of reach are applied now, once, never on bytes the worker uses again.
+      void this.sweepDeletes(c).catch((e) => this.log("[vps] deletes: " + (e as Error).message));
+      // The person's standing answer is "send them to my PC": CMS files the worker skipped at the limit are fetched here.
+      if (health.fullAnswer === "send" && Number(health.waitingCms) > 0) void this.fetchWaiting(c).catch((e) => this.log("[vps] waiting: " + (e as Error).message));
       // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
       if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
       // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
@@ -435,6 +439,45 @@ export class VpsManager {
       return { ...f, blob: { sha256: r.sha256, ext, size: Number(r.size) } };
     });
   }
+  /** Deletes the PC made while the VPS was out of reach (router vps_deletes), applied now: bytes the worker's copy
+   *  uses again (the same content re-added) are left. */
+  private async sweepDeletes(c: WorkerClient) {
+    const r = await this.router();
+    const [pending] = await (await this.d.engine()).db.query<{ n: number }>("select count(*)::int as n from vps_deletes where owner_id = $1", [this.owner]);
+    if (!pending?.n) return 0;
+    const used = new Set(await c.call<string[]>("worker.blobs").catch(() => null) || []);
+    return r.sweepDeletes((path) => used.has((path.split("/").pop() || "").split(".")[0]));
+  }
+  /** vps.waiting from the window's AI: what waits past the storage limit, and (with `send`) the standing answer. */
+  async waiting(send?: boolean) {
+    const w = await (await this.worker()).call<{ answer: "send" | "keep" | null; items: { item: string; name: string; bytes: number }[] }>("worker.waiting", send === undefined ? [] : [send]);
+    if (send) void this.worker().then((c) => this.fetchWaiting(c)).catch(() => {});
+    return w;
+  }
+  /** CMS files the worker couldn't keep past the limit, fetched by this PC (through the worker, from the CMS) and kept in
+   *  its own Files, once the person said to send waiting files to the PC. */
+  private fetching?: Promise<void>;
+  private fetchWaiting(c: WorkerClient) {
+    return (this.fetching ||= (async () => {
+      const w = await c.call<{ answer: string | null; items: { item: string; name: string }[] }>("worker.waiting");
+      if (w.answer !== "send") return;
+      const engine = await this.d.engine(), store = new DeviceStore(this.d.files), done: { item: string; path: string; sha256: string; size: number }[] = [];
+      for (const it of w.items.filter((i) => i.item.startsWith("cms:")).slice(0, 25)) {
+        const id = it.item.slice(4);
+        try {
+          const f = await c.call<{ data: string; name: string; type: string }>("fileBytes", [id]);
+          const bytes = new Uint8Array(Buffer.from(f.data, "base64")), hash = sha256(bytes), ext = /\.([a-z0-9]{1,5})$/i.exec(f.name)?.[1]?.toLowerCase() || "";
+          const path = await store.put(hash, ext, bytes);
+          await engine.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size, material_id, name, mime, saved_at) values ($1, $2, 'device', $3, $4, $5, $6, $7, $8, now()) on conflict (owner_id, file_id) do update set location = 'device', path = excluded.path, sha256 = excluded.sha256, size = excluded.size", [this.owner, "guc:" + id, path, hash, bytes.length, id, f.name, f.type]);
+          done.push({ item: it.item, path, sha256: hash, size: bytes.length });
+        } catch (e) { this.log("[vps] waiting: " + (e as Error).message); }
+      }
+      if (done.length) await c.call("worker.waitingDone", [done]);
+    })().finally(() => { this.fetching = undefined; }));
+  }
+  /** vps.keep from the window's AI: where one file is kept (router.keepOn). */
+  async keep(fileId: string, where: "pc" | "vps" | "auto") { return (await this.router()).keepOn(fileId, where === "auto" ? undefined : where); }
+
   /** What the worker changed in the workspace since `cursor` (the window's own `State.vpsSync`): files it made are
    *  known to this PC's router as files on the VPS before the window sees them. Null without a worker copy. */
   async pullOps(cursor?: WsCursor | null): Promise<WsBatch | null> {
@@ -442,8 +485,12 @@ export class VpsManager {
     if (!v.worker?.enabled) return null;
     const batch = await (await this.worker()).ops(cursor);
     if (!batch) return null;
-    const r = await this.router();
+    const r = await this.router(), keeps: [string, "pc" | "vps" | undefined][] = [];
     for (const op of batch.ops) {
+      // A file the AI deleted on the VPS is deleted here too: its bytes, its row and its cache entry (once: the cursor).
+      if (op.t === "del" && op.kind === "file") { await r.deleteFile(op.id).catch((e) => this.log("[vps] pull: " + (e as Error).message)); continue; }
+      // Where the person said it's kept (vps.keep on the VPS): this PC moves it.
+      if (op.t === "put" && op.kind === "file" && typeof op.item.keep === "string") keeps.push([String(op.item.id), op.item.keep === "pc" || op.item.keep === "vps" ? op.item.keep : undefined]);
       // A file the worker couldn't keep on the VPS past its storage limit came with its bytes: kept on this PC now.
       if (op.t === "put" && op.kind === "file" && typeof op.item.inline === "string") {
         const { inline, blob: _b, ...file } = op.item as { id: string; inline: string; blob?: unknown };
@@ -459,6 +506,8 @@ export class VpsManager {
       if (!file.id.startsWith("guc_")) await r.markVps(file.id, path, blob.sha256, blob.size, false).catch((e) => this.log("[vps] pull: " + (e as Error).message));
       (op as { item: unknown }).item = file;
     }
+    // After the files are known where they are: the person's word on where each is kept is carried out.
+    for (const [id, where] of keeps) await r.keepOn(id, where).catch((e) => this.log("[vps] keep: " + (e as Error).message));
     this.pulled = Math.max(this.pulled, batch.last);
     return batch;
   }

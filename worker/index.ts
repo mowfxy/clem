@@ -16,6 +16,8 @@ import { SshLink, type VpsLink } from "../desktop/engine/vps/link.ts";
 import { VpsTools } from "../desktop/engine/vps/tools.ts";
 import { WorkerWorkspace, type WsState } from "../desktop/engine/vps/workspace.ts";
 import { WorkerState } from "../desktop/engine/vps/state.ts";
+import { FullNotice } from "../desktop/engine/vps/full.ts";
+import { roomOn } from "../core/vps/limit.ts";
 import { sha256 } from "../desktop/engine/storage.ts";
 import { DiskLimit, LimitedStore, Waiting, localDisk } from "../desktop/engine/vps/limit.ts";
 import type { DiskSize } from "../core/vps/limit.ts";
@@ -108,6 +110,20 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   };
   const vpsTools = new VpsTools(selfLink, { words: true });
   const state = new WorkerState(engine.db, config.owner);
+  // Full: told once, asked once (desktop/engine/vps/full.ts); checked whenever something new waits and on each beat.
+  const full = new FullNotice({ state, waiting, ws, clock: o.clock, log: (m) => log("warn", m),
+    full: () => { const d = limit.last; return !!d && roomOn({ total: d.total, free: d.free }) <= 0; },
+    post: async (text) => { if ((await engine!.telegram.status().catch(() => null))?.paired) await engine!.telegram.post(text); } });
+  waiting.onAdd = () => { void full.check().catch((e) => log("warn", "[worker] full: " + (e as Error).message)); };
+  /** A file's bytes leave the store when nothing else uses them; the room counts at once. */
+  const dropBytes = async (blob: { sha256: string; ext: string; size: number }, stillUsed: boolean) => {
+    if (stillUsed || !/^[a-f0-9]{64}$/.test(blob.sha256)) return 0;
+    const path = join(files, blob.sha256 + (blob.ext ? "." + blob.ext : ""));
+    if (!(await plainDisk.has(path))) return 0;
+    await plainDisk.remove(path);
+    limit.freed(blob.size);
+    return blob.size;
+  };
   if (complete) agent = new WorkerAgent({
     owner: config.owner, complete, engine: () => engine!, ws, files, data, pages, clock: o.clock, log: (m) => log("warn", m),
     // Past the limit a file isn't written here: the agent keeps its text for the PC and says so (vps_waiting).
@@ -120,14 +136,14 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     onWaiting: (item, name, bytes, said) => waiting.add(item, name, bytes, said),
     vps: (tool) => vpsTools.run(config.owner, tool),
     vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
-    state,
+    state, full, dropBytes, waiting: () => waiting.items(),
   });
   // While this worker runs Clem: the organizer's decisions go into the workspace copy, and due routines run.
   async function work() {
     if (draining) { again = true; return; }
     draining = true;
     try {
-      do { again = false; if (engine!.isRunner && await ws!.ready()) { await ws!.drain(engine!.organizer); if (agent) while (await agent.routines()); } } while (again);
+      do { again = false; if (engine!.isRunner && await ws!.ready()) { await ws!.drain(engine!.organizer); if (agent) while (await agent.routines()); await full.check(); } } while (again);
     } catch (e) { log("warn", "[worker] workspace: " + (e as Error).message); } finally { draining = false; }
   }
 
@@ -155,12 +171,34 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     handlers: {
       // With a workspace copy here, this worker applies the organizer's decisions itself (work above): the window
       // gets them as workspace changes, never twice.
-      call: async (path, args) => (path === "organizer.inbox" && await ws!.ready() ? { posts: [], apply: [], revert: [] } : callPath(engine!, path, args)),
+      call: async (path, args) => {
+        if (path === "organizer.inbox" && await ws!.ready()) return { posts: [], apply: [], revert: [] };
+        // What waits for the PC, and the standing answer (vps.waiting from the window's AI; Part 4 of the VPS brief).
+        if (path === "worker.waiting") { if (typeof args[0] === "boolean") await full.set(args[0] ? "send" : "keep"); return { answer: (await full.answer()) || null, items: await waiting.items() }; }
+        // The PC fetched these CMS files itself and keeps them: they wait no more, and the worker knows where they are.
+        if (path === "worker.waitingDone") {
+          const done = (Array.isArray(args[0]) ? args[0] : []) as { item: string; path: string; sha256: string; size: number }[];
+          for (const d of done) if (d.item.startsWith("cms:")) await engine!.db.query("insert into file_objects (owner_id, file_id, location, path, sha256, size, material_id, saved_at) values ($1, $2, 'device', $3, $4, $5, $6, now()) on conflict (owner_id, file_id) do nothing", [config.owner, "guc:" + d.item.slice(4), d.path, d.sha256, d.size, d.item.slice(4)]);
+          await waiting.clear(done.map((d) => d.item));
+          return { ok: true };
+        }
+        // The content this worker's copy still uses, so a delete the PC made offline never removes bytes re-added since.
+        if (path === "worker.blobs") return (((await ws!.state())?.files || []) as { blob?: { sha256: string } }[]).map((f) => f.blob?.sha256).filter(Boolean);
+        return callPath(engine!, path, args);
+      },
       workspace: async (snap) => {
         // An older desktop sends the organizer's compact snapshot; a current one its whole (lean) workspace.
         if ((snap as { __snapshot?: boolean })?.__snapshot) await writeFile(workspaceFile, JSON.stringify(snap));
         else {
+          // Files the PC deleted: their bytes here go too (when the PC couldn't remove them), and the room counts at once.
+          const before = ((await ws!.state())?.files || []) as { id: string; blob?: { sha256: string; ext: string; size: number } }[];
           await ws!.receive(snap as WsState); soon();
+          const after = ((await ws!.state())?.files || []) as { id: string; blob?: { sha256: string } }[];
+          const kept = new Set(after.map((f) => f.id)), used = new Set(after.map((f) => f.blob?.sha256).filter(Boolean));
+          for (const f of before.filter((x) => !kept.has(x.id))) {
+            if (f.blob) await dropBytes(f.blob, used.has(f.blob.sha256)).catch(() => {});
+            await waiting.clear(["ws:" + f.id]).catch(() => {});
+          }
           // Files the desktop now holds aren't waiting for it any more.
           await waiting.clear(((snap as WsState).files || []).map((f) => "ws:" + f.id)).catch(() => {});
         }
@@ -168,7 +206,8 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       },
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
-      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null }),
+      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
+        fullAnswer: (await full.answer().catch(() => undefined)) || null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:")).length }),
       notices: () => notices.splice(0),
     },
   });
@@ -177,7 +216,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   const hooks = hookPort ? await serveHooks({ port: hookPort, host: env.CLEM_HOOK_BIND || "0.0.0.0", log: (m) => log("warn", m),
     target: async () => (engine!.isRunner ? (id, key, payload) => engine!.organizer.hook(id, key, payload) : undefined) }).catch((e) => { log("warn", "[worker] webhooks off: " + (e as Error).message); return undefined; }) : undefined;
   const stop = async () => { await ssh?.close().catch(() => {}); await browser?.shutdown(); clearInterval(timer); if (soonTimer) clearTimeout(soonTimer); server.close(); hooks?.close(); await agent?.idle(); await engine!.close(); };
-  return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work };
+  return { engine, host, server, stop, model, ws, agent, port: (server.address() as { port: number }).port, work, full, waiting, limit, state };
 }
 
 // Run directly (node index.cjs), not when imported by a test.

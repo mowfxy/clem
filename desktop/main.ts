@@ -2601,6 +2601,21 @@ void app.whenReady().then(async () => {
         // The person's VPS (desktop/engine/vps/tools.ts): anything that could change it waits for their tap on a card.
         if (isVpsAction(tool?.action)) {
           if (!(await vpsConfigured(user.id))) return { error: "No VPS is connected. The person can add one in Settings → Connectors → VPS." };
+          // Files waiting past the storage limit, and the person's standing answer about them (desktop/engine/vps/full.ts).
+          if (tool.action === "vps.waiting") {
+            try {
+              const w = await vpsFor(user.id).waiting(typeof tool.send === "boolean" ? tool.send : undefined);
+              return { waiting: w.items.slice(0, 20).map((i) => i.name), count: w.items.length, answer: w.answer === "send" ? "they go to the PC whenever it's online" : w.answer === "keep" ? "they stay; Clem doesn't ask" : "not answered yet", ...(typeof tool.send === "boolean" ? { note: "Saved as the standing answer. Say so in one plain sentence." } : {}) };
+            } catch (e) { return { error: (e as Error).message }; }
+          }
+          // Where one file is kept, overriding the storage move (the router and the move to the VPS follow it).
+          if (tool.action === "vps.keep") {
+            const want = String(tool.file || "").trim().toLowerCase(), state = await disk.readState(user.id).catch(() => null) as { files?: { id: string; name: string }[] } | null;
+            const files = state?.files || [], f = files.find((x) => x.id === tool.file || x.name.toLowerCase() === want) || (files.filter((x) => x.name.toLowerCase().includes(want)).length === 1 ? files.find((x) => x.name.toLowerCase().includes(want)) : undefined);
+            if (!want || !f) return { error: `No single file named "${tool.file}".` };
+            try { return { ok: true, file: f.name, done: await vpsFor(user.id).keep(f.id, tool.where === "pc" || tool.where === "vps" ? tool.where : "auto"), note: "Say so in one plain sentence." }; }
+            catch (e) { return { error: (e as Error).message }; }
+          }
           return vpsFor(user.id).tools.run(user.id, tool).catch((e: Error) => ({ error: e.message }));
         }
         // GUC (desktop/engine/ai-tools.ts): the signed-in owner's engine only; a subject chat's own subject is the default.

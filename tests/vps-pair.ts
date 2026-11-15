@@ -1,7 +1,9 @@
 // A desktop and its VPS worker for tests (as in tests/vps-agent.test.ts): the worker runs in-process on PGlite, the
 // desktop's VpsManager reaches it through a fake VPS whose tunnel is the worker's port, and the fake VPS's files are
 // the worker's files folder (so a byte the desktop puts there is one the worker reads, and the reverse).
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { vpsRoot } from "../desktop/engine/vps/store.ts";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -39,7 +41,18 @@ export async function startPair(o: { complete?: Complete; noBrowser?: boolean; d
   const { backend: db0, db } = await openPglite();
   await migrate(db0, "desktop/engine/migrations");
   const engine = { db, runner: async () => {}, telegram: { start() {}, post: async () => {} }, organizer: { announce: async () => {} } } as unknown as Engine;
-  const link = new (class extends FakeVps { async tunnel() { return { port, close() {} }; } })();
+  // The fake VPS's files folder IS the worker's (what the desktop deletes there, the worker no longer has).
+  const root2 = vpsRoot(OWNER) + "/", on = (path: string) => (path.startsWith(root2) ? join(files, path.slice(root2.length)) : undefined);
+  const link = new (class extends FakeVps {
+    async tunnel() { return { port, close() {} }; }
+    async get(path: string) { const d = on(path); if (!d) return super.get(path); this.check2(); return new Uint8Array(await readFile(d)); }
+    async put(path: string, bytes: Uint8Array) { const d = on(path); if (!d) return super.put(path, bytes); this.check2(); await writeFile(d, bytes); }
+    async size(path: string) { const d = on(path); if (!d) return super.size(path); this.check2(); return stat(d).then((x) => x.size, () => null); }
+    async rename(from: string, to: string) { const a = on(from), b = on(to); if (!a || !b) return super.rename(from, to); this.check2(); await rename(a, b); }
+    async remove(path: string) { const d = on(path); if (!d) return super.remove(path); this.check2(); await rm(d, { force: true }); }
+    async hash(path: string) { const d = on(path); if (!d) return super.hash(path); this.check2(); return createHash("sha256").update(await readFile(d)).digest("hex"); }
+    check2() { if (this.offline) throw Error("connect ECONNRESET"); }
+  })();
   const kept = new Map<string, unknown>();
   kept.set("vps-" + OWNER, { config: { host: "vps.test", port: 22, user: "u", auth: "key", fingerprint: "SHA256:x" }, privateKey: "k", storage: { mode: "vps" }, worker: { enabled: true, kind: "docker", key: key.toString("base64"), rpc, installedAt: 1 } } satisfies VpsVault);
   const changed: string[] = [];

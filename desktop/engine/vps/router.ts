@@ -106,7 +106,9 @@ export class StorageRouter {
   async writeFile(id: string, bytes: Uint8Array) {
     const before = await this.row(id);
     await this.local.write(id, bytes);
-    const store = this.mode() === "vps" ? this.remote() : undefined;
+    // Where the person said it's kept wins over the storage mode (vps.keep).
+    const kept = await this.keepOf(id);
+    const store = kept === "pc" ? undefined : this.mode() === "vps" || kept === "vps" ? this.remote() : undefined;
     // Past the VPS's storage limit the file simply stays on this PC, like any device file (Settings says so).
     const room = store ? !this.limit || await this.limit.reserve(bytes.length) : false;
     if (store && room) {
@@ -123,10 +125,70 @@ export class StorageRouter {
     else if (before) await this.markDevice(id);
     if (before?.location === "vps" && before.path !== (await this.row(id))?.path && !(await this.used(before.path))) await this.remote()?.remove(before.path).catch(() => {});
   }
+  /** Deleting a file deletes its bytes here and on the VPS, and its row and cache entry (docs/GUC-VPS-ENGINE.md
+   *  "Deleting"). With the VPS out of reach, the path is kept in vps_deletes and removed when it's back (sweepDeletes),
+   *  once; bytes another file still uses (the same content) are left. The freed room counts toward the limit at once. */
   async deleteFile(id: string) {
     const r = await this.row(id);
     await this.local.remove(id);
-    if (r) { await this.markDevice(id); if (r.location === "vps" && !(await this.used(r.path))) await this.remote()?.remove(r.path).catch(() => {}); }
+    await this.db.query("delete from file_keep where owner_id = $1 and file_id = $2", [this.owner, id]);
+    if (r) { await this.markDevice(id); if (r.location === "vps") await this.dropRemote(r.path, id, r.size); }
+  }
+  /** One VPS path no file uses any more: removed now, or remembered until the VPS is reachable. */
+  async dropRemote(path: string, id: string, size: number) {
+    if (await this.used(path)) return;
+    const store = this.remote();
+    try {
+      if (!store) throw Error("offline");
+      await store.remove(path).catch((e: Error) => { if (!/no such file|ENOENT/i.test(e.message)) throw e; });
+      this.limit?.freed(size);
+      await this.db.query("delete from vps_deletes where owner_id = $1 and path = $2", [this.owner, path]);
+    } catch {
+      await this.db.query("insert into vps_deletes (owner_id, path, file_id, size) values ($1, $2, $3, $4) on conflict do nothing", [this.owner, path, id, size]);
+    }
+  }
+  /** Deletes made while the VPS was out of reach, applied now: each path once, and never one a file uses again (the
+   *  same bytes re-added since). Returns how many were removed. */
+  async sweepDeletes(usedElsewhere: (path: string) => boolean = () => false) {
+    const store = this.remote();
+    if (!store) return 0;
+    let n = 0;
+    for (const d of await this.db.query<{ path: string; file_id: string; size: string }>("select path, file_id, size from vps_deletes where owner_id = $1 order by created_at limit 500", [this.owner])) {
+      if (!(await this.used(d.path)) && !usedElsewhere(d.path)) { try { await store.remove(d.path); this.limit?.freed(Number(d.size)); n++; } catch (e) { if (!/no such file|ENOENT/i.test((e as Error).message)) continue; } }
+      await this.db.query("delete from vps_deletes where owner_id = $1 and path = $2", [this.owner, d.path]);
+    }
+    return n;
+  }
+  /** Where the person said a file is kept (vps.keep), if they did. */
+  async keepOf(id: string): Promise<"pc" | "vps" | undefined> {
+    const [r] = await this.db.query<{ place: "pc" | "vps" }>("select place from file_keep where owner_id = $1 and file_id = $2", [this.owner, id]);
+    return r?.place;
+  }
+  /** The person's word on where a file is kept, carried out at once when the VPS is reachable: "pc" brings it here and
+   *  removes it from the VPS, "vps" puts it there, "auto" (undefined) lets Clem decide again. */
+  async keepOn(id: string, place: "pc" | "vps" | undefined) {
+    if (place) await this.db.query("insert into file_keep (owner_id, file_id, place) values ($1, $2, $3) on conflict (owner_id, file_id) do update set place = excluded.place, created_at = now()", [this.owner, id, place]);
+    else await this.db.query("delete from file_keep where owner_id = $1 and file_id = $2", [this.owner, id]);
+    const r = await this.row(id);
+    if (place === "pc" && r?.location === "vps") {
+      const bytes = await this.readFile(id);
+      if (!bytes) throw Error("That file's bytes couldn't be read from the VPS.");
+      await this.local.write(id, bytes);
+      await this.markDevice(id);
+      await this.dropRemote(r.path, id, r.size);
+      return "moved to this PC";
+    }
+    if (place === "vps" && r?.location !== "vps") {
+      const bytes = await this.local.read(id);
+      if (!bytes) return "kept on the VPS from now on";
+      const store = this.remote();
+      if (!store) return "goes to the VPS when it's reachable";
+      if (this.limit && !(await this.limit.reserve(bytes.length))) return "stays on this PC for now: the VPS is at its storage limit";
+      const hash = sha256(bytes), path = await store.put(hash, "blob", bytes);
+      await this.markVps(id, path, hash, bytes.length, true);
+      return "moved to the VPS";
+    }
+    return place === "pc" ? "kept on this PC" : place === "vps" ? "kept on the VPS" : "left to Clem";
   }
   async hasFile(id: string) { return (await this.local.has(id)) || (await this.row(id))?.location === "vps"; }
   /** Where the bytes are on this device (call `ensure` first for files that may be only on the VPS). */
