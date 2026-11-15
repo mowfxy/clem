@@ -45,13 +45,24 @@ export function telegramAllows(action: unknown): boolean {
 export const NOT_ON_TELEGRAM = { error: "Not available on Telegram: questions and files are done in the Clem app on the PC. Reply with the decline message from your guide, nothing else." };
 
 // ---------- The decline ----------
-const FILE_WORDS = String.raw`pdfs?|slides?|slide ?decks?|decks?|presentations?|power ?points?|pptx|word (?:files?|docs?|documents?)|docx|excel(?: files?| sheets?)?|xlsx|spreadsheets?|flash ?cards?|quiz(?:zes)?|visuals?|diagrams?|charts?|graphs?|mind ?maps?|infographics?|cheat ?sheets?|worksheets?|handouts?`;
+const FILE_WORDS = String.raw`pdfs?|(?:plan |study )?documents?|slides?|slide ?decks?|decks?|presentations?|power ?points?|pptx|word (?:files?|docs?|documents?)|docx|excel(?: files?| sheets?)?|xlsx|spreadsheets?|flash ?cards?|quiz(?:zes)?|visuals?|diagrams?|charts?|graphs?|mind ?maps?|infographics?|cheat ?sheets?|worksheets?|handouts?`;
 const SOFT_WORDS = String.raw`summary|summaries|notes|essay|report|images?|pictures?|documents?|study guide|explanation`;
 const MAKE = String.raw`make|create|generate|write|build|prepare|draw|design|produce|export|convert|turn|draft`;
 const MAKES_FILE = new RegExp(String.raw`\b(?:${MAKE})\b[^.?!\n]{0,60}?\b(?:${FILE_WORDS})\b|\b(?:as|into|in) an? (?:pdf|word|docx|pptx|excel|xlsx|slides?)\b`, "i");
 const MAKES_SOFT = new RegExp(String.raw`\b(?:${MAKE})\b[^.?!\n]{0,60}?\b(?:${SOFT_WORDS})\b`, "i");
 const STUDY = /^\s*(?:hey\s+|hi\s+)?(?:clem[,:]?\s+)?(?:please\s+|pls\s+|can you\s+|could you\s+|would you\s+|i need you to\s+|help me\s+)?(?:explain|solve|summari[sz]e|quiz me|test me|teach me|derive|prove|translate|paraphrase|proofread|define|tutor me|walk me through|help me (?:understand|solve|study|revise|learn)|answer (?:this|these|question))\b/i;
 const SUBJECT_HELP = /\b(?:explain|solve|summari[sz]e) (?:this|that|it|these|lecture|chapter|the (?:lecture|chapter|slides?|pdf|problem|question|equation|exercise|sheet|tutorial))\b/i;
+/** The first thing a request makes, right after its verb ("make a reminder…", "create a routine…", "prepare a study
+ *  block…"): when it is the organizer's (a reminder, alarm, routine, watch, study time, a calendar event or block, a
+ *  deadline, plan tasks), the request is management whatever file words follow ("…to finish my slides by Friday"). */
+const MAKE_VERB = new RegExp(String.raw`\b(?:${MAKE}|set up|add|schedule|put)\b`, "i");
+const MANAGED_OBJECT = new RegExp(String.raw`\s+(?:(?:me|us)\s+)?(?:(?:a|an|the|my|some|one|two|three|four|five|\d+)\s+)?(?:(?:new|daily|weekly|quick|short|recurring|repeating)\s+)?(?:reminders?|alarms?|routines?|watch(?:es)?|study (?:time|sessions?|blocks?|hours?|slots?)|revision (?:time|sessions?|blocks?|slots?)|(?:calendar\s+)?(?:events?|blocks?|slots?)|sessions?|deadlines?|to-?dos?|tasks?|(?:study\s+)?plans?(?!\s+(?:document|pdf|file|doc)))\b`, "iy");
+function makesManagement(t: string) {
+  const v = MAKE_VERB.exec(t);
+  if (!v) return false;
+  MANAGED_OBJECT.lastIndex = v.index + v[0].length;
+  return MANAGED_OBJECT.test(t);
+}
 const MANAGES = /\b(?:remind(?:er|ers)?|schedule|calendar|agenda|deadlines?|due|coming up|routines?|mute|unmute|quiet hours?|watch|study (?:time|sessions?|plan|blocks?|hours?)|plans?|exam dates?|grades?|announcements?|re-?sync|vps|server|undo|today|tomorrow|this week)\b/i;
 
 /** A request Telegram doesn't carry out: a study question or a file to make. Decided by the request itself, the same on
@@ -60,6 +71,9 @@ const MANAGES = /\b(?:remind(?:er|ers)?|schedule|calendar|agenda|deadlines?|due|
 export function telegramDeclines(text: string): boolean {
   const t = String(text || "").trim();
   if (!t) return false;
+  // What is made first decides: a reminder, routine, watch, study block, event, deadline or plan task is the organizer's
+  // (the model decides under the guide, whatever file words follow); a file or a quiz is not done here.
+  if (makesManagement(t)) return false;
   if (MAKES_FILE.test(t)) return true;
   if (STUDY.test(t) || SUBJECT_HELP.test(t)) return !MANAGES.test(t) || /\b(?:explain|solve|quiz me|teach me|derive|prove)\b/i.test(t);
   return MAKES_SOFT.test(t) && !MANAGES.test(t);

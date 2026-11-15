@@ -304,3 +304,11 @@ test("long answers reach Telegram split at paragraphs; the worker sends no photo
 });
 
 void putMessage;
+
+test("what is made first decides: a reminder, routine, watch or study block that names a file is management; a file or a quiz is not", () => {
+  for (const ok of ["make a reminder for the quiz tomorrow", "create a reminder to finish my slides by Friday", "create a routine that tells me about new quizzes", "prepare a study block for the presentation",
+    "make a watch for quiz grades", "set up a reminder for my Excel assignment", "add a calendar event for the PDF submission", "make me a study plan for the midterm"])
+    assert.equal(telegramDeclines(ok), false, ok);
+  for (const no of ["make slides for my presentation and remind me tomorrow", "create a quiz on chapter 4", "make me a PDF of my schedule", "make a plan document for my project", "create flashcards for chapter 5"])
+    assert.equal(telegramDeclines(no), true, no);
+});
