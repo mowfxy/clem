@@ -154,6 +154,7 @@ function VpsConnected({ status, refresh, step, files }: { status: VpsStatus; ref
 
     <Section title="Where your files live" aside={<span className="vps-pill">{toVps ? "On your VPS" : "On this PC"}</span>}>
       <Usage status={status} />
+      {toVps && s.vpsLimit && <p className="vps-fine">Using {bytes(s.vpsLimit.used)} of {bytes(s.vpsLimit.max)} on your VPS.{s.vpsLimit.heldHere ? " The rest stays on this PC." : ""}</p>}
       {moving ? <Moving m={m!} stopping={busy === "stop"} onStop={() => void run("stop", () => desktop!.invoke({ action: "vpsAbortMove" }))} />
         : <>
           {m && (m.status === "done" || m.status === "failed") && <p className={`vps-line${m.failed ? " is-warn" : ""}`}><Icon name={m.failed ? "alert" : "check"} size={14} />{m.error || `${m.done} file${m.done === 1 ? "" : "s"} moved ${m.direction === "up" ? "to your VPS" : "back to this PC"}.`}</p>}

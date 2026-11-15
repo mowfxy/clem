@@ -137,3 +137,14 @@ test("with no window, a Telegram request is carried out on the VPS and lands in 
     await rm(root, { recursive: true, force: true }).catch(() => {});
   }
 });
+
+test("the worker's loop reads and routes every GUC action, the corrections too (guc.correct, guc.resync)", async () => {
+  const { toolRequests } = await import("../desktop/kinetra-turn.ts");
+  const { isGucAction, GUC_GUIDE } = await import("../core/guc/ai-tools.ts");
+  for (const action of ["guc.correct", "guc.resync", "guc.learn", "guc.uncorrect"]) {
+    const req = toolRequests(`{"kinetra":{"action":"${action}","item":"Quiz 2","do":"remove"}}`);
+    assert.equal(req?.[0]?.action, action, action + " is a request the loop runs");
+    assert.ok(isGucAction(action), action + " goes to runGucTool, as in the window");
+  }
+  assert.match(GUC_GUIDE, /guc\.correct/, "the worker's prompt (GUC_GUIDE) tells the model about corrections");
+});
