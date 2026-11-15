@@ -11,19 +11,12 @@ export async function buildWorker(out = "worker-dist") {
   await mkdir(out, { recursive: true });
   await build({
     entryPoints: ["worker/index.ts"], outfile: join(out, "index.cjs"), bundle: true, platform: "node", format: "cjs", target: "node22",
-    external: ["pg-native", "cpu-features", "*.node", "electron", "esbuild"],
+    external: ["pg-native", "cpu-features", "*.node", "electron"],
     banner: { js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;' },
     define: { "import.meta.url": "__importMetaUrl" },
     logLevel: "warning",
   });
   for (const f of ["pglite.wasm", "pglite.data", "initdb.wasm"]) await copyFile("node_modules/@electric-sql/pglite/dist/" + f, join(out, f));
-  // Files are made on the worker as the window makes them (docs/GUC-VPS-ENGINE.md "Files on the VPS"): Kinetra's
-  // worker thread, KaTeX's print styles and the headless page's script (PDF pages and Telegram's figure photos).
-  await build({ entryPoints: ["desktop/kinetra-worker.ts"], outfile: join(out, "kinetra-worker.cjs"), bundle: true, platform: "node", format: "cjs", target: "node22", logLevel: "warning" });
-  await build({ entryPoints: ["worker/page-tasks.ts"], outfile: join(out, "page-tasks.js"), bundle: true, platform: "browser", format: "esm", target: "chrome120", minify: true, loader: { ".css": "empty" }, logLevel: "warning" });
-  await mkdir(join(out, "katex", "fonts"), { recursive: true });
-  await copyFile("node_modules/katex/dist/katex.min.css", join(out, "katex", "katex.min.css"));
-  await cp("node_modules/katex/dist/fonts", join(out, "katex", "fonts"), { recursive: true, filter: (source) => !/\.(woff|ttf)$/.test(source) });
   await cp("desktop/engine/migrations", join(out, "migrations"), { recursive: true });
   for (const f of ["Dockerfile", "docker-compose.yml", "clem-worker.service", ".dockerignore"]) await copyFile(join("worker", f), join(out, f));
   await writeFile(join(out, "package.json"), JSON.stringify({ name: "clem-worker", private: true, main: "index.cjs" }));
