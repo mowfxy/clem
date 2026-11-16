@@ -42,7 +42,7 @@ export function ChatFiles({ chat, files, onOpen, onDownload }: { chat: Chat; fil
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', key); };
   }, [open]);
   const row = (f: StoredFile) => <li key={f.id}>
-    <button type="button" className="cf-open" onClick={() => { setOpen(false); onOpen(f); }}>
+    <button type="button" className="cf-row" onClick={() => { setOpen(false); onOpen(f); }}>
       <FileGlyph file={f} size={30} />
       <span><strong>{f.name}</strong><small>{[sizeLabel(f.size), shortWhen(f.updated || f.created)].filter(Boolean).join(' · ')}</small></span>
     </button>

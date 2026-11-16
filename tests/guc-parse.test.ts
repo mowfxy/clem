@@ -212,3 +212,15 @@ test("grades and marks show at most one decimal", () => {
   assert.equal(markText("A+"), "A+");
   assert.equal(markText(null), "");
 });
+
+test("an unnumbered sitting is named for what it is: \"The quiz will take place…\" is a Quiz, never \"Deadline\"", () => {
+  const ref = new Date("2026-11-16T08:00:00Z");
+  const [q] = extractDeadlines("The quiz will take place on Monday (23/11/2026), Wednesday (25/11/2026), and Thursday (26/11/2026), according to the schedule that will be soon posted here on the CMS.", "1201:64", "announcement", ref);
+  assert.equal(q.title, "Quiz");
+  assert.equal(q.kind, "quiz");
+  assert.match(q.either || "", /Monday, Wednesday or Thursday/);
+  const [x] = extractDeadlines("The midterm exam is on 30/11/2026.", "1201:64", "announcement", ref);
+  assert.notEqual(x.title, "Deadline");
+  const [s] = extractDeadlines("Please submit the form by 20/11/2026.", "1201:64", "announcement", ref);
+  assert.equal(s.title, "Submit the form", "a submission without a sitting keeps its own name");
+});
