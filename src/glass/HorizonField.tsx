@@ -20,7 +20,7 @@ export function HorizonField({ live }: { live: boolean }) {
   useEffect(() => {
     const canvas = ref.current!, ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
-    let gone = false, photo: HTMLImageElement | null = null, daylit: HTMLCanvasElement | null = null, base: HTMLCanvasElement | null = null, pixels: Uint8ClampedArray | null = null, imgW = 0, imgH = 0, cells: Cell[] = [], cw = CELL_W, ch = CELL_H, dpr = 1, timer = 0, resize = 0;
+    let gone = false, photo: HTMLImageElement | null = null, daylit: HTMLCanvasElement | null = null, base: HTMLCanvasElement | null = null, pixels: Uint8ClampedArray | null = null, imgW = 0, imgH = 0, cells: Cell[] = [], cw = CELL_W, ch = CELL_H, dpr = 1, timer = 0, resize = 0, nap = 0, asleep = false;
     const paint = (cell: Cell, char: string) => {
       const x = Math.floor(cell.x * dpr), y = Math.floor(cell.y * dpr), width = Math.ceil(cw * dpr) + 1, height = Math.ceil(ch * dpr) + 1;
       ctx.globalAlpha = 1; ctx.clearRect(x, y, width, height);
@@ -31,6 +31,9 @@ export function HorizonField({ live }: { live: boolean }) {
     };
     const draw = () => {
       if (!pixels) return;
+      // Hidden (in the tray, or started there): drawn when the window is seen again, not into memory no one looks at.
+      if (document.hidden) { asleep = true; return; }
+      asleep = false;
       const w = window.innerWidth, h = window.innerHeight, light = document.documentElement.dataset.theme === 'light';
       dpr = Math.min(2, window.devicePixelRatio || 1);
       cw = Math.max(CELL_W, w / MAX_COLS); ch = cw * (CELL_H / CELL_W);
@@ -100,7 +103,15 @@ export function HorizonField({ live }: { live: boolean }) {
     window.addEventListener('resize', onResize);
     window.addEventListener('clem-theme', draw);
     timer = window.setInterval(twinkle, 1000 / 6);
-    return () => { gone = true; clearInterval(timer); clearTimeout(resize); window.removeEventListener('resize', onResize); window.removeEventListener('clem-theme', draw); };
+    // Half a minute out of sight (closed to the tray, minimised) lets go of the full-window bitmaps, two at up to twice
+    // the window's pixels; they are drawn again, in a few milliseconds, when the window comes back.
+    const seen = () => {
+      clearTimeout(nap);
+      if (!document.hidden) { if (asleep) draw(); return; }
+      nap = window.setTimeout(() => { if (!document.hidden || gone) return; asleep = true; cells = []; base = null; daylit = null; canvas.width = canvas.height = 0; }, 30_000);
+    };
+    document.addEventListener('visibilitychange', seen);
+    return () => { gone = true; clearInterval(timer); clearTimeout(resize); clearTimeout(nap); window.removeEventListener('resize', onResize); window.removeEventListener('clem-theme', draw); document.removeEventListener('visibilitychange', seen); };
   }, []);
   return <canvas ref={ref} className="horizon-field" aria-hidden="true" />;
 }
