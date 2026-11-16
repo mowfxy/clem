@@ -19,6 +19,21 @@ const ORGANIZER = /\b(plan(s|ning|ned)?|re-?schedul\w*|postpone|move (my|the|it)
 const ASSESSMENT = /\b(quiz(zes)?(?! me)|exams?|midterms?|finals?|tests?(?! me)|assignments?|assessments?)\b[^.?!\n]*\b(about|cover(s|ed|ing)?|includes?|weight|worth|format)\b|\bwhat('s| is| are)? on (my|the)\b/i;
 export function organizerAsk(text: string) { return ORGANIZER.test(text) || ASSESSMENT.test(text); }
 
+/** What only the main thread can do, asked in a subject or project chat (owner, 2026-11-16: "any message asked to a
+ *  normal thread that only the main thread can answer… sends a message to main thread"): reminders, watches, mutes,
+ *  routines, quiet hours, Telegram, undoing what Clem did, Coming up and deadlines, the schedule and classes, grades,
+ *  announcements, plans across the week, and what an assessment covers (read from the CMS there). Work on the material
+ *  ("explain", "make flashcards", "solve") stays in the chat; so does a slash command. */
+const MAIN_ONLY = /\b(remind(er|ers)?|alarm|wake me|watch (for|out)|keep an eye|ping me|tell me (when|if)|let me know (when|if)|notify|notifications?|mute|unmute|stop (telling|sending|pinging|notifying)|routines?|quiet hours|telegram|undo (that|it|this|what you did)|coming up|upcoming|deadlines?|due (dates?|tomorrow|today|this week|next week)|(my|the) (schedule|timetable|calendar)|my classes|classes (today|tomorrow|this week)|what('s| is) (on )?(today|tomorrow)|(this|next) week|my week|study (time|sessions?|blocks?|slots?)|revision (sessions?|slots?|time|blocks?)|re-?schedul\w*|postpone|grades?|marks?|transcript|gpa|announcements?|(cms|guc) (mail|news|posts?)|which room|what time is|when is|when's)\b/i;
+export function mainOnly(text: string) {
+  const t = text.trim();
+  if (!t || t.startsWith('/')) return false;
+  if (WORK.test(t) && !/\b(remind|mute|unmute|undo|coming up|routine|telegram)\b/i.test(t)) return false;
+  return MAIN_ONLY.test(t) || ASSESSMENT.test(t);
+}
+/** The subject chat's line when its message went to the main thread; the answer is copied back under it. */
+export const SENT_UP = "That's one for your main thread, so I sent it there. The answer will show up there and here.";
+
 /** The window hands a message off by rule only when it asks for work on the material (explain, solve, make, draw…);
  *  a plain question that names a subject stays with the main-thread AI, which reads the CMS or calls clem.handoff. */
 const WORK = /^\/\w+|\b(explain|solve|summari[sz]e|summary|make|create|generate|write|draft|draw|visuali[sz]e|plot|diagram|teach|walk me through|go (over|through)|help me|quiz me|test me|practi[cs]e|exercises?|flashcards?|slides?|pdf|outline|translate|prove|derive|calculate|compute|study guide|cheat ?sheet|worksheet)\b/i;

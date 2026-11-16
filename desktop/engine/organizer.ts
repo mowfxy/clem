@@ -17,10 +17,11 @@ import { muteFor, muteKey, muteText, slotChanges, type Change, type ChangeKind, 
 import { datedSlots, deadlineReminders, dueAt, timedItems, type Deadline } from "../../core/proactivity/rules.ts";
 import { busyList, dayLabel, studySlots, whenOf } from "../../core/proactivity/calendar.ts";
 import { agendaText, clemAction, findSpace, muteKinds, prefsText, readClemArgs, remindersText, settingsText, type ReminderRow } from "../../core/proactivity/tools.ts";
-import { deadlineText, plainText, reminderText, type SayContext } from "../../core/proactivity/say.ts";
+import { deadlineText, plainText, REMINDER_SYSTEM, reminderText, type SayContext } from "../../core/proactivity/say.ts";
 import { cairoAt, delivery, inQuiet, jobCron, JOB_KINDS, mergePro, proPatch, OUTWARD, quietEnd, readPro, type Channel, type JobKind, type ProPatch, type ProSettings } from "../../core/proactivity/settings.ts";
 import { snapshotOf, type Snapshot } from "../../core/proactivity/snapshot.ts";
-import { planSweep, readReply, sweepMessages, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
+import { grounded, planSweep, readReply, sweepMessages, type RatedChange, type SweepKind } from "../../core/proactivity/sweep.ts";
+import { parseModelJson } from "../../core/model-json.ts";
 import { live, parseWatch, type Watch } from "../../core/proactivity/watches.ts";
 import { cronTooOften, describeTrigger, matchChange, pageText, readRoutineReply, ROUTINE_SYSTEM, routineInput, routineLive, type Routine, type RoutineChange, type RoutineInput, type Trigger } from "../../core/proactivity/routines.ts";
 import type { Db } from "./db.ts";
@@ -363,6 +364,29 @@ export class Organizer {
         if (!(await this.record(r.key, "reminder", { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said"))) continue;
         said.push({ ...r, text });
       }
+      // The organizer's AI writes them (owner, 2026-11-16: "I want AI itself to do it, not automated reminders"): it sees
+      // what Clem told them lately and what's on, says each in its own words, folds two into one, or says nothing when it
+      // already told them. Without a model, or an answer it can't stand behind, the plain sentence stays.
+      if (said.length && this.host.complete) {
+        try {
+          const recent = await this.db.query<{ content: string; created_at: Date }>("select content, created_at from organizer_posts where owner_id = $1 and created_at > $2 order by created_at", [this.owner, new Date(now - 36 * 3600e3)]);
+          const context = await this.routineContext().catch(() => "");
+          const user = `Now: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nReminders due (facts):\n${said.map((r, i) => `${i}. ${r.text}`).join("\n")}\n\nWhat you told them in the last 36 hours:\n${recent.map((p) => `- ${cairo(ms(p.created_at)).ymd} ${cairo(ms(p.created_at)).time}: ${p.content.replace(/\s+/g, " ").slice(0, 300)}`).join("\n") || "(nothing)"}\n\nTheir next days:\n${context}`;
+          const reply = await this.host.complete({ system: REMINDER_SYSTEM, user, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning });
+          const items = (parseModelJson(reply) as { items?: { i?: number; say?: string | null }[] } | null)?.items;
+          if (Array.isArray(items)) {
+            const facts = said.map((r) => r.text).join("\n") + "\n" + context;
+            const kept: typeof said = [];
+            for (const [i, r] of said.entries()) {
+              const it = items.find((x) => x?.i === i);
+              if (it && it.say === null) { await this.record(r.key + ":quiet", "reminder", { type: "note", kind: "info", text: `${r.deadline.title}: already told, not reminded again` }, `Skipped a repeat reminder for ${r.deadline.title}`.slice(0, 300), "skipped"); continue; }
+              const text = typeof it?.say === "string" ? it.say.replace(/\*\*|__|`/g, "").trim().slice(0, 600) : "";
+              kept.push(text && grounded(text, facts) ? { ...r, text } : r);
+            }
+            said.splice(0, said.length, ...kept);
+          }
+        } catch (e) { this.host.log("warn", "[organizer] reminder words: " + (e as Error).message); }
+      }
       const tight = said.some((r) => r.hours <= 3);
       // A click opens the message itself.
       if (said.length && delivery(s, { news: true, urgent: tight }).post) for (const r of said) {
@@ -645,6 +669,8 @@ export class Organizer {
     if (r.trigger.type === "schedule" && cronTooOften(r.trigger.cron)) return { error: "That schedule runs more often than every 15 minutes. Use a \"change\" trigger to hear about GUC news the moment it lands, or a slower schedule." };
     if (r.trigger.type === "at") { const at = whenOf(r.trigger.at, this.clock()); if (at === null) return { error: `"${r.trigger.at}" isn't a future time Clem can read.` }; r.trigger = { type: "at", at: new Date(at).toISOString() }; }
     if (!r.tell && !r.post) return { error: "A routine must tell the person (\"tell\": true) or post somewhere (\"post\")." };
+    // Telling them about GUC changes is what Clem does by itself, judged and in its own words: a routine would repeat it.
+    if (r.trigger.type === "change" && !r.post) return { error: "Clem already reads every GUC change and tells the person what matters in its own words, so this routine would only repeat it. Don't make one: say you're on it, and use clem.watch for something specific they want to hear about." };
     const [{ n }] = await this.db.query<{ n: number }>("select count(*)::int as n from organizer_routines where owner_id = $1 and not stopped", [this.owner]);
     if (n >= 50) return { error: "There are already 50 routines running. Stop some first (clem.routines lists them)." };
     const secret = r.trigger.type === "webhook" ? randomBytes(24).toString("base64url") : null;
@@ -664,6 +690,8 @@ export class Organizer {
     if (r.trigger.type === "at") await this.jobs.send("organizer.routine", { id: r.id }, { startAfter: Math.max(1, Math.ceil((Date.parse(r.trigger.at) - this.clock()) / 1000)) });
   }
   private async armRoutines() {
+    // Routines made to "tell me when GUC changes" (before Clem refused them) only repeat Clem's own news: stopped once.
+    await this.db.query("update organizer_routines set stopped = true, last_result = 'stopped: Clem tells this news itself' where owner_id = $1 and not stopped and routine->'trigger'->>'type' = 'change' and coalesce(routine->>'post', '') = ''", [this.owner]);
     const live = (await this.routines()).filter((r) => r.live);
     const have = new Set(((await this.jobs?.schedules("organizer.routine").catch(() => [])) || []).map((x: { key?: string }) => x.key));
     for (const r of live) if (r.trigger.type === "schedule" && !have.has(r.id)) await this.armRoutine(r);
@@ -725,7 +753,9 @@ export class Organizer {
     const row = await this.routineRow(id);
     if (!row || row.stopped || !row.routine.tell || !row.routine.think) return null;
     const r = row.routine, now = this.clock(), context = await this.routineContext().catch(() => "");
-    return { system: ROUTINE_SYSTEM, user: `Routine: ${r.title}\nIts instructions: ${r.instructions || "Tell the person what happened, briefly."}\nTriggered: ${describeTrigger(r.trigger)}\nNow: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nEvent:\n${JSON.stringify(event).slice(0, 8000)}\n\nContext:\n${context}` };
+    // What it said last run, so it says nothing rather than the same thing again.
+    const last = row.state as { said?: string; saidAt?: number } | null, at = cairo(last?.saidAt || now);
+    return { system: ROUTINE_SYSTEM, user: `Routine: ${r.title}\nIts instructions: ${r.instructions || "Tell the person what happened, briefly."}\nTriggered: ${describeTrigger(r.trigger)}\nNow: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nEvent:\n${JSON.stringify(event).slice(0, 8000)}\n\nContext:\n${context}${last?.said ? `\n\nLast time you told them (${at.ymd} ${at.time}): ${last.said}` : ""}` };
   }
   /** `reply`: the model's answer written elsewhere (the laptop's AI for a run asked in the app), used instead of asking here. */
   async runRoutine(id: string, event: { kind: string; [k: string]: unknown } = { kind: "manual" }, o: { reply?: string } = {}) {
@@ -742,6 +772,10 @@ export class Organizer {
         catch (e) { this.host.log("warn", "[routine] model: " + (e as Error).message); say = plainRoutine(r, event); }
       } else say = plainRoutine(r, event);
     }
+    // The same words as last time say nothing new (a schedule routine without a model repeats itself): not sent again.
+    const before = (row.state as { said?: string } | null)?.said;
+    if (say && before && say.trim() === before.trim()) say = null;
+    if (say) await this.db.query("update organizer_routines set state = coalesce(state, '{}'::jsonb) || $3 where owner_id = $1 and id = $2", [this.owner, id, { said: say.slice(0, 1500), saidAt: now }]);
     let posted = "";
     if (r.post) {
       try {

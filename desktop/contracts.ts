@@ -39,7 +39,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("vpsGenerateKey") }),
   z.object({ action: z.literal("vpsPasteKey"), privateKey: z.string().min(40).max(20_000), passphrase: z.string().max(200).optional() }),
   z.object({ action: z.literal("vpsTest") }),
-  z.object({ action: z.literal("vpsCli"), cli: z.enum(["claude", "codex"]) }),
+  z.object({ action: z.literal("vpsCli"), cli: z.enum(["claude", "codex", "gemini"]).optional() }),
   z.object({ action: z.literal("vpsCliCode"), code: z.string().trim().min(4).max(2000) }),
   z.object({ action: z.literal("vpsForget") }),
   z.object({ action: z.literal("vpsCopies"), on: z.boolean() }),

@@ -1,6 +1,6 @@
 // The model on the VPS worker (docs/GUC-VPS-ENGINE.md "Model on the VPS"), in order: an API key the person typed for
 // the worker (Clem never reads keys from their CLIs), else a CLI Clem installed and signed in to on the VPS from Settings
-// (or one they put there themselves: `claude` or `codex`), else none: sweeps run on rules alone and Telegram stays with the desktop.
+// (or one they put there themselves: `claude`, `codex` or `gemini`), else none: sweeps run on rules alone and Telegram stays with the desktop.
 // The agent that answers with it is desktop/engine/vps/agent.ts (the window's loop, actions and workspace).
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
@@ -35,15 +35,19 @@ const run = (cmd: string, args: string[], input: string, timeout = 180_000, env:
 export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return { ...base, HOME: join(data, "home"), CLAUDE_CONFIG_DIR: join(data, "claude"), CODEX_HOME: join(data, "codex"), PATH: join(data, "cli", "node_modules", ".bin") + delimiter + (base.PATH || "") };
 }
-/** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), else Codex (`codex exec -`). The one Clem
+/** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), Codex (`codex exec -`) or Gemini (`gemini -p`). The one Clem
  *  installed under `data` (and signed in to from Settings) first, else one the person put on the server's PATH. */
 export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; complete: Complete } | undefined> {
   const probe = o.probe || ((cmd: string, env: NodeJS.ProcessEnv) => run(cmd, ["--version"], "", 10_000, env).then(() => true, () => false));
   const own = o.data ? ownCliEnv(o.data) : undefined;
   const has = (cmd: string) => (own ? existsSync(join(o.data!, "cli", "node_modules", ".bin", cmd)) : false);
-  for (const name of ["claude", "codex"] as const) {
+  // The one Clem signed in on this server comes first (only that one has a sign-in under `data`), then one on PATH.
+  const order = (["claude", "codex", "gemini"] as const).slice().sort((a, b) => Number(has(b)) - Number(has(a)));
+  for (const name of order) {
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env))) continue;
+    // Gemini CLI: the prompt comes on stdin (it reads stdin, then the -p text); answers in plain text, no tools asked.
+    if (name === "gemini") return { name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, { ...env, NO_BROWSER: "true" }) };
     return name === "claude"
       // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
       ? { name, complete: ({ system, user }) => system.length > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) }

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeCode, claudeSignIn, cliSignedIn, codexSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
+import { claudeCode, claudeSignIn, cliSignedIn, codexSignIn, geminiCode, geminiSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
 import { cliComplete, ownCliEnv } from "../desktop/engine/vps/headless.ts";
 import type { LiveCommand } from "../desktop/engine/vps/link.ts";
 import { FakeVps } from "./vps-fake.ts";
@@ -13,7 +13,7 @@ import { FakeVps } from "./vps-fake.ts";
 class Server extends FakeVps {
   typed: string[] = []; lines: string[] = []; wait?: RegExp; ptys: boolean[] = []; status = "";
   override async exec(cmd: string, o: { cap?: number } = {}) {
-    if (/auth status|login status/.test(cmd)) { this.commands.push(cmd); return { code: this.status ? 0 : 1, stdout: this.status, stderr: "" }; }
+    if (/auth status|login status|oauth_creds/.test(cmd)) { this.commands.push(cmd); return { code: this.status ? 0 : 1, stdout: this.status, stderr: "" }; }
     return super.exec(cmd, o);
   }
   async interactive(cmd: string, o: { pty?: boolean } = {}): Promise<LiveCommand> {
@@ -97,5 +97,38 @@ test("the worker prefers the CLI Clem installed, with its own sign-in folders", 
     assert.equal((await cliComplete({ data, probe: probe2 }))?.name, "claude");
     assert.equal(seen[0].env.CLAUDE_CONFIG_DIR, ownCliEnv(data).CLAUDE_CONFIG_DIR);
     assert.equal(seen[0].env.HOME, join(data, "home"));
+  } finally { await rm(data, { recursive: true, force: true }); }
+});
+
+test("Gemini installs from Google's package and signs in through a window here: the page's code goes to the server", async () => {
+  const s = new Server();
+  await installCli(s, "docker", "u1", "gemini");
+  assert.match(s.commands.at(-1)!, /@google\/gemini-cli@latest/);
+  assert.equal(geminiCode("https://codeassist.google.com/authcode?code=4%2F0Abc&state=x"), "4/0Abc");
+  assert.equal(geminiCode("https://evil.example/authcode?code=a"), null);
+  assert.equal(geminiCode("https://accounts.google.com/o/oauth2/v2/auth?code=a"), null);
+  // The link wraps across the terminal's lines; Clem joins it.
+  s.lines = ["Please visit the following URL to authorize the application:\n\nhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=x&\nstate=abc\n\n", "Enter the authorization code: "];
+  s.wait = /CODE123/;
+  let landed!: (url: string) => void, closed = false;
+  const c = await geminiSignIn(s, "docker", "u1", (_url, l) => { landed = l; return () => { closed = true; }; });
+  assert.equal(c.url, "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=x&state=abc");
+  assert.ok(s.commands.some((x) => /NO_BROWSER=true gemini/.test(x)));
+  assert.ok(s.commands.some((x) => /oauth-personal/.test(x)), "Sign in with Google is chosen up front");
+  landed("https://codeassist.google.com/authcode?code=CODE123&state=abc");
+  assert.deepEqual(s.typed, ["CODE123\r"]);
+  assert.equal(await c.done, false); // the fake server never saved a sign-in
+  assert.equal(closed, true);
+});
+
+test("the worker answers with Gemini when that is the CLI Clem signed in on the server", async () => {
+  const data = await mkdtemp(join(tmpdir(), "clem-cli-"));
+  try {
+    await mkdir(join(data, "cli", "node_modules", ".bin"), { recursive: true });
+    await writeFile(join(data, "cli", "node_modules", ".bin", "gemini"), "");
+    const seen: string[] = [];
+    const probe = async (cmd: string) => { seen.push(cmd); return true; };
+    assert.equal((await cliComplete({ data, probe }))?.name, "gemini");
+    assert.equal(seen[0], "gemini", "Clem's own sign-in comes before a CLI on the server's PATH");
   } finally { await rm(data, { recursive: true, force: true }); }
 });

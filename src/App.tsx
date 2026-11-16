@@ -58,7 +58,7 @@ import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
 import {carriedNote} from '../core/main-thread/route';
-import {handsOff,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtMessage} from '../core/main-thread/handoff';
+import {handsOff,mainOnly,SENT_UP,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtMessage,broughtText} from '../core/main-thread/handoff';
 import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
 import type {GucNow} from '../core/guc/ai-tools';
 // Recall (MiniSearch) loads with the first main-thread turn, not with the window.
@@ -111,7 +111,7 @@ type Carry = { attachments: string[]; drive: DriveItem[] };
  *  handed to a subject's chat, the note of what came before. */
 /** `into`: a hand-off's new subject or project chat (core/main-thread/handoff.ts). The turn runs there in the background,
  *  on that chat's own model, while the person stays where they are; its result comes back to the main thread. */
-type Turn = { mentions?: string[]; carried?: string; into?: { id: string; spaceId: string; model: string; reasoning?: string } };
+type Turn = { mentions?: string[]; carried?: string; into?: { id: string; spaceId: string | null; model: string; reasoning?: string } };
 /** A hand-off running in its subject or project chat: where its result goes when it ends (the main thread). Telegram
  *  never hands off: it is the main thread for managing the day and term (src/telegram/thread.ts). */
 type Handoff = { chat: string; main: string; space: string; name: string };
@@ -1028,6 +1028,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   // in the background: the person stays in the main thread, which gets a card linking to the chat now and the chat's
   // answer and files when it ends.
   const handoffRuns = useRef(new Map<string, Handoff>());
+  /** Messages a subject or project chat sent up to the main thread (core/main-thread/handoff.ts mainOnly): the main
+   *  thread's turn, keyed by the main thread, and the chat its answer is copied back to. */
+  const sentUp = useRef(new Map<string, { from: string }>());
   const handoffQueue = useRef<{ prompt: string; carry: Carry; turn: Turn }[]>([]);
   const [handoffTick, setHandoffTick] = useState(0);
   /** `ask`: the person's message goes into the main thread with the card (a hand-off by the rules, before any answer);
@@ -1060,6 +1063,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   }
   /** A hand-off's chat finished: its answer and files come back to the main thread as one plain message. */
   function finishHandoff(chatId: string) {
+    // A message a subject chat sent up: the main thread's answer is copied back there, as plain words.
+    const up = sentUp.current.get(chatId);
+    if (up) {
+      sentUp.current.delete(chatId);
+      const last = stateRef.current.chats.find((c) => c.id === chatId)?.messages.at(-1), now = Date.now();
+      const text = last?.role === "assistant" ? broughtText(last.content, "your main thread") : "";
+      if (text) patch((s) => ({ ...s, chats: s.chats.map((c) => c.id === up.from ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "assistant" as const, content: text, at: now }] } : c) }));
+      return;
+    }
     const h = handoffRuns.current.get(chatId);
     if (!h) return;
     handoffRuns.current.delete(chatId);
@@ -1297,6 +1309,21 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       openMain(false);
       drafts.current.set(main.id, ""); if (override === undefined) setDraft("");
       setQueued({ prompt, chat: main.id, carry: { attachments: carry?.attachments ?? attachments, drive: carry?.drive ?? driveRefs }, turn: { ...turn, mentions: mentionIds } });
+      return;
+    }
+    // A subject or project chat asked something only the main thread can do (a reminder, a mute, Coming up, the
+    // schedule, grades…): the message goes to the main thread, which answers with its tools, and the answer is copied
+    // back here. The person stays in this chat.
+    if (!into && activeChat && activeChat.kind !== "main" && !activeChat.setup && !activeChat.temporary && !temporaryNext && !long && !isVisual
+      && main && main.id !== activeChat.id && !(main.id in runs) && !files.length && !pickedDrive.length && !pointers.length && mainOnly(prompt)) {
+      const now = Date.now(), where = viewSpace?.name || stateRef.current.spaces.find((x) => x.id === activeChat.spaceId)?.name || "";
+      updateChat(activeChat.id, (c) => ({ ...c, updated: now, messages: [...c.messages, { id: uid(), role: "user" as const, content: prompt, at: now }, { id: uid(), role: "assistant" as const, content: SENT_UP, at: now }] }));
+      sentUp.current.set(main.id, { from: activeChat.id });
+      const organizer = stateRef.current.organizer?.model && modelsRef.current.some((m) => m.id === stateRef.current.organizer!.model && m.connected) ? stateRef.current.organizer.model : defaultModel;
+      handoffQueue.current.push({ prompt, carry: { attachments: [], drive: [] }, turn: { carried: `The person asked this in their ${where ? where + " " : ""}chat; it was sent here because it's yours to do. Do it with your tools and answer as usual (your answer is shown in that chat too).`, into: { id: main.id, spaceId: null, model: organizer, reasoning: stateRef.current.organizer?.reasoning } } });
+      setHandoffTick((n) => n + 1);
+      if (override === undefined) { setDraft(""); drafts.current.delete(activeChat.id); }
+      setMentions([]); setAttachments([]); setDriveRefs([]); setAttach(false);
       return;
     }
     // In the main thread a task on the material of one clearly named (or @mentioned) subject or project goes to a new
@@ -1802,7 +1829,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
         // Only the Drive files the reply links are kept (names and ids; contents are never stored).
         messages: c.messages.map((m) => m.id === messageId ? { ...m, content: named.content, at: Date.now(), ...(done ? { work: done.work } : {}),...("chapter" in named && named.chapter ? { chapter: named.chapter } : {}), ...(m.drive ? { drive: m.drive.filter((d) => linkedDriveIds(named.content).includes(d.id)) } : {}) } : m),
       }));
-      if (!isVisual) applyPlanUpdates(id, messageId, named.content, chat.spaceId);
+      if (!isVisual) applyPlanUpdates(id, messageId, named.content, chat.spaceId, chat.kind === "main");
       if (!isVisual && desktop && named.content.includes("settings_update")) void gucSetup.applyUpdates(named.content, activeSpace?.id ?? chat.spaceId);
       const run = readCommand(prompt)?.command.id;
       if (run === "compact") updateChat(id, (c) => ({ ...c, messages: c.messages.map((m) => m.id === messageId ? { ...m, compact: true } : m) }));
@@ -1987,12 +2014,16 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
     return result;
   }
   /** A finished reply's plan updates apply at once (with Undo on their cards); new, replacing and deleting plans wait for the person. */
-  function applyPlanUpdates(chatId:string,messageId:string,content:string,here:string|null){
+  // New plans wait too, except in the main thread, where the person asked in words: a plan for a subject or project that
+  // has none yet is saved at once into its Plan tab (core/main-thread/guide.ts MAIN_PLANS); one over an existing plan waits.
+  function applyPlanUpdates(chatId:string,messageId:string,content:string,here:string|null,main=false){
     if(!content.includes('```plan'))return;
     const done=stateRef.current.chats.find(c=>c.id===chatId)?.messages.find(m=>m.id===messageId)?.edits||{};
     const outcomes:Record<string,EditOutcome>={};
     for(const {key,block} of planBlocksIn(content)){
-      if(!block||block.action!=='update'||done[key])continue;
+      if(!block||done[key])continue;
+      const fresh=main&&block.action==='create'&&!plansNow().some(p=>p.spaceId===resolveSpace(block,stateRef.current.spaces,here));
+      if(block.action!=='update'&&!fresh)continue;
       const r=commitPlan(block,here);
       outcomes[key]=r.ok?{status:'applied',changeId:r.changeId,...(r.note?{error:r.note}:{})}:{status:'failed',error:r.error};
     }
