@@ -65,7 +65,7 @@ export class VpsManager {
   private routerJob?: Promise<StorageRouter>;
   private migrator?: Migrator;
   private client?: WorkerClient; private tunnel?: { port: number; close(): void };
-  private lastWorker = 0; private workerRunner = false; private workerModel: WorkerView["model"] = "none"; private workerError?: string;
+  private lastWorker = 0; private workerRunner = false; private workerModel: WorkerView["model"] = "none"; private workerError?: string; private workerAiError?: string;
   private beat?: ReturnType<typeof setInterval>;
   private lastTest?: VpsTest; private online?: boolean;
   private pushTimer?: ReturnType<typeof setTimeout>;
@@ -395,6 +395,7 @@ export class VpsManager {
       this.lastWorker = lease.seen.worker || 0;
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
+      this.workerAiError = typeof health.aiError === "string" && health.aiError ? health.aiError.slice(0, 200) : undefined;
       this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
       // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
       if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
@@ -586,7 +587,7 @@ export class VpsManager {
     if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
-    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
+    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.workerAiError && v.worker?.enabled ? { aiError: this.workerAiError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }
   async close() { this.stopHeartbeat(); if (this.pushTimer) clearTimeout(this.pushTimer); await this.migrator?.abort().catch(() => {}); await this.drop(); }

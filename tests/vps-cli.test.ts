@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeCode, claudeSignIn, cliSignedIn, codexSignIn, geminiCode, geminiSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
-import { cliComplete, ownCliEnv } from "../desktop/engine/vps/headless.ts";
+import { aiReason, cliComplete, geminiEnv, ownCliEnv, watchedComplete } from "../desktop/engine/vps/headless.ts";
 import type { LiveCommand } from "../desktop/engine/vps/link.ts";
 import { FakeVps } from "./vps-fake.ts";
 
@@ -131,4 +131,31 @@ test("the worker answers with Gemini when that is the CLI Clem signed in on the 
     assert.equal((await cliComplete({ data, probe }))?.name, "gemini");
     assert.equal(seen[0], "gemini", "Clem's own sign-in comes before a CLI on the server's PATH");
   } finally { await rm(data, { recursive: true, force: true }); }
+});
+
+test("a failing AI is told in one short line, whichever CLI it is", () => {
+  const gemini = "Error authenticating: FatalAuthenticationError: Manual authorization is required but the current session is non-interactive.\n    at initOauthClient (file:///x.js:1:1)\n{\n  exitCode: 41\n}";
+  assert.match(aiReason(gemini), /^Error authenticating: .*Manual authorization is required/);
+  assert.equal(aiReason("Invalid API key · Fix external API key"), "Invalid API key · Fix external API key");
+  assert.match(aiReason("ERROR: Reconnecting... 1/5\nERROR: unexpected status 401 Unauthorized"), /^ERROR/);
+  assert.equal(aiReason(""), "it failed without saying why");
+  assert.ok(aiReason("x".repeat(500)).length <= 180);
+});
+
+test("the worker keeps its AI's last failure until an answer works again (shown instead of \"AI signed in\")", async () => {
+  let fail = true;
+  const w = watchedComplete(async () => { if (fail) throw Error("Invalid API key · Fix external API key"); return "ok"; });
+  assert.equal(w.error(), undefined);
+  await assert.rejects(w.complete({ system: "s", user: "u" }));
+  assert.equal(w.error(), "Invalid API key · Fix external API key");
+  fail = false;
+  assert.equal(await w.complete({ system: "s", user: "u" }), "ok");
+  assert.equal(w.error(), undefined);
+});
+
+test("Gemini runs headless in the worker's folder: trusted, no browser (else it stops with exit 55 on every answer)", () => {
+  const env = geminiEnv({ HOME: "/data/home", PATH: "/bin" });
+  assert.equal(env.GEMINI_CLI_TRUST_WORKSPACE, "true");
+  assert.equal(env.NO_BROWSER, "true");
+  assert.equal(env.HOME, "/data/home");
 });

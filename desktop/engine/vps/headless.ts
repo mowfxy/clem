@@ -35,6 +35,24 @@ const run = (cmd: string, args: string[], input: string, timeout = 180_000, env:
 export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return { ...base, HOME: join(data, "home"), CLAUDE_CONFIG_DIR: join(data, "claude"), CODEX_HOME: join(data, "codex"), PATH: join(data, "cli", "node_modules", ".bin") + delimiter + (base.PATH || "") };
 }
+/** A model failure as one short line for Settings: the CLI's last meaningful line (stack frames and colour codes left out). */
+export function aiReason(message: string): string {
+  const lines = String(message || "").replace(/\x1b\[[0-9;]*m/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^at\s|^\{$|^\}$|^exitCode:/.test(l));
+  return (lines.find((l) => /error|not |can't|cannot|required|denied|expired|invalid|limit|log ?in|sign/i.test(l)) || lines[0] || "it failed without saying why").slice(0, 180);
+}
+/** The worker's model, its last failure kept (one short line) until an answer works again. */
+export function watchedComplete(base: Complete, log?: (m: string) => void): { complete: Complete; error: () => string | undefined } {
+  let last: string | undefined;
+  return {
+    complete: async (r) => {
+      try { const out = await base(r); last = undefined; return out; }
+      catch (e) { last = aiReason((e as Error)?.message); log?.("[worker] ai: " + last); throw e; }
+    },
+    error: () => last,
+  };
+}
+/** How the worker runs Gemini headless: no browser, and its working folder trusted (see cliComplete). */
+export const geminiEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({ ...env, NO_BROWSER: "true", GEMINI_CLI_TRUST_WORKSPACE: "true" });
 /** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), Codex (`codex exec -`) or Gemini (`gemini -p`). The one Clem
  *  installed under `data` (and signed in to from Settings) first, else one the person put on the server's PATH. */
 export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; complete: Complete } | undefined> {
@@ -47,7 +65,10 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env))) continue;
     // Gemini CLI: the prompt comes on stdin (it reads stdin, then the -p text); answers in plain text, no tools asked.
-    if (name === "gemini") return { name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, { ...env, NO_BROWSER: "true" }) };
+    // Headless, it refuses to run in a folder no one trusted (exit 55, "not running in a trusted directory"), and the
+    // worker's folder never is: trusting it by the environment works on every version (older ones ignore it; the
+    // --skip-trust flag would fail on them).
+    if (name === "gemini") return { name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, geminiEnv(env)) };
     return name === "claude"
       // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
       ? { name, complete: ({ system, user }) => system.length > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) }

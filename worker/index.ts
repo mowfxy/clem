@@ -9,7 +9,7 @@ import { openPgliteRepairing, openPostgres, type Backend } from "../desktop/engi
 import type { EngineHost } from "../desktop/engine/host.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { DeviceStore } from "../desktop/engine/storage.ts";
-import { apiComplete, cliComplete, type Complete, type ModelKey } from "../desktop/engine/vps/headless.ts";
+import { apiComplete, cliComplete, watchedComplete, type Complete, type ModelKey } from "../desktop/engine/vps/headless.ts";
 import { PENDING_SENDS, WorkerAgent, type PendingSend } from "../desktop/engine/vps/agent.ts";
 import { LocalLink } from "../desktop/engine/vps/local-link.ts";
 import { SshLink, type VpsLink } from "../desktop/engine/vps/link.ts";
@@ -46,9 +46,13 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
   // The model: an API key typed for the worker, else a CLI signed in on this server, else rules only.
   const modelKey = o.complete ? undefined : await secrets.get<ModelKey>("model");
   const cli = modelKey || o.complete ? undefined : await cliComplete({ data });
-  const complete: Complete | undefined = o.complete || (modelKey ? apiComplete(modelKey) : cli?.complete);
+  const base: Complete | undefined = o.complete || (modelKey ? apiComplete(modelKey) : cli?.complete);
   const model = modelKey ? "api" : cli || o.complete ? "cli" : "none";
   log("info", `[worker] model: ${model}${cli ? " (" + cli.name + ")" : ""}`);
+  // Whatever the AI (Claude Code, Codex, Gemini or a key), its last failure is kept until an answer works, and the PC
+  // shows it in place of "AI signed in": a CLI that is signed in but can't answer is never silent again.
+  const watched = base && watchedComplete(base, (m) => log("warn", m));
+  const complete: Complete | undefined = watched?.complete;
 
   const notices: { key: string; title: string; body: string; open?: object }[] = [];
   const hookPort = Number(env.CLEM_HOOK_PORT || 7718);
@@ -207,7 +211,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       },
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
-      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
+      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, ...(watched?.error() ? { aiError: watched.error() } : {}), db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
         copiesWish: (await state.get<boolean>("copies-wish").catch(() => undefined)) ?? null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:") || i.item.startsWith("pc:")).length,
         pendingSends: ((await state.get<PendingSend[]>(PENDING_SENDS).catch(() => undefined)) || []).length }),
       notices: () => notices.splice(0),

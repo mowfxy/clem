@@ -155,7 +155,8 @@ function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: (
       {busy === "worker-on" ? <Status spin>{step || "Setting up your VPS…"}</Status>
         : busy === "worker-off" ? <Status spin>Turning off…</Status>
         : w.error ? <Status warn>{w.error}</Status>
-        : w.enabled ? <Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
+        : w.enabled && w.runner === "worker" && w.aiError ? <Status warn>{`The AI on your VPS can't answer: ${w.aiError}`}</Status>
+        : w.enabled ?<Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
         : <Status>GUC checks, reminders and your main thread on Telegram keep going while this PC is off.</Status>}
       <SettingRow title="Keep a copy of my files on the VPS" description={copies && s.vpsLimit ? `${bytes(s.vpsLimit.used)} of ${bytes(s.vpsLimit.max)} used on your VPS` : "This PC keeps them either way."}>
         <Switch checked={copies} label="Keep a copy of my files on the VPS" disabled={!!busy} onChange={(v) => void run(v ? "copies-on" : "copies-off", () => desktop!.invoke({ action: "vpsCopies", on: v }))} />
@@ -182,11 +183,12 @@ function ServerAi({ w }: { w: VpsStatus["worker"] }) {
   // Clem picks the AI this PC uses (Gemini, Claude or ChatGPT): a retry never repeats one the person doesn't use.
   const start = () => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli" }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
   const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
-  if (w.model === "cli" && !s) return null;
+  // Signed in and answering: nothing to show. Signed in but failing (w.aiError): "Try again" signs it in once more.
+  if (w.model === "cli" && !s && !w.aiError) return null;
   return <div className="vps-ai">
     {!s || s.step === "failed" ? <>
       {s?.error && <Status warn>{s.error}</Status>}
-      <Act className="secondary vps-small" label={s ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={start} />
+      <Act className="secondary vps-small" label={s || w.aiError ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={start} />
     </> : s.step === "installing" ? <Status spin>Installing {name} on your VPS…</Status>
       : s.step === "finishing" ? <Status spin>Signed in. Restarting…</Status>
       : s.cli === "codex" ? <div className="provider-challenge cx-challenge">
