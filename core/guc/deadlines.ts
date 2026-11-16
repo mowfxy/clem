@@ -128,8 +128,11 @@ const sentences = (text: string) => text.split(/(?<=[.!?])\s+(?=[A-Z(])|\n+/).ma
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, s.lastIndexOf(" ", n - 1) > n / 2 ? s.lastIndexOf(" ", n - 1) : n - 1).replace(/[\s,;:.-]+$/, "") + "…" : s);
 type Ranked = GucDeadline & { rank: number };
 
-/** A deadline the post doesn't name: "Submit the form", else "Submission" or "Deadline". Never the sentence. */
+/** A deadline the post doesn't number: "The quiz will take place on …" is a Quiz (an exam an Exam), else "Submit the
+ *  form", "Submission" or "Deadline". Never the sentence. */
 function unnamed(sentence: string) {
+  const sitting = /\b(?:the|a|an|our|your|next|upcoming)\s+(?:(in[- ]class)\s+)?(quiz|exam)\b/i.exec(sentence);
+  if (sitting) return label(sitting[1], sitting[2]);
   const m = /\b(?:submit|hand(?:ed)?[- ]?in|deliver|upload|fill(?:[- ]in| out)?)\s+((?:(?:your|the|their|a|an|all)\s+)?[a-z][a-z' -]{2,40}?)\s+(?:by|before|on|to|until|till|no later|via|through|is|are)\b/i.exec(sentence);
   const what = m?.[1].trim().replace(/\s+/g, " ");
   if (what && what.split(" ").length <= 4 && !/^(it|them|this|that|these|those)$/i.test(what)) return "Submit " + what.toLowerCase().replace(/^their /, "your ");

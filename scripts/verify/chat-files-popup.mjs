@@ -88,6 +88,9 @@ try {
   await page.waitForTimeout(450);
   check(await card.getByText("Made by Clem").isVisible() && await card.getByText("Week 3 worksheet.pdf").isVisible(), "made file listed");
   check(await card.getByText("Sent by you").isVisible() && await card.getByText("Circuits lecture 4.txt").isVisible(), "sent file listed");
+  // Nothing in the card sits on anything else (the composer's .cf-open once made every row absolute).
+  const boxes = await card.locator("h3, li").evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.top, r.bottom]; }));
+  check(boxes.every(([, bottom], i) => i === boxes.length - 1 || bottom <= boxes[i + 1][0] + 0.5) && await card.locator("li").evaluateAll((els) => els.every((e) => e.scrollHeight <= e.clientHeight + 1)), "headings and rows stack without overlapping");
   await page.screenshot({ path: `${out}/popup.png` });
   await page.screenshot({ path: `${out}/popup-close.png`, clip: { x: 900, y: 0, width: 540, height: 420 } });
   await page.keyboard.press("Escape");
