@@ -174,18 +174,19 @@ function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: (
   </div>;
 }
 
-/** The AI on the server (Claude Code or Codex, the one this PC uses), set up by the switch; here only its progress,
+/** The AI on the server (Gemini, Claude Code or Codex: the one this PC uses), set up by the switch; here only its progress,
  *  the one sign-in, and a retry. */
 function ServerAi({ w }: { w: VpsStatus["worker"] }) {
   const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false), [sent, setSent] = useState(false);
-  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : "Claude";
-  const start = (cli: "claude" | "codex") => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli", cli }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
+  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : s?.cli === "gemini" ? "Gemini" : "Claude";
+  // Clem picks the AI this PC uses (Gemini, Claude or ChatGPT): a retry never repeats one the person doesn't use.
+  const start = () => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli" }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
   const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
   if (w.model === "cli" && !s) return null;
   return <div className="vps-ai">
     {!s || s.step === "failed" ? <>
       {s?.error && <Status warn>{s.error}</Status>}
-      <Act className="secondary vps-small" label={s ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={() => start(s?.cli || "claude")} />
+      <Act className="secondary vps-small" label={s ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={start} />
     </> : s.step === "installing" ? <Status spin>Installing {name} on your VPS…</Status>
       : s.step === "finishing" ? <Status spin>Signed in. Restarting…</Status>
       : s.cli === "codex" ? <div className="provider-challenge cx-challenge">
@@ -195,8 +196,9 @@ function ServerAi({ w }: { w: VpsStatus["worker"] }) {
         <p className="provider-wait"><Icon name="hourglass" size={14} />Waiting for your account…</p>
       </div>
       : <div>
-        <Status spin>Sign in to Claude in the window that opened.</Status>
+        <Status spin>Sign in to {name} in the window that opened.</Status>
         <details className="vps-advanced"><summary>Got a code instead?</summary>
+          {s.url && <p className="vps-fine">If the window won't sign you in, <a href={s.url} target="_blank" rel="noreferrer">open the page in your browser</a> and paste the code it shows here.</p>}
           <label className="guc-field"><span>Code</span><input value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} autoComplete="off" /></label>
           <button type="button" className="secondary vps-small" disabled={code.trim().length < 4} onClick={paste}>Send</button>
         </details>

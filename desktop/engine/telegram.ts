@@ -83,6 +83,10 @@ export class TelegramRelay {
     const fresh = await this.db.query("insert into notifications_sent (owner_id, event_key, channel) values ($1, 'telegram-intro', 'telegram') on conflict do nothing returning 1", [this.owner]);
     this.introduced = true;
     if (!fresh.length) return;
+    // Paired more than two days ago: it was said back then (a database repaired or a fresh VPS worker has no record of
+    // it, and saying it again reads as a bot repeating itself).
+    const since = (await this.status().catch(() => null))?.paired?.since;
+    if (since && Date.now() - since > 2 * 864e5) return;
     const ws = await this.host.workspace?.().catch(() => null) as { chats?: { kind?: string; messages?: { content?: string }[] }[] } | null;
     if (ws?.chats?.find((c) => c.kind === "main")?.messages?.some((m) => m.content === TELEGRAM_INTRO)) return;
     try { await this.send([plainMessage(TELEGRAM_INTRO)]); }

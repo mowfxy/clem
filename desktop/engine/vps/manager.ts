@@ -12,7 +12,7 @@ import { generateKey, publicOf } from "./keys.ts";
 import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
 import { installDocker, installWorker, reviveWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
 import { Migrator } from "./migrate.ts";
-import { claudeSignIn, cliSignedIn, codexSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
+import { claudeSignIn, cliSignedIn, codexSignIn, geminiSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
 import { StorageRouter, type LocalBlobs } from "./router.ts";
 import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
@@ -257,9 +257,10 @@ export class VpsManager {
     await this.pushWorkspace(true);
     // …and files kept on the VPS as well (copied, never moved), unless the person turned that off…
     if (!(await this.vault()).storage?.off) await this.setCopies(true, { person: false }).catch((e) => this.log("[vps] copies: " + (e as Error).message));
-    // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once).
-    const v = await this.vault();
-    if (!v.modelKey && this.workerModel !== "cli") await this.connectCli((await this.d.preferredCli?.().catch(() => undefined)) || "claude").catch((e) => this.log("[vps] ai: " + (e as Error).message));
+    // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once). Never one the
+    // person doesn't use: with no AI signed in on this PC, Settings offers the choice instead.
+    const v = await this.vault(), cli = await this.d.preferredCli?.().catch(() => undefined);
+    if (!v.modelKey && this.workerModel !== "cli" && cli) await this.connectCli(cli).catch((e) => this.log("[vps] ai: " + (e as Error).message));
     return this.status();
   }
   /** Uploads this app's worker bundle with the worker's key and secrets, and starts it (its database is kept). */
@@ -320,10 +321,13 @@ export class VpsManager {
   }
   // ---------- AI on the VPS ----------
   private signIn?: NonNullable<WorkerView["signIn"]>; private pasteCode?: (code: string) => void;
-  /** "Use Claude / ChatGPT on my VPS": installs the CLI inside the worker, signs it in there with the person's own
-   *  account (a window on this PC for Claude, a device code for Codex), then restarts the worker so it uses it.
+  /** "Use Gemini / Claude / ChatGPT on my VPS": installs the CLI inside the worker, signs it in there with the person's own
+   *  account (a window on this PC for Gemini and Claude, a device code for Codex), then restarts the worker so it uses it.
    *  Returns at once; progress is in `status().worker.signIn`. */
-  async connectCli(cli: ServerCli) {
+  async connectCli(chosen?: ServerCli) {
+    // Unnamed (Settings' "Set up the AI"): the AI this PC uses, never a default the person may not have.
+    const cli = chosen || await this.d.preferredCli?.().catch(() => undefined);
+    if (!cli) throw Error("Sign in to Gemini, Claude or ChatGPT under Models first, then Clem sets up the same one on your VPS.");
     const v = await this.vault();
     if (!v.worker?.enabled || !v.worker.kind) throw Error("Turn on background jobs on your VPS first.");
     if (this.signIn && ["installing", "waiting", "finishing"].includes(this.signIn.step)) return this.status();
@@ -338,7 +342,7 @@ export class VpsManager {
         if (cli === "codex") { const c = await codexSignIn(l, kind, owner); step({ cli, step: "waiting", url: c.url, code: c.code }); done = c.done; }
         else {
           if (!this.d.openSignIn) throw Error("Sign-in windows need the Clem desktop app.");
-          const c = await claudeSignIn(l, kind, owner, this.d.openSignIn);
+          const c = await (cli === "gemini" ? geminiSignIn : claudeSignIn)(l, kind, owner, this.d.openSignIn);
           this.pasteCode = c.paste; step({ cli, step: "waiting", url: c.url }); done = c.done;
         }
         const ok = await done; this.pasteCode = undefined;
