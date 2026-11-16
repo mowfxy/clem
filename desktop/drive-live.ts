@@ -356,6 +356,24 @@ export class DriveLive {
     await pipeline(Readable.fromWeb(r.body as import("node:stream/web").ReadableStream),createWriteStream(path));
   }
 
+  /** A Drive video's name, type, size and length, for deciding whether a model can watch it (nothing is downloaded). */
+  async video(id:string):Promise<{name:string;mime:string;size:number;durationSec?:number}>{
+    const m=await this.info(id);
+    const millis=Number(m.videoMediaMetadata?.durationMillis);
+    return {name:m.name,mime:playableType(m.mimeType,m.name),size:Number(m.size)||0,...(millis>0?{durationSec:Math.round(millis/1000)}:{})};
+  }
+  /** Downloads a Drive video for a model to watch, stopping (and failing) past `limit` bytes so a wrong size can't fill the disk. */
+  async downloadVideo(id:string,path:string,limit:number){
+    if((await this.hidden()).has(id))throw Error("Clem no longer has access to this Drive file.");
+    const r=await this.google(`${API}/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true&acknowledgeAbuse=false`,{timeout:600_000});
+    if(!r.ok||!r.body)throw Error(r.status===403?"Google blocks downloads for this Drive video.":r.status===404?"This Drive video is no longer available.":"Google Drive could not send this video.");
+    const [{createWriteStream},{pipeline},{Transform}]=await Promise.all([import("node:fs"),import("node:stream/promises"),import("node:stream")]);
+    let got=0;
+    const cap=new Transform({transform(chunk:Buffer,_,done){got+=chunk.length;done(got>limit?Error("This Drive video is larger than Gemini can watch at once."):null,chunk);}});
+    try{await pipeline(Readable.fromWeb(r.body as import("node:stream/web").ReadableStream),cap,createWriteStream(path));}
+    catch(error){const {rm}=await import("node:fs/promises");await rm(path,{force:true}).catch(()=>{});throw error;}
+  }
+
   /** Replaces the contents of a file Clem saved to Drive earlier (after an approved edit), keeping its id, name and place. */
   async update(fileId:string,type:string,data:Uint8Array){
     await this.canWrite();

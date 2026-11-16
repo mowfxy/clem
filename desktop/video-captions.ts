@@ -49,8 +49,9 @@ function whyUnplayable(player: PlayerResponse | undefined) {
   return reason ? `YouTube says: ${reason}` : "YouTube won't play this video here.";
 }
 
-/** Captions of one YouTube video as a timestamped transcript. Never throws: problems come back as `error`. */
-export async function youtubeCaptions(id: string, {fetcher = fetch, languages = ["en"], signal}: {fetcher?: typeof fetch; languages?: string[]; signal?: AbortSignal} = {}): Promise<VideoCaptions> {
+/** Captions of one YouTube video as a timestamped transcript. Never throws: problems come back as `error`.
+ *  `captions: false`: only the title, channel, length and description (saving a video keeps no transcript). */
+export async function youtubeCaptions(id: string, {fetcher = fetch, languages = ["en"], signal, captions = true}: {fetcher?: typeof fetch; languages?: string[]; signal?: AbortSignal; captions?: boolean} = {}): Promise<VideoCaptions> {
   const result: VideoCaptions = {source: "youtube", id, transcript: ""};
   if (!/^[\w-]{11}$/.test(id)) return {...result, error: "That isn't a YouTube video address."};
   const timeout = () => AbortSignal.any([AbortSignal.timeout(20000), ...(signal ? [signal] : [])]);
@@ -82,6 +83,10 @@ export async function youtubeCaptions(id: string, {fetcher = fetch, languages = 
       title: details?.title ? decodeEntities(details.title) : undefined, channel: details?.author,
       durationSec: Number(details?.lengthSeconds) || undefined, description: details?.shortDescription || undefined,
     });
+    if (!captions) {
+      if (details) return result;
+      throw new Unavailable(whyUnplayable(player) || whyUnplayable(pagePlayer) || "YouTube didn't return this video. It may have been removed.");
+    }
     const tracks = tracksOf(player);
     const fallback = tracksOf(pagePlayer).filter((t) => !tracks.some((x) => x.lang === t.lang && x.auto === t.auto));
     if (!tracks.length && !fallback.length) {

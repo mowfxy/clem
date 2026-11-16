@@ -36,7 +36,7 @@
 .fx-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 0;font-size:13px;color:var(--lb-muted);min-width:0}
 .fx-meta>*:not(:first-child)::before{content:'·';margin:0 7px;color:#5f5e59}
 .fx-place{color:var(--lb-soft)}
-.fx-captions.none{color:#c9a66b}
+.fx-captions.none,.fx-captions.live{color:var(--muted,#8a897f)}
 .fx-tools{display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .2s}
 .fx-row:hover .fx-tools,.fx-row:focus-within .fx-tools,.fx-card:hover .fx-tools,.fx-card:focus-within .fx-tools{opacity:1}
 .fx-tools .icon-button{color:var(--lb-muted);display:inline-flex}

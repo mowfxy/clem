@@ -42,7 +42,7 @@ import {ChatFiles} from "./chat/ChatFiles";
 import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
-import {isMediaType, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
+import {isMediaType, stamp, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
 import {desktop,desktopChat,LimitReached} from './desktop/bridge';
 import {conversationPictures,NO_PDF_VIEW,pageImages,pdfView,type PdfView} from './desktop/page-images';
 import type {Finder} from './files/finder';
@@ -185,7 +185,7 @@ import "./chat/workspace.css";
 import { FilesPage } from './files/FilesPage';
 import { SaveVideoDialog, type SavedVideos } from './files/SaveVideo';
 import { VideoViewer } from './files/VideoViewer';
-import { refreshVideo } from './files/saved-video';
+import { readsLive, shownName as videoName } from './files/saved-video';
 import { SpaceMark, markKeys } from './space/SpaceMark';
 import { titleInstruction, takeTitle, hideTitleMarker, chaptersOf, splitWork } from "../core/chat-title";
 import { Chapters } from "./chat/Chapters";
@@ -1164,12 +1164,12 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     mode: "chat"|"plan"|"step"="chat",
     effort?:string,
     images?:{name:string;data:string}[],
-    extra:{chat?:string;scope?:string;side?:boolean;plain?:boolean;documents?:{id:string;name:string}[];pdfs?:{name:string;data:Uint8Array}[];pdfNotes?:string[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>;queuedSince?:number}={},
+    extra:{chat?:string;scope?:string;side?:boolean;plain?:boolean;documents?:{id:string;name:string}[];pdfs?:{name:string;data:Uint8Array}[];pdfNotes?:string[];videos?:{source:"drive";id:string}[];library?:{name:string;text:string}[];look?:(file:string,pages:number[])=>Promise<{name:string;data:string}[]>;pdfTask?:(op:string,args:any)=>Promise<any>;queuedSince?:number}={},
   ) {
     if(desktop){
       const target=extra.chat||conversationTarget;
       // The finished file (new, or the updated version of one made earlier) arrives once, as a card on the reply; it opens only when the person clicks it.
-      return desktopChat(messages,extra.scope||desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,side:extra.side,queuedSince:extra.queuedSince,...(extra.plain?{plain:true}:{}),condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
+      return desktopChat(messages,extra.scope||desktopScope,signal,onText,{model:selectedModel||undefined,reasoning:effort||(mode==="step"?undefined:reasoning)||undefined,...(stateRef.current.chats.find(c=>c.id===target)?.temporary?{temporary:true}:{}),...(images?.length?{images}:{}),documents:extra.documents,...(extra.pdfs?.length?{pdfs:extra.pdfs}:{}),...(extra.pdfNotes?.length?{pdfNotes:extra.pdfNotes}:{}),...(extra.videos?.length?{videos:extra.videos}:{}),library:extra.library,look:extra.look,pdfTask:extra.pdfTask,chat:target,side:extra.side,queuedSince:extra.queuedSince,...(extra.plain?{plain:true}:{}),condense:mode==="chat",onCondensed:()=>updateChat(target,c=>{const last=[...c.messages].reverse().find(m=>m.role==='assistant');return {...c,messages:c.messages.map(m=>m.id===last?.id?{...m,condensed:true}:m)};}),onStatus:status(target)},(file)=>updateChat(target,c=>{
         const last=[...c.messages].reverse().find(m=>m.role==='assistant');
         return {...c,messages:c.messages.map(m=>m.id===last?.id&&!(m.attachments||[]).includes(file.id)?{...m,attachments:[...(m.attachments||[]),file.id]}:m)};
       }));
@@ -1654,9 +1654,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       // Clem recommended) and Drive videos in play are read when the person asks about a video's contents.
       // YouTube links need nothing from Drive, so their captions are read while Drive is; Drive videos wait for its list.
       const watching = desktop && !isVisual && !chatting;
+      const watched: { source: "drive"; id: string }[] = [];
       const aboutContent = watching && videoContentIntent(prompt);
       const recent = aboutContent ? next.messages.slice(-8).reverse().map((m) => m.content) : [];
-      const youtube = watching ? [prompt, ...recent].flatMap((t) => youtubeReferences(t)).filter((r, i, all) => all.findIndex((x) => x.id === r.id) === i).slice(0, 3) : [];
+      // Saved videos kept as links (no transcript in their file) have their captions read now: the ones attached to this
+      // message or open beside it, and when the question is about a video's contents, the chat's earlier ones and the
+      // subject's or project's that it names by title.
+      const asked = prompt.toLowerCase(), here = new Set([...user.attachments, ...(user.context || [])]);
+      const earlier = aboutContent ? new Set(next.messages.flatMap((m) => [...(m.attachments || []), ...(m.context || [])])) : new Set<string>();
+      const savedVideos = watching ? stateRef.current.files.filter((f) => readsLive(f.video) && (here.has(f.id) || earlier.has(f.id) || (aboutContent && f.spaceId === (activeSpace?.id ?? null) && videoName(f).length >= 6 && asked.includes(videoName(f).toLowerCase())))).map((f) => ({ id: f.video!.id })) : [];
+      const youtube = watching ? [...savedVideos, ...[prompt, ...recent].flatMap((t) => youtubeReferences(t))].filter((r, i, all) => all.findIndex((x) => x.id === r.id) === i).slice(0, 3) : [];
       const languages = [...new Set([navigator.language, "en"])].filter((l) => /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/.test(l));
       const captions = (wanted: { source: "youtube" | "drive"; id: string }[]): Promise<VideoCaptions[]> => Promise.all(wanted.map((v) => desktop!.invoke({ action: "videoCaptions", ...v, languages }).catch((e: unknown) => ({ ...v, transcript: "", error: cleanError(e) }))));
       if (youtube.length) status(id)(youtube.length > 1 ? "Reading the videos' captions…" : "Reading the video's captions…");
@@ -1664,8 +1671,15 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       for (const note of await Promise.all(driveWork)) if (note) driveNotes.push(note);
       if (watching) {
         const driveVideos = [...(user.drive || []), ...(aboutContent ? [...linkable.values()] : [])].filter((r, i, all) => isMediaType(r.mimeType) && all.findIndex((x) => x.id === r.id) === i).slice(0, Math.max(0, 3 - youtube.length));
-        if (driveVideos.length) status(id)(youtube.length + driveVideos.length > 1 ? "Reading the videos' captions…" : "Reading the video's captions…");
-        const read: VideoCaptions[] = [...await youtubeRead, ...await captions(driveVideos.map((r) => ({ source: "drive" as const, id: r.id })))];
+        // Gemini watches a Drive video itself when it fits (desktop/antigravity.ts limits); other models, and videos too
+        // large for it, get the captions read now. YouTube is always read from its captions: Gemini's agent takes only
+        // files on this PC, and YouTube's videos can't be downloaded.
+        const checks = model.startsWith("antigravity:") ? await Promise.all(driveVideos.map((r) => desktop!.invoke({ action: "videoWatchable", id: r.id }).catch(() => ({ watchable: false })) as Promise<{ watchable: boolean; name?: string; durationSec?: number }>)) : [];
+        const seen = driveVideos.filter((_, i) => checks[i]?.watchable), unseen = driveVideos.filter((_, i) => !checks[i]?.watchable);
+        watched.push(...seen.map((r) => ({ source: "drive" as const, id: r.id })));
+        if (seen.length) driveNotes.push(`VIDEOS GEMINI WATCHES: ${seen.map((r, i) => { const c = checks[driveVideos.indexOf(r)]; return `“${c.name || r.name}” (drive:${r.id}${c.durationSec ? ", " + stamp(c.durationSec) + " long" : ""})`; }).join(", ")} ${seen.length > 1 ? "are" : "is"} attached as the video itself, not a transcript: watch ${seen.length > 1 ? "them" : "it"} and answer from what is seen and heard, citing moments as [mm:ss].`);
+        if (unseen.length) status(id)(youtube.length + unseen.length > 1 ? "Reading the videos' captions…" : "Reading the video's captions…");
+        const read: VideoCaptions[] = [...await youtubeRead, ...await captions(unseen.map((r) => ({ source: "drive" as const, id: r.id })))];
         if (read.length) {
           // Room left in the request once the files and Drive are in, keeping space for instructions and the conversation.
           const room = contextBudget(model).conversation - 160000 - fileText.length - driveNotes.join("").length;
@@ -1723,7 +1737,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
               content: [
                 // The visual schema and the video rule, when this message or the chat's latest turns may want them (the web always has them).
                 desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "",
-                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}),
+                workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:|VIDEOS GEMINI WATCHES:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}),
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
                 gucNote,
@@ -1740,7 +1754,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
       // The main thread sends its layers within a budget (core/main-thread/context.ts), never the whole thread.
       const conversation = chat.kind === "main" && !isVisual ? await mainRequest(next, expandCommand(prompt) + pointerNote, {
         prefix: [systems[0]?.content || "", MAIN_THREAD_NOTE, ownWorkflows()].filter(Boolean),
-        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote].filter(Boolean).join("\n\n"),
+        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:|VIDEOS GEMINI WATCHES:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote].filter(Boolean).join("\n\n"),
         memory,
         // Today's classes, deadlines and unread from the engine (cached there until a sync changes them).
         guc: desktop && gucConnected ? await gucNowQuick() : null,
@@ -1774,7 +1788,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
             ),
           }));
         },
-        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "handoff") return Promise.resolve({ data: handoffTool(chat, args) }); if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
+        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, videos: watched, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "handoff") return Promise.resolve({ data: handoffTool(chat, args) }); if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       // A reply that used tools: the notes written on the way are dropped and only the answer is shown.
@@ -2560,17 +2574,9 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
     if(space&&playlist){const found=(space.folders||[]).find(f=>(f.parentId||null)===folderId&&f.name.toLowerCase()===playlist.title.toLowerCase());if(found)folder=found.id;else{made={id:uid(),name:playlist.title.slice(0,80),parentId:folderId,created:Date.now()};folder=made.id;}}
     const kept=files.map(f=>({...f,folderId:folder}));
     patch(s=>({...s,files:[...kept,...s.files],spaces:s.spaces.map(x=>x.id===place?{...x,folders:made?[...(x.folders||[]),made]:x.folders,sources:[...x.sources,...kept.map(f=>f.id)]}:x)}));
-    const bare=kept.filter(f=>f.video?.captions==="none");
     const title=(f:StoredFile)=>f.name.replace(/\.md$/i,"");
-    setToast(kept.length===1&&!playlist?(bare.length?`Saved “${title(kept[0])}” without a transcript. ${kept[0].video?.error||""}`.trim():`Saved “${title(kept[0])}” with its transcript.`)
-      :`Saved ${kept.length} video${kept.length===1?"":"s"}${playlist?` from “${playlist.title}”`:""}${bare.length?`; ${bare.length} had no captions to read`:""}${skipped?`; ${skipped} ${skipped===1?"was":"were"} already here`:""}.`);
-  }
-  /** Reads a saved video's captions again, for one saved while YouTube couldn't be read. */
-  async function refreshVideoFile(file:StoredFile){
-    const next=await refreshVideo(file,(id,blob)=>storeBlob(id,blob));
-    patch(s=>({...s,files:s.files.map(f=>f.id===next.id?{...f,size:next.size,updated:next.updated,video:next.video}:f)}));
-    setViewer(v=>v?.id===next.id?next:v);
-    setToast(next.video?.captions==="none"?`Still no transcript. ${next.video.error||""}`.trim():"Transcript saved.");
+    setToast(kept.length===1&&!playlist?`Saved “${title(kept[0])}”. Clem reads its captions when you ask about it.`
+      :`Saved ${kept.length} video${kept.length===1?"":"s"}${playlist?` from “${playlist.title}”`:""}${skipped?`; ${skipped} ${skipped===1?"was":"were"} already here`:""}.`);
   }
   /** A new chat in the file's subject or project with the file attached, ready for a question about it. */
   const askAboutFile=(file:StoredFile)=>{setViewer(null);newChat(file.spaceId);setAttachments([file.id]);navigate('/app');setTimeout(()=>composer.current?.focus(),80);};
@@ -3869,7 +3875,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {packOpen&&<Suspense fallback={null}><PackPreview opened={packOpen} subjects={state.spaces.filter(x=>x.kind==='subject')} onImport={addPack} onCancel={()=>setPackOpen(null)}/></Suspense>}
       {replyPick && <button type="button" className="reply-pick" style={{ left: replyPick.x, top: replyPick.y }} onMouseDown={(e) => e.preventDefault()} onClick={() => { setPointers((all) => [...all, { id: uid(), file: REPLY_SOURCE, text: replyPick.text }].slice(-6)); window.getSelection()?.removeAllRanges(); setReplyPick(null); setTimeout(() => composer.current?.focus(), 20); }}><Icon name="chat" size={14} />Reply</button>}
       {savingVideo && <SaveVideoDialog places={savingVideo.choose ? [{ id: null, name: "Personal" }, ...state.spaces.map((x) => ({ id: x.id, name: x.name }))] : []} place={savingVideo.place} folderId={savingVideo.folderId ?? null} existing={state.files} store={(id, blob) => storeBlob(id, blob)} onSaved={(r) => videosSaved(r, savingVideo.folderId ?? null)} onClose={() => setSavingVideo(null)} />}
-      {viewer?.video && <VideoViewer key={"video-" + viewer.id} file={viewer} onClose={() => setViewer(null)} onAsk={askAboutFile} onRefresh={refreshVideoFile} />}
+      {viewer?.video && <VideoViewer key={"video-" + viewer.id} file={viewer} onClose={() => setViewer(null)} onAsk={askAboutFile} />}
       {viewer && !viewer.video && <FilePanel key={"viewer-" + viewer.id} variant="modal" file={viewer} scope={desktopScope} selection={{model:model||undefined,reasoning:reasoning||undefined}}
         onClose={() => setViewer(null)} onOpenExternally={(f) => void openExternally(f)} onPoint={(p) => { const f = viewer; setViewer(null); if (remoteFile(f.id)) { setPointers([p]); return; } newChat(f.spaceId); openInPanel(f); setPointers([p]); }}
         onChange={(next) => { if (remoteFile(next.id)) return; changedFile(next); setViewer(next); }}

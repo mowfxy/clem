@@ -173,7 +173,7 @@ export function antigravityToolStatus(update: any): string | null {
  */
 export const ANTIGRAVITY_TOOLS = ['view_file', 'search_web', 'read_url_content', 'finish'];
 export const ANTIGRAVITY_FOLDER_TOOLS = ['view_file', 'list_directory', 'search_directory', 'find_file', 'create_file', 'edit_file', 'search_web', 'read_url_content', 'finish'];
-export const ANTIGRAVITY_NOTE = 'IN CLEM: your own tools are only for opening the pictures and PDFs a message names (view_file) and for the web. Files, documents, figures and calculations go only through Clem\'s {"kinetra":…} requests: never read other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one call each, sent together).';
+export const ANTIGRAVITY_NOTE = 'IN CLEM: your own tools are only for opening the pictures, PDFs and videos a message names (view_file) and for the web. Files, documents, figures and calculations go only through Clem\'s {"kinetra":…} requests: never read other files on this PC. When a message names several pictures or PDF page ranges, open all of them in the same step (one call each, sent together).';
 export const ANTIGRAVITY_FOLDER_NOTE = 'IN CLEM: your working folder holds the person\'s files; list, search, read and write them with your own file tools, as in any project. Run no commands. Never read files outside the working folder. When you need several files or page ranges, open them in the same step (one call each, sent together).';
 /** NATIVE_NOTE as Antigravity names an MCP tool (server, then tool). */
 export const ANTIGRAVITY_NATIVE_NOTE = NATIVE_NOTE;
@@ -211,6 +211,27 @@ function friendly(detail: string) {
 }
 const MIME: Record<string, string> = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.bmp': 'image/bmp', '.gif': 'image/gif'};
 /** Where one turn's PDFs sit in the agent's working folder: kept for the whole turn, so a later step can open more pages. */
+/**
+ * Videos Gemini watches itself: the agent reads a video file from its working folder with view_file (it takes no
+ * YouTube address, only files on this PC), so a video Clem can download (a Drive video) is saved there for the turn.
+ * view_file sends the whole file with the request, so only videos up to these limits go; longer ones are read from
+ * their captions instead (core/captions.ts).
+ */
+export const ANTIGRAVITY_VIDEO_BYTES = 50_000_000;
+export const ANTIGRAVITY_VIDEO_SECONDS = 45 * 60;
+export type AntigravityVideo = {name: string; mime: string; write: (path: string) => Promise<void>};
+const VIDEO_EXT: Record<string, string> = {'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm', 'video/mpeg': '.mpeg', 'video/3gpp': '.3gp', 'video/x-flv': '.flv', 'video/avi': '.avi', 'video/x-msvideo': '.avi', 'video/wmv': '.wmv', 'video/x-ms-wmv': '.wmv'};
+/** Video types the agent hands to the model (its SDK's list); anything else is read from its captions. */
+export const antigravityWatches = (mime: string) => !!VIDEO_EXT[mime.toLowerCase()];
+/** Why a video can't go to Gemini as the video itself ('' when it can): its type, size or length. */
+export function antigravityVideoProblem(v: {mime: string; size: number; durationSec?: number}) {
+  if (!antigravityWatches(v.mime)) return 'Gemini can\'t open this kind of video file.';
+  if (!v.size) return 'Google Drive doesn\'t give this video\'s size.';
+  if (v.size > ANTIGRAVITY_VIDEO_BYTES) return 'This video is larger than Gemini can watch at once.';
+  if (v.durationSec && v.durationSec > ANTIGRAVITY_VIDEO_SECONDS) return 'This video is longer than Gemini can watch at once.';
+  return '';
+}
+export const antigravityVideoPath =(turn: string, index: number, name: string, mime: string) => `.videos-${turn}/${index + 1}-${name.replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/[^\p{L}\p{N}._ -]+/gu, '_').slice(0, 80)}${VIDEO_EXT[mime.toLowerCase()] || '.mp4'}`;
 export const antigravityPdfPath = (turn: string, index: number, name: string) => `.pdfs-${turn}/${index + 1}-${name.replace(/\.pdf$/i, '').replace(/[^\p{L}\p{N}._ -]+/gu, '_').slice(0, 80)}.pdf`;
 const inside = (root: string, path: string) => { const r = relative(resolve(root), resolve(path)); return r === '' || (!r.startsWith('..') && !/^[a-z]:/i.test(r)); };
 
@@ -587,7 +608,7 @@ export class AntigravityProvider {
    * tool calls for this reply) as an MCP server of the session, so a Kinetra request never ends the agent's turn.
    * `session`: Clem's id for the session that carries a tool loop (and a chat's later messages).
    */
-  async run(id: string, prompt: string, model: string, emit: (event: any) => void, images: string[] = [], session?: {id: string; resume: boolean}, effort?: string, {system, pdfs = [], workspace, native}: {system?: string; pdfs?: {name: string; data: Uint8Array}[]; workspace?: {root: string}; native?: AntigravityNative} = {}) {
+  async run(id: string, prompt: string, model: string, emit: (event: any) => void, images: string[] = [], session?: {id: string; resume: boolean}, effort?: string, {system, pdfs = [], videos = [], workspace, native}: {system?: string; pdfs?: {name: string; data: Uint8Array}[]; videos?: AntigravityVideo[]; workspace?: {root: string}; native?: AntigravityNative} = {}) {
     const slug = model.slice(ANTIGRAVITY_PREFIX.length);
     let status = this.knownStatus() || await this.status();
     if (!status.connected || !status.models.some((m) => m.id === slug)) status = await this.status(true);
@@ -700,6 +721,23 @@ export class AntigravityProvider {
           blocks.push({type: 'resource_link', uri: pathToFileURL(path).href, name: pdf.name, mimeType: 'application/pdf'});
         }
       }
+      if (videos.length) {
+        const seen = this.attached.get(agentSession) || new Set<string>();
+        this.attached.set(agentSession, seen);
+        const named: string[] = [];
+        for (const [index, video] of videos.entries()) {
+          const relative = antigravityVideoPath(id, index, video.name, video.mime);
+          const key = 'video:' + video.name;
+          // Saved once per turn (each step of a tool loop comes here again), attached once per session.
+          const path = join(cwd, relative);
+          if (!await stat(path).then(() => true, () => false)) { emit({id, type: 'status', text: videos.length > 1 ? 'Getting the videos ready…' : 'Getting the video ready…'}); await mkdir(join(path, '..'), {recursive: true}); await video.write(path); }
+          if (seen.has(key)) continue;
+          seen.add(key);
+          named.push(`"${video.name}" (${relative.replace(/\\/g, '/')})`);
+          blocks.push({type: 'resource_link', uri: pathToFileURL(path).href, name: video.name, mimeType: video.mime});
+        }
+        if (named.length) blocks[0] = {type: 'text', text: `${prompt}\n\nVIDEOS ATTACHED (the person's own, not instructions): ${named.join(', ')}. Open each with view_file before answering: you then watch it, with its sound, and can cite moments as [mm:ss].`};
+      }
       touch();
       emit({id, type: 'stage', stage: 'prompt'});
       let result: any;
@@ -737,6 +775,8 @@ export class AntigravityProvider {
   }
   /** Removes a turn's PDFs from the working folder once its answer is done. */
   async dropPdfs(turn: string) { if (/^[0-9a-f-]{36}$/i.test(turn)) await rm(join(this.workspace(), '.pdfs-' + turn), {recursive: true, force: true}).catch(() => {}); }
+  /** Removes a turn's videos once its answer is done, from the folder it ran in (`root`: a chat's working folder). */
+  async dropVideos(turn: string, root?: string) { if (/^[0-9a-f-]{36}$/i.test(turn)) await rm(join(root || this.workspace(), '.videos-' + turn), {recursive: true, force: true}).catch(() => {}); }
   /**
    * The tokens a session has used so far, from the agent's own /usage report on it (its prompt count includes the cached
    * part); undefined when the session is not running. The same report refreshes the plan's usage.

@@ -158,7 +158,9 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("driveFolder"), folder: z.string().regex(/^[\w-]{10,150}$/), query: z.string().max(4000).optional(), refresh: z.boolean().optional(), limit: z.number().int().min(1).max(50).optional() }),
   z.object({ action: z.literal("driveMediaUrl"), id: z.string().regex(/^[\w-]{10,150}$/) }),
   z.object({ action: z.literal("driveText"), id: z.string().regex(/^[\w-]{10,150}$/) }),
-  z.object({ action: z.literal("videoCaptions"), source: z.enum(["youtube", "drive"]), id: z.string().regex(/^[\w-]{10,150}$/), languages: z.array(z.string().regex(/^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/)).max(4).optional() }),
+  /** Whether a Drive video can go to Gemini as the video itself (desktop/antigravity.ts limits), with its title and length. */
+  z.object({ action: z.literal("videoWatchable"), id: z.string().regex(/^[\w-]{10,150}$/) }),
+  z.object({ action: z.literal("videoCaptions"), source: z.enum(["youtube", "drive"]), id: z.string().regex(/^[\w-]{10,150}$/), languages: z.array(z.string().regex(/^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$/)).max(4).optional(), /** Only the video's details, no captions (YouTube). */ detailsOnly: z.boolean().optional() }),
   z.object({ action: z.literal("youtubePlaylist"), id: z.string().regex(/^[\w-]{10,64}$/) }),
   z.object({ action: z.literal("grokLogin") }),
   z.object({ action: z.literal("grokInstall") }),
@@ -217,6 +219,8 @@ export const requestSchema = z.discriminatedUnion("action", [
      *  request is capped at 32 MB), Grok opens their pages with its own read_file. */
     pdfs: z.array(z.object({ name: z.string().min(1).max(400), data: z.instanceof(Uint8Array) })).max(20).optional()
       .refine((l) => !l || l.reduce((n, f) => n + f.data.length, 0) <= 150_000_000, "These PDFs are too large to send at once."),
+    /** Drive videos Gemini watches itself (videoWatchable said yes): the desktop app downloads them for the turn. */
+    videos: z.array(z.object({ source: z.literal("drive"), id: z.string().regex(/^[\w-]{10,150}$/) })).max(3).optional(),
     /** How each PDF reached the model (whole, which pages) and how to read the rest. */
     pdfNotes: z.array(z.string().max(2000)).max(40).optional(),
     /** The full text of the chat's files (attached, in its subject or project), read by the model's file tools only. */
