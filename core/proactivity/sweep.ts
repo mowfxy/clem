@@ -89,7 +89,10 @@ export function planSweep(kind: SweepKind, f: rules.Facts, o: { done: Set<string
     if (a.type === "revision_plan") return keys.some((d) => d.startsWith(`revision:${a.spaceId}:`));
     return false;
   };
-  const add = (xs: ProAction[]) => { for (const a of xs) if (!o.done.has(actionKey(a)) && !declined(a) && !plan.actions.some((b) => actionKey(b) === actionKey(a) || (a.type === "plan_move" && b.type === "plan_move" && b.spaceId === a.spaceId && b.taskId === a.taskId))) plan.actions.push(a); };
+  // Clem only adds to a plan the person has: it never starts one by itself (owner, 2026-11-16). The main thread starts
+  // plans when asked.
+  const noPlan = (a: ProAction) => (a.type === "plan_task" || a.type === "time_block" || a.type === "revision_plan") && !f.snap.plans.some((p) => p.spaceId === a.spaceId);
+  const add = (xs: ProAction[]) => { for (const a of xs) if (!noPlan(a) && !o.done.has(actionKey(a)) && !declined(a) && !plan.actions.some((b) => actionKey(b) === actionKey(a) || (a.type === "plan_move" && b.type === "plan_move" && b.spaceId === a.spaceId && b.taskId === a.taskId))) plan.actions.push(a); };
   const filed = rules.fileLoose(f.snap);
   if (kind === "morning") add([...rules.morningBlocks(f), ...rules.reschedule(f)]);
   if (kind === "midday" && c.time >= "12:00") add(rules.reschedule(f));

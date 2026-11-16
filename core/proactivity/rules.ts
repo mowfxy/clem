@@ -119,30 +119,30 @@ export function reschedule(f: Facts): ProAction[] {
   return f.snap.plans.flatMap((p) => p.tasks.filter((t) => !t.done && !t.milestone && t.group !== "Today" && t.due && t.due < c.ymd).map((t) => ({ type: "plan_move" as const, spaceId: p.spaceId, taskId: t.id, title: t.title, due: to }))).slice(0, 5);
 }
 
-/** A new or moved GUC deadline becomes a task to start two days before (today at the latest), and the deadline itself
- *  marks the timeline. */
+/** A new or moved GUC deadline marks the timeline of the subject's plan, when the person has one. Clem never starts a
+ *  plan on its own (owner, 2026-11-16: plans are started when the person asks, in the main thread), and adds no
+ *  made-up "Start: …" task: the deadline itself is the item. */
 export function deadlineTasks(f: Facts): ProAction[] {
-  const today = cairo(f.now).ymd, out: ProAction[] = [];
+  const out: ProAction[] = [];
   for (const d of f.deadlines) {
     if (!d.spaceId || dueAt(d.due) < f.now || dueAt(d.due) - f.now > 21 * 864e5) continue;
-    const day = cairo(dueAt(d.due)).ymd, plan = f.snap.plans.find((p) => p.spaceId === d.spaceId);
-    if (plan?.tasks.some((t) => norm(t.title).includes(norm(d.title).slice(0, 40)))) continue;
-    const start = days(today, day) > 2 ? addDays(day, -2) : today;
-    out.push({ type: "plan_task", spaceId: d.spaceId, title: `Start: ${d.title}`.slice(0, 160), due: start });
-    out.push({ type: "plan_task", spaceId: d.spaceId, title: d.title.slice(0, 160), due: day, milestone: true });
+    const plan = f.snap.plans.find((p) => p.spaceId === d.spaceId);
+    if (!plan || plan.tasks.some((t) => norm(t.title).includes(norm(d.title).slice(0, 40)))) continue;
+    out.push({ type: "plan_task", spaceId: d.spaceId, title: d.title.slice(0, 160), due: cairo(dueAt(d.due)).ymd, milestone: true });
   }
   return out;
 }
 
-/** An exam date 4-60 days away pulls revision sessions back from it: one every two days over the last two weeks
- *  (fewer when it is closer), skipped when the plan already has them. */
+/** An exam date 4-60 days away pulls revision sessions back from it into the subject's existing plan: one every two
+ *  days over the last two weeks (fewer when it is closer), skipped when the plan already has them or there is no plan. */
 export function revisionPlans(f: Facts): ProAction[] {
   const today = cairo(f.now).ymd, out: ProAction[] = [];
   for (const s of f.snap.spaces) {
     if (s.kind !== "subject" || !s.examDate) continue;
     const left = days(today, s.examDate);
     if (left < 4 || left > 60) continue;
-    if (f.snap.plans.find((p) => p.spaceId === s.id)?.tasks.some((t) => t.group === "Before the exam")) continue;
+    const plan = f.snap.plans.find((p) => p.spaceId === s.id);
+    if (!plan || plan.tasks.some((t) => t.group === "Before the exam")) continue;
     const weak = f.snap.study.find((x) => x.spaceId === s.id)?.weak || [];
     const sessions: { day: string; title: string }[] = [];
     for (let back = Math.min(14, left - 1), n = 1; back >= 1; back -= 2, n++) sessions.push({ day: addDays(s.examDate, -back), title: weak[n - 1] ? `Revise: ${weak[n - 1]}`.slice(0, 160) : `Revision session ${n}` });

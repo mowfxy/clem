@@ -97,3 +97,14 @@ test("every setting of the automated systems has a tool, and no guide says somet
   assert.ok(telegramGuide().includes(AI_FIRST), "Telegram's main thread carries it, on the laptop and on the VPS");
   assert.match(worker, /telegramTurn\(/, "the VPS worker answers with the shared Telegram main thread");
 });
+
+test("the organizer never starts a plan on its own, and marks a deadline without a made-up “Start:” task", () => {
+  const now = cairoAt("2026-11-15", "13:00");
+  const space = { id: "math", name: "Math 301", kind: "subject" as const, description: "", memory: "", sources: [], examDate: "2026-12-05" };
+  const deadlines = [{ id: "d1", title: "Quiz 2", due: "2026-11-17T13:45:00Z", spaceId: "math" }];
+  const none = planSweep("morning", { now, snap: snapshotOf({ spaces: [space], plans: [] }, now), slots: [], deadlines, events: [] } as Facts, { done: new Set() });
+  assert.deepEqual(none.actions.filter((a) => a.type === "plan_task" || a.type === "revision_plan" || a.type === "time_block"), [], "no plan: nothing is added, so none is created");
+  const some = planSweep("evening", { now, snap: snapshotOf({ spaces: [space], plans: [{ spaceId: "math", rev: 1, tasks: [] }] }, now), slots: [], deadlines, events: [] } as Facts, { done: new Set() });
+  const tasks = some.actions.filter((a) => a.type === "plan_task");
+  assert.deepEqual(tasks, [{ type: "plan_task", spaceId: "math", title: "Quiz 2", due: "2026-11-17", milestone: true }], "their plan gets the deadline itself");
+});
