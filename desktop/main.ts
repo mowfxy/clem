@@ -199,7 +199,7 @@ app.on("window-all-closed", () => app.quit());
 let quitting = false;
 let tray: Tray | undefined;
 const startedInBackground = process.argv.includes("--background");
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
   quitting = true;
   globalShortcut.unregisterAll();
   codex?.stop();
@@ -208,9 +208,18 @@ app.on("before-quit", () => {
   grokAccounts?.stop();
   antigravityAccounts?.stop();
   folderWatcher?.stop();
-  void closeEngines?.();
+  // The engine's database must close before Clem exits (an update starts the new version right after): a PGlite cut off
+  // mid-write, or opened by the new version while this one still writes, can't start again. Quit waits for it (at most
+  // ENGINE_CLOSE_MS), then quits for real; electron-updater installs on that second quit.
+  if (closeEngines && !enginesClosing) {
+    event.preventDefault();
+    enginesClosing = Promise.race([closeEngines().catch(() => {}), new Promise<void>((done) => setTimeout(done, ENGINE_CLOSE_MS))]).finally(() => app.quit());
+  }
 });
-let closeEngines: (() => Promise<void>) | undefined;
+let closeEngines: (() => Promise<void>) | undefined, enginesClosing: Promise<void> | undefined;
+const ENGINE_CLOSE_MS = 8_000;
+/** What the AI is told when the engine itself failed, instead of the raw WebAssembly error (it carries on without it). */
+const engineError = (e: Error) => /Aborted\(|RuntimeError/.test(e?.message || "") ? "Clem's local database had a problem and is being repaired; try this again in a moment. Answer from what you already know." : e?.message || "Something went wrong.";
 const workspaceRoot=app.commandLine.hasSwitch('user-data-dir')?join(app.getPath('userData'),'Workspace'):join(app.getPath('documents'),'Clem');
 const previousSession=app.getPath('sessionData');
 const durableSession=join(workspaceRoot,'Local data');
@@ -1255,8 +1264,18 @@ void app.whenReady().then(async () => {
     vps: () => (vpsSet.get(owner) ? { files: vpsModes.get(owner) === "vps" } : undefined),
     hookBase: () => "http://127.0.0.1:" + HOOK_PORT,
   });
-  const rawEngineFor = (owner: string) => {
+  const rawEngineFor = (owner: string): Promise<Engine> => {
     let engine = engines.get(owner);
+    if (engine && !enginesClosing) {
+      // PGlite crashed while running: that instance can't run a query again, so it's dropped and opened afresh (and
+      // repaired if Postgres can't start: desktop/engine/db.ts openPgliteRepairing).
+      const current = engine;
+      return current.then((e) => {
+        if (!e.broken) return e;
+        if (engines.get(owner) === current) { engines.delete(owner); console.warn("[engine] the database crashed; opening it again"); void e.close().catch(() => {}); }
+        return rawEngineFor(owner);
+      });
+    }
     if (!engine) {
       engine = Engine.open(owner, engineHost(owner));
       engines.set(owner, engine);
@@ -2637,7 +2656,8 @@ void app.whenReady().then(async () => {
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
         // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
         if (isClemAction(tool?.action)) {
-          const engine = await engineFor(user.id);
+          const engine = await engineFor(user.id).catch((e: Error) => e);
+          if (engine instanceof Error) return { error: engineError(engine) };
           // A routine run by hand from a chat here is thought by this PC's AI (the chat's model), even while the VPS
           // worker keeps the routines: the worker builds the prompt and records the run, the laptop writes the words.
           if (tool.action === "clem.run_routine" && typeof tool.id === "string" && await vpsManagers.get(user.id)?.remote()) {
@@ -2647,14 +2667,16 @@ void app.whenReady().then(async () => {
               return await engine.organizer.runRoutine(tool.id, { kind: "manual" }, reply === undefined ? {} : { reply });
             } catch (e) { return { error: (e as Error).message }; }
           }
-          return engine.organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: e.message }));
+          return engine.organizer.tool(tool, { scope: spaceOf }).catch((e: Error) => ({ error: engineError(e) }));
         }
         // Telegram: the pair card, and a CMS file sent to the paired chat ("send me lecture 3 slides").
         // telegram.sendFile: one of their files in Clem or a CMS file, the same tool as Telegram's main thread uses.
         if (tool?.action === "telegram.sendFile") return sendFileTool(await threadCtx(user.id, await engineFor(user.id)), tool);
         if (typeof tool?.action === "string" && tool.action.startsWith("telegram.")) {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
-          return runTelegramTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);
+          const engine = await engineFor(user.id).catch((e: Error) => e);
+          if (engine instanceof Error) return { error: engineError(engine) };
+          return runTelegramTool({ engine, owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined }, tool);
         }
         // The person's VPS (desktop/engine/vps/tools.ts): anything that could change it waits for their tap on a card.
         if (isVpsAction(tool?.action)) {
@@ -2675,7 +2697,9 @@ void app.whenReady().then(async () => {
         if (isGucAction(tool?.action)) {
           if (!engines.has(user.id) && !await vault.read("guc-" + user.id, undefined)) return { error: "GUC isn't connected. The person can connect it in Settings → Connectors → GUC." };
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
-          return runGucTool({ engine: await engineFor(user.id), owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined, changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }) }, tool);
+          const engine = await engineFor(user.id).catch((e: Error) => e);
+          if (engine instanceof Error) return { error: engineError(engine) };
+          return runGucTool({ engine, owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined, changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }) }, tool);
         }
         // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Clem file, whichever
         // subject or project it is in: the window opens it by its id. Any other path is the file of that name.

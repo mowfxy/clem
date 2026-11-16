@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { BEAT_MS, step, type Lease } from "../core/vps/lease.ts";
-import { openPglite, openPostgres, type Backend } from "../desktop/engine/db.ts";
+import { openPgliteRepairing, openPostgres, type Backend } from "../desktop/engine/db.ts";
 import type { EngineHost } from "../desktop/engine/host.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { DeviceStore } from "../desktop/engine/storage.ts";
@@ -86,7 +86,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     vps: () => ({ files: true }),
     hookBase: () => env.CLEM_HOOK_URL || `http://${config.publicHost || "YOUR-SERVER-ADDRESS"}:${hookPort}`,
   };
-  const backend = o.backend || (env.DATABASE_URL ? await openPostgres(env.DATABASE_URL) : (await openPglite(join(data, "db"))).backend);
+  const backend = o.backend || (env.DATABASE_URL ? await openPostgres(env.DATABASE_URL) : (await openPgliteRepairing(join(data, "db"), (m) => console.warn(m))).backend);
   engine = await Engine.open(config.owner, host, { backend, jobs: false, store: disk });
   ws = new WorkerWorkspace({ db: engine.db, owner: config.owner, clock: o.clock, log: (m) => log("warn", m) });
   const waiting = disk.waiting = new Waiting(engine.db, config.owner);

@@ -16,7 +16,7 @@ import { DeviceStore, type FileStore } from "./storage.ts";
 import { extractText, textCache, type TextCacheOptions } from "./file-text.ts";
 import type { SyncResult } from "./guc-sync.ts";
 import type { GucErrorKind, GucProgress, GucStatus, GucSyncStats } from "../../core/guc/types.ts";
-import { migrate, openPglite, type Db } from "./db.ts";
+import { migrate, openPglite, openPgliteRepairing, snapshotPglite, type Db } from "./db.ts";
 import { GucError, asGucError } from "./errors.ts";
 import { GucClient, fetchFile, login, type Credentials, type Http } from "./guc-client.ts";
 import * as read from "./guc-read.ts";
@@ -31,6 +31,7 @@ import { Organizer } from "./organizer.ts";
 import { TelegramRelay } from "./telegram.ts";
 import type { Backend } from "./db.ts";
 
+const SNAPSHOT_FIRST_MS = 3 * 60_000, SNAPSHOT_EVERY_MS = 6 * 3_600_000;
 const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "guc_materials", "guc_grades", "guc_deadlines", "guc_snapshots", "guc_events", "subject_links", "guc_account", "guc_checks", "subject_drive", "guc_corrections"];
 /** The GUC pulse: every 2 minutes it reads only the parts whose pace has come round (guc-sync.ts PACE): mail and
  *  course pages every few minutes, grades every 15, heavy pages rarely. Runs where the engine runs (this PC or the VPS). */
@@ -87,11 +88,41 @@ export class Engine {
   static async open(owner: string, host: EngineHost, o: { http?: Http; sleep?: (ms: number) => Promise<void>; memory?: boolean; jobs?: boolean; store?: FileStore; text?: TextCacheOptions; clock?: () => number; backend?: Backend } = {}) {
     if (!/^[\w-]{1,100}$/.test(owner)) throw Error("Invalid account");
     if (!o.memory && !o.backend) await mkdir(host.paths.data, { recursive: true });
-    const backend = o.backend || (await openPglite(o.memory ? undefined : host.paths.data)).backend;
+    const opened: { backend: Backend; repaired?: "snapshot" | "fresh" } | undefined = o.backend ? undefined : o.memory ? await openPglite() : await openPgliteRepairing(host.paths.data, (m) => host.log("warn", m));
+    const backend = o.backend || opened!.backend;
     await migrate(backend, host.paths.migrations);
     const engine = new Engine(owner, host, backend, backend.db, o);
+    // Started again empty: GUC stays connected (the password is still in the vault) and fills in quietly, as a first sync.
+    if (opened?.repaired === "fresh") await engine.reconnect();
     if (o.jobs !== false) await engine.runner(true);
+    if (opened && !o.memory) engine.keepSnapshots();
     return engine;
+  }
+
+  /** A last good copy of the database beside its folder: a few minutes after opening, then every six hours. A damaged
+   *  folder starts again from it (openPgliteRepairing). */
+  private keepSnapshots() {
+    const pg = this.backend.pglite, dir = this.host.paths.data;
+    if (!pg) return;
+    const take = () => { if (this.closing || this.backend.broken) return; this.snapshotting = snapshotPglite(pg, dir).then(() => {}, (e) => this.host.log("warn", "[engine] snapshot: " + (e as Error).message)).finally(() => { this.snapshotting = undefined; }); };
+    const first = setTimeout(take, SNAPSHOT_FIRST_MS); first.unref?.();
+    this.snapshots = setInterval(take, SNAPSHOT_EVERY_MS); this.snapshots.unref?.();
+    this.firstSnapshot = first;
+  }
+  private snapshots?: ReturnType<typeof setInterval>;
+  private firstSnapshot?: ReturnType<typeof setTimeout>;
+  private snapshotting?: Promise<void>;
+  private closing = false;
+  /** The database is unusable (PGlite crashed): the host drops this engine and opens it again. */
+  get broken() { return !!this.backend.broken; }
+
+  /** After the database started again empty: the saved GUC account is connected again and synced as a first sync (no
+   *  "new" notices for what was already there). */
+  private async reconnect() {
+    const credentials = await this.credentials().catch(() => undefined);
+    if (!credentials) return;
+    await this.db.query("insert into guc_account (owner_id, username) values ($1, $2) on conflict (owner_id) do nothing", [this.owner, credentials.username]);
+    const later = setTimeout(() => void this.sync(undefined, true).catch(() => {}), 5_000); later.unref?.();
   }
 
   /** Whether this engine runs Clem's jobs (sync, checks, sweeps, the Telegram inbox). Exactly one engine does
@@ -633,6 +664,9 @@ export class Engine {
   }
 
   async close() {
+    this.closing = true;
+    if (this.snapshots) clearInterval(this.snapshots);
+    if (this.firstSnapshot) clearTimeout(this.firstSnapshot);
     if (this.rechecking) clearInterval(this.rechecking);
     await this.catchUp;
     await this.organizer.close()?.catch(() => {});
@@ -642,6 +676,8 @@ export class Engine {
     await Promise.allSettled([this.running, this.light, ...this.checks.values()]);
     await this.jobs?.stop().catch(() => {});
     await this.dropTemp();
+    await this.snapshotting;
+    // A crashed PGlite only lets go of its files (Backend.close); there's nothing left to flush.
     await this.backend.close();
   }
 }
