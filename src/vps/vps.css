@@ -123,4 +123,9 @@ dialog.app-modal .gd-picker.vps-manage{flex:1 1 auto;min-height:0;overflow:auto;
 .vps-status .gd-sync{width:14px;height:14px}
 .vps-status.is-warn{color:var(--ink)}
 .vps-status.is-warn .drawn-icon{flex:none;color:var(--ember)}
+/* Right under the switch's title it reads as that title's own line (like "Keep a copy…" below): close to the title, its
+   steady height kept underneath it instead of around it. */
+.vps-section>header:has(+.vps-status){margin-bottom:3px}
+.vps-section>header+.vps-status{align-items:flex-start;min-height:2lh}
+.vps-section>header+.vps-status>:is(.gd-sync,.drawn-icon){margin-top:2px}
 .vps-ai{margin:8px 0 0}
