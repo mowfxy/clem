@@ -1169,6 +1169,9 @@ void app.whenReady().then(async () => {
   });
   window = new BrowserWindow({
     show: !startedInBackground,
+    // Started in the tray (--background, the login launch): the page loads and answers but stays hidden until the
+    // window is opened. Electron's default paints it as if on screen, which kept the GPU animating the glass for no one.
+    paintWhenInitiallyHidden: !startedInBackground,
     width: 1440,
     height: 960,
     minWidth: 800,
