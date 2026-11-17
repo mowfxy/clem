@@ -7,6 +7,7 @@ import { WATCH_GUIDE } from "../proactivity/watches.ts";
 import { CALENDAR_GUIDE } from "../proactivity/calendar.ts";
 import { ROUTINE_GUIDE } from "../proactivity/routines.ts";
 import { TELEGRAM_GUIDE } from "../telegram/guide.ts";
+import { EDIT_GUIDE } from "../workspace-edit.ts";
 
 /** Who the main thread is and that the person comes first. */
 export const MAIN_THREAD_BASE = "This is the person's main thread: one ongoing conversation where you are their organizer across every subject and project. Keep replies short and practical. " + AI_FIRST;
@@ -21,4 +22,4 @@ export const ORGANIZER_GUIDES = WATCH_GUIDE + "\n" + CALENDAR_GUIDE + "\n" + ROU
 export const MAIN_PLANS = "Plans: when the person asks for a plan (\"plan my week\", \"make me a revision plan for Physics\", \"plan my project\"), make it yourself with ```plan blocks, one per subject or project, with the space ids under PLANS. In this thread (whatever the plans workflow says about drafts) a new plan is saved at once into that subject's or project's Plan tab, not a draft: say in one line what you made and where (\"I made a 2-week revision plan in Physics III: 9 tasks up to the midterm.\"), and that they can ask for changes here or in the Plan tab. Replacing a plan they already have, or deleting one, still waits for them to confirm on its card.";
 
 /** The main thread typed in the app: everything above, plus the hand-off to a subject chat and Telegram's tools. */
-export const MAIN_THREAD_NOTE = MAIN_THREAD_BASE + " " + HANDOFF_GUIDE + " " + OWN_POSTS + " " + MAIN_PLANS + "\n" + ORGANIZER_GUIDES + "\n" + TELEGRAM_GUIDE;
+export const MAIN_THREAD_NOTE = MAIN_THREAD_BASE + " " + HANDOFF_GUIDE + " " + OWN_POSTS + " " + MAIN_PLANS + "\n" + ORGANIZER_GUIDES + "\n" + TELEGRAM_GUIDE + "\n" + EDIT_GUIDE;

@@ -15,7 +15,7 @@ import type { GucSlot } from "../core/guc/types.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { GucClient } from "../desktop/engine/guc-client.ts";
 import { readMail, readMessage } from "../desktop/engine/guc-mail.ts";
-import { syncGuc } from "../desktop/engine/guc-sync.ts";
+import { READER_WAIT, syncGuc } from "../desktop/engine/guc-sync.ts";
 import { checkGrade, fakeEws, fakeGuc, host, noWait, type FakePage } from "./guc-fake.ts";
 import { GUC_GUIDE } from "../core/guc/ai-tools.ts";
 import { CALENDAR_GUIDE } from "../core/proactivity/calendar.ts";
@@ -254,7 +254,7 @@ test("a new reader is a silent baseline; after it a new quiz is news with a clea
 });
 
 // ---------- Syncing ----------
-test("a model that doesn't answer holds nothing up: news is saved first, the rules stand in, and it is tried 3 times", async () => {
+test("only the AI decides Coming up: a model that doesn't answer changes nothing, holds nothing up, and is asked again later", async () => {
   const t = await owner("cu-slow");
   try {
     const client = new GucClient({ username: "student.name", password: "secret" }, t.guc.http, noWait);
@@ -265,11 +265,17 @@ test("a model that doesn't answer holds nothing up: news is saved first, the rul
     const r = await syncGuc({ db: t.engine.db, owner: "cu-slow", client, parts: ["pages", "catalog"], reader: never, readerMs: 40, now: new Date(NOW) });
     assert.ok(Date.now() - started < 10_000, "minutes of waiting are not the sync's");
     assert.ok(r.eventList.some((e) => e.kind === "new_announcement"), "the announcement is saved and told");
-    assert.ok(r.eventList.some((e) => e.kind === "deadline_added" && /Quiz 5/.test(e.title)), "the rules found the quiz meanwhile");
+    assert.ok(!r.eventList.some((e) => e.kind === "deadline_added"), "no rule reader stands in: Coming up waits for the AI");
     assert.ok(r.warnings.some((w) => /deadline reader didn't answer/.test(w)));
     for (let i = 0; i < 3; i++) await syncGuc({ db: t.engine.db, owner: "cu-slow", client, parts: ["pages", "catalog"], reader: never, readerMs: 40, now: new Date(NOW) });
-    assert.equal(asked, 3, "three tries on the same texts, then the rules' answer stands until they change");
+    assert.equal(asked, 3, "three tries on the same texts, then a pause");
+    await syncGuc({ db: t.engine.db, owner: "cu-slow", client, parts: ["pages", "catalog"], reader: never, readerMs: 40, now: new Date(NOW + READER_WAIT + 60_000) });
+    assert.equal(asked, 4, "asked again after the pause: the posts were never marked read");
+    // The model answers after the next pause: its reading is what Coming up shows, told once.
+    const answers = async () => JSON.stringify({ deadlines: [{ title: "Quiz 5", kind: "quiz", due: "2026-12-01 15:45", timeKnown: true }], cancel: [] });
+    await syncGuc({ db: t.engine.db, owner: "cu-slow", client, parts: ["pages", "catalog"], reader: answers, now: new Date(NOW + 2 * READER_WAIT + 120_000) });
     assert.equal((await t.engine.db.query("select 1 from guc_events where kind = 'deadline_added'")).length, 1, "told once");
+    assert.equal((await t.engine.db.query("select 1 from guc_deadlines where title = 'Quiz 5'")).length, 1);
   } finally { await t.close(); }
 });
 

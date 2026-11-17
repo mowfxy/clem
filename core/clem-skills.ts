@@ -9,6 +9,7 @@ import { documentIntent } from "./document-standard.ts";
 import { driveIntent } from "./drive-search.ts";
 import { figureRecipeText, figureVocabulary } from "./figure-recipes.ts";
 import { GUC_GUIDE } from "./guc/ai-tools.ts";
+import { EDIT_GUIDE } from "./workspace-edit.ts";
 import { VPS_GUIDE } from "./vps/tools.ts";
 
 export type ClemSkill = { id: string; name: string; description: string; when: RegExp; steps: string[] };
@@ -89,6 +90,12 @@ export const clemSkills: ClemSkill[] = [
       "Nothing is scheduled until the person presses Schedule on the card. Runs happen only while Clem is open on the PC; a run missed while it was closed happens once when Clem next opens. Only daily and weekly repeats exist (no hourly, monthly or “every other day”); for those, say so and offer the nearest daily or weekly routine.",
       "Never claim a routine is already running or has been created. After the person schedules it, they pause, resume or delete it in Settings → Automations; new routines are only created from a chat like this.",
     ],
+  },
+  {
+    // core/workspace-edit.ts (EDIT_GUIDE, the edit.* actions): desktop/main.ts asks the window; Telegram's thread (both sides) applies them itself.
+    id: "edits", name: "Changing files, folders, subjects and plans", description: "Renames, moves and deletes files, makes and removes folders, changes subjects and plan tasks.",
+    when: /\b(rename|move|moved|put|file|organi[sz]e|folders?|delete|remove|trash|subject|project|exam date|plan|tasks?|mark(?:ed)? (?:as )?done|change|update|edit|fix|set)\b/i,
+    steps: EDIT_GUIDE.split("\n").map((l) => l.replace(/^- /, "")),
   },
   {
     // core/guc/ai-tools.ts (GUC_GUIDE, the guc.* actions); desktop/engine/ai-tools.ts runs them; desktop/main.ts tools.

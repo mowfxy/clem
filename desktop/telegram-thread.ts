@@ -7,6 +7,7 @@ import { runKinetraTurn } from "./kinetra-turn.ts";
 import { NOT_ON_TELEGRAM, declineReply, telegramAllows, telegramDeclines, telegramGuide, telegramPrompt, type ThreadSpace } from "../core/telegram/thread.ts";
 import { commitPlanBlock, findSpace, mainThreadOf, putMessage, type Ws } from "../core/workspace/apply.ts";
 import { planBlocksIn, withoutPlanBlocks, type SpacePlan } from "../core/plans.ts";
+import { applyEdit, isEditAction } from "../core/workspace-edit.ts";
 import type { NowCard } from "../core/main-thread/context.ts";
 import type { EditOutcome, Message, Space } from "../core/types.ts";
 
@@ -63,6 +64,13 @@ export async function telegramTurn<W extends ThreadState>(d: ThreadDeps<W>, raw:
     const action = String(t?.action || "");
     if (!telegramAllows(action)) return NOT_ON_TELEGRAM;
     if (action === "ws.subjects" || action === "ws.subject") return wsTool(d, t);
+    // Files, folders, subjects and plan tasks (core/workspace-edit.ts), on this side's workspace: the PC's window, or
+    // the worker's copy, which the PC picks up.
+    if (isEditAction(action)) {
+      let out: { done: string } | { error: string } = { error: "Nothing changed." };
+      await d.ws.change((w) => { const r = applyEdit(w, t, { now: clock() }); if ("error" in r) { out = { error: r.error }; return w; } out = { done: r.said }; return r.state; });
+      return out;
+    }
     const r = await d.run(t) as { asked?: boolean; question?: string } | undefined;
     if (r && typeof r === "object" && r.asked && typeof r.question === "string") {
       question = r.question;

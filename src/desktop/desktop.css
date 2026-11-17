@@ -455,6 +455,40 @@
 .setup-navigation button.primary::after { display: none; }
 .setup-navigation button.primary:hover:not(:disabled) { color: #fff; }
 .setup-navigation button:disabled { opacity: 0.6; cursor: progress; }
+/* "Can't reach Clem": the main action is the setup's own full-width button, the way out a quiet line under it. */
+.setup-offline-text {
+  max-width: 36ch;
+  margin-inline: auto;
+  text-wrap: pretty;
+}
+.setup-offline-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: 26px;
+}
+.setup-card .setup-offline-actions .primary {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.setup-card .setup-offline-actions .primary:disabled { opacity: 0.7; cursor: progress; }
+.setup-offline-quiet {
+  justify-self: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--setup-muted);
+  font-size: 13.5px;
+  transition: color 0.2s, background 0.2s;
+}
+.setup-offline-quiet:hover:not(:disabled) { color: var(--setup-ink); background: #ffffff12; }
+.setup-offline-quiet:disabled { opacity: 0.5; cursor: progress; }
+:root[data-theme="light"] .setup-offline-quiet { color: #5d5b55; }
+:root[data-theme="light"] .setup-offline-quiet:hover:not(:disabled) { color: #141e33; background: #141e3310; }
 .setup-card .inline-error {
   color: #eda699;
   margin-top: 16px;

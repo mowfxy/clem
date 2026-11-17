@@ -22,6 +22,9 @@ export type EngineHost = {
   workspace?(): Promise<unknown>;
   /** One short answer from Clem's organizer model (desktop: answerWith, no tools). Left out, sweeps use rules only. */
   complete?(request: { system: string; user: string; model?: string; reasoning?: string }): Promise<string>;
+  /** Tests only, which run with no model: the rule extractor reads deadlines when the model doesn't (guc-sync.ts
+   *  `rules`). The app never sets it: Coming up is the AI's decision alone. */
+  ruleReader?: boolean;
   /** Clem's account service as this owner (desktop: the signed-in Supabase session; a VPS: its own). Telegram's relay
    *  talks to the bot through it; left out, there is no Telegram. */
   account?(path: string, init?: { method?: string; body?: BodyInit; headers?: Record<string, string> }, signal?: AbortSignal, timeout?: number): Promise<Response>;

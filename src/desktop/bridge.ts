@@ -58,6 +58,9 @@ export function newestWithin<T extends { role: string; content: string }>(messag
   const kept = new Set(rest.slice(rest.length - keep));
   return messages.filter((m) => m.role === "system" || kept.has(m));
 }
+/** Applies an edit.* request to the window's workspace (set by src/App.tsx); the model is told what it did. */
+let workspaceEditor: ((request: Record<string, unknown>) => { done: string } | { error: string } | Promise<{ done: string } | { error: string }>) | undefined;
+export const setWorkspaceEditor = (fn: typeof workspaceEditor) => { workspaceEditor = fn; };
 /** The plan's usage limit stopped an answer part-way: its unfinished files were not sent. `resetsAt` (ms) when the provider says. */
 export class LimitReached extends Error {
   resetsAt?: number;
@@ -111,7 +114,12 @@ export async function desktopChat(
       }
       if (event.type === "pdfTask" && event.task) {
         const reply = (result: { data?: unknown; images?: { name: string; data: string }[]; files?: Uint8Array[]; error?: string }) => void desktop!.invoke({ action: "pdfTaskResult", id: event.task!, ...(result.data !== undefined ? { data: JSON.stringify(result.data) } : {}), ...(result.images ? { images: result.images.slice(0, 4) } : {}), ...(result.files ? { files: result.files.slice(0, 3) as Uint8Array<ArrayBuffer>[] } : {}), ...(result.error ? { error: result.error.slice(0, 500) } : {}) }).catch(() => {});
-        if (!pdfTask) reply({ error: "PDFs and pictures cannot be worked on in this conversation." });
+        // A change to the workspace (core/workspace-edit.ts): the window's own handler, whichever chat asked.
+        if (event.op === "edit") {
+          if (!workspaceEditor) reply({ error: "Clem's window isn't ready to make changes yet." });
+          else Promise.resolve().then(() => workspaceEditor!(event.args || {})).then((r) => reply("error" in r ? { error: r.error } : { data: r }), (error: unknown) => reply({ error: (error as Error).message || "That change couldn't be made." }));
+        }
+        else if (!pdfTask) reply({ error: "PDFs and pictures cannot be worked on in this conversation." });
         else pdfTask(String(event.op || ""), event.args || {}).then(reply, (error: unknown) => reply({ error: (error as Error).message || "That could not be done." }));
       }
       if (event.type === "delta") {

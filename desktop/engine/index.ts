@@ -296,10 +296,10 @@ export class Engine {
       // A refused sign-in is the password only when the CMS home page refuses it too, asked once after a short wait.
       // When the home page takes it, the sync is tried once more; a page that still refuses is that page's trouble
       // (the portal or one course), never a reason to ask the person for a new password.
-      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader, now: new Date(this.clock()) }).catch(async (e) => {
+      const result = await syncGuc({ db: this.db, owner: this.owner, client, initial, only, progress, parts, reader: this.deadlineReader, rules: !!this.host.ruleReader, now: new Date(this.clock()) }).catch(async (e) => {
         if (asGucError(e).kind !== "auth") throw e;
         if (!(await this.passwordWorks(credentials))) throw e;
-        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader, now: new Date(this.clock()) }).catch((again) => {
+        return syncGuc({ db: this.db, owner: this.owner, client: new GucClient(credentials, this.http, this.sleep), initial, only, progress, parts, reader: this.deadlineReader, rules: !!this.host.ruleReader, now: new Date(this.clock()) }).catch((again) => {
           throw asGucError(again).kind === "auth" ? new GucError("unavailable", "sign-in refused past the home page: " + (asGucError(again).detail || "")) : again;
         });
       });
