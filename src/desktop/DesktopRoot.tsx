@@ -213,11 +213,11 @@ function SetupContent() {
           ) : state?.user && state.entitlement.reason === "offline" && state.setup.step >= 3 ? (
             <>
               <div className="setup-welcome-heading"><Logo size={36}/><h1 ref={heading} tabIndex={-1}>Can’t reach Clem.</h1></div>
-              <p>Clem checks your account when it opens. Check your internet connection and try again — nothing on this PC has changed.</p>
-              {state.error && <p className="fine">{state.error}</p>}
-              <div className="setup-navigation">
+              {/* The connection's own error ("fetch failed") says nothing a person can act on, so it isn't shown. */}
+              <p className="setup-offline-text">Clem couldn’t check your account. Check your internet connection and try again. Everything on this PC is safe.</p>
+              <div className="setup-offline-actions">
                 <button className="primary" disabled={busy} onClick={() => void run(refresh)}>{busy ? "Checking…" : "Try again"}</button>
-                <button disabled={busy} onClick={() => setReadOnly(true)}>Open my files offline</button>
+                <button className="setup-offline-quiet" disabled={busy} onClick={() => setReadOnly(true)}>Open my files offline</button>
               </div>
             </>
           ) : !state ? (

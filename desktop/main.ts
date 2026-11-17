@@ -88,6 +88,7 @@ import { serveHooks } from './engine/hooks';
 /** Routines' webhooks on this PC (desktop/engine/hooks.ts). */
 const HOOK_PORT = Number(process.env.CLEM_HOOK_PORT || 7718);
 import { isClemAction } from '../core/proactivity/tools';
+import { isEditAction } from '../core/workspace-edit';
 import {youtubeCaptions,youtubePlaylist} from './video-captions';
 import {runKinetraTurn,SessionLost,UsageLimit,Transient,type AnswerGates} from './kinetra-turn';
 import {LiveScreen,NOTE_HOLD} from './live-reply';
@@ -2669,6 +2670,12 @@ void app.whenReady().then(async () => {
         }
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):
         // the organizer runs them (core/proactivity/tools.ts), the same way from Telegram and on the VPS worker.
+        // Files, folders, subjects and projects, plan tasks (core/workspace-edit.ts): the window owns the workspace, so it
+        // applies the change and says what it did.
+        if (isEditAction(tool?.action)) {
+          try { return (await windowTask("edit", { ...tool, here: spaceOf ?? null })).data; }
+          catch (e) { return { error: (e as Error).message || "Clem couldn't make that change." }; }
+        }
         if (isClemAction(tool?.action)) {
           const engine = await engineFor(user.id).catch((e: Error) => e);
           if (engine instanceof Error) return { error: engineError(engine) };

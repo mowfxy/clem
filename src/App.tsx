@@ -43,7 +43,8 @@ import {openWorkflow,deleteWorkflowCheckpoints} from "./workflow-state";
 import {LinkifiedText} from "./chat/Links";
 import {youtubeReferences} from "./youtube";
 import {isMediaType, stamp, videoContentIntent, videoContext, type VideoCaptions} from "../core/captions";
-import {desktop,desktopChat,LimitReached} from './desktop/bridge';
+import {desktop,desktopChat,LimitReached,setWorkspaceEditor} from './desktop/bridge';
+import {applyEdit} from '../core/workspace-edit';
 import {conversationPictures,NO_PDF_VIEW,pageImages,pdfView,type PdfView} from './desktop/page-images';
 import type {Finder} from './files/finder';
 import {LinkedFolders} from './desktop/LinkedFolders';
@@ -2150,6 +2151,17 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
   /** What GUC cards (chat, subject page, hub, Settings) ask of the app. */
   // Clem's organizer (src/proactivity/pro.ts): what it decided is applied here, its messages land in the main thread.
   const pro=useMemo(()=>createPro({state:()=>stateRef.current,patch}),[]);
+  // What the AI changes when the person asks (core/workspace-edit.ts edit.*): files, folders, subjects and projects, plan
+  // tasks, applied here at once; a deleted file's bytes and versions go too.
+  useEffect(()=>{setWorkspaceEditor(({here,...request})=>{
+    const r=applyEdit(stateRef.current,request,{here:typeof here==="string"?here:null});
+    if("error" in r)return {error:r.error};
+    patch(s=>({...s,spaces:r.state.spaces,files:r.state.files,plans:r.state.plans}));
+    if(r.gone?.length){const ids=new Set(r.gone.map(f=>f.id)),owner=ownerRef.current,gone=r.gone;setAttachments(a=>a.filter(x=>!ids.has(x)));setPanelFile(p=>p&&ids.has(p.id)?null:p);
+      const next=stateRef.current,persistence=saveQueue.current.then(()=>saveState(next,owner));saveQueue.current=persistence.catch(()=>{});
+      void persistence.then(()=>Promise.allSettled(gone.flatMap(f=>[...(f.remote?[api("files/"+f.id,"DELETE")]:[]),deleteBlob(f.id,owner),deleteBlob('spec-'+f.id,owner),...(f.versions||[]).flatMap(v=>[deleteBlob(v.blob,owner),deleteBlob('spec-'+v.blob,owner)])]))).catch(()=>{});}
+    return {done:r.said};
+  });return()=>setWorkspaceEditor(undefined);},[]);
   const [focusMessage,setFocusMessage]=useState<string>();
   const proActions:ProActions={spaceName:(id)=>stateRef.current.spaces.find(x=>x.id===id)?.name,open:(href)=>navigate(href.slice(1)),
     // A new lecture's one-tap buttons: a chat in the subject with the request typed, the saved file attached when there is one.

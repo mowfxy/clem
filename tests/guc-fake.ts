@@ -44,6 +44,8 @@ export function host(o: { temp?: string; files?: string; drive?: EngineHost["dri
     drive: o.drive,
     changes: 0,
     changed() { this.changes++; },
+    // These tests run with no model: the rule extractor reads deadlines (desktop/engine/guc-sync.ts `rules`).
+    ruleReader: true,
     log: () => {},
   };
 }

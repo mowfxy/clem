@@ -56,7 +56,7 @@ export function dueParts(lastRead: Record<string, number> | undefined, now: numb
 
 /** How long one deadline reader call may take, how many run at once, and how many times the same texts are tried
  *  before the rule reader's answer is kept until they change. */
-export const READER_MS = 60_000, READERS_AT_ONCE = 2, READER_TRIES = 3;
+export const READER_MS = 60_000, READERS_AT_ONCE = 2, READER_TRIES = 3, READER_WAIT = 6 * 3600e3;
 /** Seating plans and schedules uploaded as files: at most this many read a sync, this big, tried this many times. */
 export const FILES_PER_SYNC = 3, FILE_MAX_BYTES = 8 * 1024 * 1024, FILE_TRIES = 3;
 /** How long one course page may hold up the sync; a slower one is read again next pulse. */
@@ -70,7 +70,7 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {
 
 /** `mail: false` leaves the Inbox out (tests, and a person who turned it off). `parts`: read only these (a pulse);
  *  every part when left out. */
-export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; only?: string; now?: Date; progress?: (p: GucProgress) => void; mail?: boolean; parts?: Part[]; /** The main thread's model, to read deadlines (core/guc/deadline-ai.ts); left out, the rule reader does. */ reader?: (ask: { system: string; user: string }) => Promise<string | null>; /** How long one model call may take (READER_MS). */ readerMs?: number }): Promise<SyncResult> {
+export async function syncGuc(o: { db: Db; owner: string; client: GucClient; initial?: boolean; only?: string; now?: Date; progress?: (p: GucProgress) => void; mail?: boolean; parts?: Part[]; /** The main thread's model, to read deadlines (core/guc/deadline-ai.ts): the only thing that decides Coming up. */ reader?: (ask: { system: string; user: string }) => Promise<string | null>; /** Tests only (EngineHost.ruleReader): the rule extractor stands in when the model doesn't answer. */ rules?: boolean; /** How long one model call may take (READER_MS). */ readerMs?: number }): Promise<SyncResult> {
   const { db, owner, client } = o, started = Date.now(), now = o.now || new Date(), before = client.requests;
   const prev = await previousSnapshot(db, owner);
   const pages: Record<string, PageMemo> = { ...prev.pages }, warnings: string[] = [];
@@ -194,8 +194,10 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   const same = prev.seen.deadlines?.v === DEADLINE_VERSION;
   const fresh = new Set(same ? prev.seen.deadlines!.courses : []);
   const textsRead: Record<string, string[]> = same ? { ...prev.seen.deadlines!.read } : {};
-  const fails: Record<string, { texts: string; n: number }> = same ? { ...prev.seen.deadlines!.fails } : {};
-  const deadlines: GucDeadline[] = same ? [...prev.data.deadlines] : [];
+  const fails: Record<string, { texts: string; n: number; at?: number }> = same ? { ...prev.seen.deadlines!.fails } : {};
+  // What an older reader found stays shown until the AI has read that course again; then its answer replaces it.
+  const deadlines: GucDeadline[] = [...prev.data.deadlines];
+  const stale = new Set(same ? [] : prev.data.deadlines.map((d) => d.id));
   // The same for the announcement reader: a course whose page an older reader read is read again once (page memo
   // ignored), its posts are a baseline (diff.ts) and their read state carries over from the old rows (save).
   const annRead = new Set(prev.seen.announcements?.v === ANNOUNCEMENT_VERSION ? prev.seen.announcements.courses : []);
@@ -262,9 +264,8 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
 
   // ---------- Second step: deadlines ----------
   // Each course whose page was read, and each course with a new mail about it, has its unread texts read: by the model
-  // (READERS_AT_ONCE at a time, READER_MS each) when there is one, else by the rules. A model that doesn't answer leaves
-  // the rules' answer and the texts unread, so they are tried again next pulse, READER_TRIES times; then the rules'
-  // answer stands until the texts change. A course a new announcement reader just read again reads every text once (the
+  // (READERS_AT_ONCE at a time, READER_MS each); never by rules. A model that doesn't answer leaves Coming up as it is
+  // and the texts unread, so they are tried again on later pulses. A course a new announcement reader just read again reads every text once (the
   // diff makes what it finds a baseline).
   const at = now.getTime(), who = { courses: next.courses, username: client.username, now: at };
   // What the person corrected (desktop/engine/corrections.ts): their rules keep texts out and are told to the reader,
@@ -314,32 +315,37 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     const had = new Set(switched.has(course.key) ? [] : textsRead[course.key] || []);
     const rules = rulesFor(fixes, course.key);
     const unread = texts.filter((t) => !had.has(t.id) && textAllowed(t, rules, at));
-    const tracked = deadlines.filter((d) => d.courseKey === course.key && Date.parse(d.due) >= at - 30 * 864e5);
+    const tracked = deadlines.filter((d) => d.courseKey === course.key && !stale.has(d.id) && Date.parse(d.due) >= at - 30 * 864e5);
     const firstRead = !fresh.has(course.key) || switched.has(course.key);
-    let list = tracked, ok = true;
+    let list = tracked, ok = true, changedByRules = false;
     if (unread.length) {
-      const sig = stableId(unread.map((t) => t.id).sort().join("|")), tries = fails[course.key]?.texts === sig ? fails[course.key].n : 0;
-      let ai: GucDeadline[] | null = null;
-      if (o.reader && tries < READER_TRIES) {
+      // Only the AI decides what goes in Coming up: no rule reader stands in for it. With no model set up the posts count
+      // as read and Coming up keeps what it has; a model that doesn't answer changes nothing and leaves the posts unread,
+      // so a later sync reads them again (after READER_TRIES failures on the same posts, once every READER_WAIT).
+      const sig = stableId(unread.map((t) => t.id).sort().join("|")), was = fails[course.key]?.texts === sig ? fails[course.key] : undefined, tries = was?.n ?? 0;
+      ok = !o.reader;
+      if (o.reader && (tries < READER_TRIES || at - (was?.at ?? 0) >= READER_WAIT)) {
         const input = { course, slots: next.slots, texts: unread, tracked, now: at, exams: (next.exams || []).filter((e) => sameCode(e.code, course.code)), rules: rulesText(rules), firstRead };
+        let ai: GucDeadline[] | null = null;
         try { const raw = await within(o.reader(readerPrompt(input)), o.readerMs ?? READER_MS); ai = raw == null ? null : applyReader(parseModelJson(raw), input); } catch { ai = null; }
-        if (!ai) { ok = tries + 1 >= READER_TRIES; fails[course.key] = { texts: sig, n: tries + 1 }; warnings.push(course.code + ": deadline reader didn't answer"); }
-        else delete fails[course.key];
+        if (!ai) { fails[course.key] = { texts: sig, n: tries + 1, at }; warnings.push(course.code + ": deadline reader didn't answer"); }
+        else { delete fails[course.key]; list = ai; ok = true; }
       }
-      if (ai) list = ai;
-      else {
+      // Tests, which have no model: the rule extractor, as the app's reader once was (never in the app).
+      if (o.rules && (!o.reader || !ok)) {
         const mine = next.slots.filter((x) => sameCode(x.code, course.code));
         const found = new Map(courseDeadlines(unread.filter((t) => t.source !== "file").map((t) => ({ text: t.text, source: t.source, id: t.id, sent: t.sent, around: t.around })), course.key, now, mine).map((d) => [d.id, d]));
         list = [...tracked.filter((d) => !found.has(d.id)), ...found.values()];
-        // A file sets the room (and time) of the item its title names, for the student's group's row; unsure: nothing.
         for (const f of unread.filter((t) => t.source === "file")) { const u = fileUpdate({ title: f.label.replace(/^File: /, "").replace(/ \([^)]*\)$/, ""), text: f.text }, list, mine); if (u) list = list.map((d) => (d.id === u.id ? u : d)); }
+        ok = !o.reader || tries + 1 >= READER_TRIES;
+        changedByRules = true;
       }
     }
     // Something new that is already over never joins Coming up (an old message read late), and the person's
     // corrections hold whatever was read.
     const had2 = new Set(tracked.map((d) => d.id));
     list = applyCorrections(list.filter((d) => had2.has(d.id) || endsAt(d) > at), fixes, { now: at });
-    deadlines.splice(0, deadlines.length, ...deadlines.filter((d) => d.courseKey !== course.key), ...list);
+    if (ok || changedByRules) deadlines.splice(0, deadlines.length, ...deadlines.filter((d) => d.courseKey !== course.key), ...list);
     // A course the switch read counts as read by this reader only once its deadlines were read too, so a model that
     // didn't answer leaves the next read a baseline as well.
     if (ok) {

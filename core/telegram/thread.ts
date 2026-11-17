@@ -8,6 +8,7 @@
 import { GUC_GUIDE, gucAction } from "../guc/ai-tools.ts";
 import { clemAction } from "../proactivity/tools.ts";
 import { isVpsAction, VPS_GUIDE } from "../vps/tools.ts";
+import { EDIT_GUIDE, isEditAction } from "../workspace-edit.ts";
 import { localNowCard, renderNow, withGuc, type NowCard } from "../main-thread/context.ts";
 import { MAIN_THREAD_BASE, ORGANIZER_GUIDES, OWN_POSTS } from "../main-thread/guide.ts";
 import { plansPlaybook } from "../clem-skills.ts";
@@ -39,6 +40,8 @@ export function telegramAllows(action: unknown): boolean {
   if (g) return !GUC_STUDY.has(g);
   if (a === "telegram.sendFile") return true;
   if (isVpsAction(a)) return true;
+  // Renaming, moving or deleting a file, folders, subjects and plan tasks: managing, not making (core/workspace-edit.ts).
+  if (isEditAction(a)) return true;
   return (TG_WS_ACTIONS as readonly string[]).includes(a);
 }
 /** What an action that isn't on this path answers, so the model says the one short message instead. */
@@ -97,7 +100,7 @@ const GUC_HERE = `On Telegram guc.read is not available (answering from a file's
 
 /** The Telegram main thread's guide: the same on the laptop and on the VPS worker. */
 export function telegramGuide() {
-  return [IDENTITY, MAIN_THREAD_BASE + " " + OWN_POSTS, SCOPE, ORGANIZER_GUIDES, SEND_GUIDE, SUBJECTS_GUIDE, plansPlaybook(), GUC_GUIDE + "\n" + GUC_HERE, VPS_GUIDE].join("\n\n");
+  return [IDENTITY, MAIN_THREAD_BASE + " " + OWN_POSTS, SCOPE, ORGANIZER_GUIDES, SEND_GUIDE, SUBJECTS_GUIDE, EDIT_GUIDE, plansPlaybook(), GUC_GUIDE + "\n" + GUC_HERE, VPS_GUIDE].join("\n\n");
 }
 
 // ---------- The prompt ----------
