@@ -14,7 +14,7 @@ export const PAIRED = "Paired. This chat now talks to your Clem, and your update
 export const BAD_CODE = "That code didn't work. Codes work once and last 10 minutes; ask Clem for a new one.";
 export const OFFLINE = "Got it. Your Clem isn't online right now, so I'll answer as soon as it's back.";
 /** How long an engine may go without pulling before a message is answered with OFFLINE (at most once an hour). */
-const OFFLINE_AFTER = 120_000, LEASE_MS = 120_000;
+const OFFLINE_AFTER = 120_000, LEASE_MS = 120_000, SEEN_EVERY = 60_000;
 
 const now = () => Date.now();
 const secretOk = (a, b) => { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
@@ -28,7 +28,7 @@ export function botFor(env, client) {
 }
 
 const linkOfChat = (env, chatId) => env.DB.prepare("SELECT user_id,from_id,last_seen,offline_noted FROM telegram_links WHERE chat_id=?").bind(chatId).first();
-const linkOf = (env, userId) => env.DB.prepare("SELECT chat_id,from_id,name,created_at,last_seen FROM telegram_links WHERE user_id=?").bind(userId).first();
+const linkOf = (env, userId) => env.DB.prepare("SELECT chat_id,from_id,name,created_at,last_seen,offline_noted FROM telegram_links WHERE user_id=?").bind(userId).first();
 const nameOf = (from) => (from?.username ? "@" + from.username : [from?.first_name, from?.last_name].filter(Boolean).join(" ")).slice(0, 80);
 
 /** Keeps one thing a paired chat sent, once per Telegram update (a redelivered update changes nothing). */
@@ -117,11 +117,15 @@ export async function handleTelegram(request, env, user, path, o = {}) {
       return json({ configured: true, bot: env.TELEGRAM_BOT_USERNAME, paired: link ? { name: link.name, since: link.created_at, online: t - link.last_seen < OFFLINE_AFTER } : null });
     }
     if (path === "/telegram/inbox" && request.method === "GET") {
-      if (!(await linkOf(env, user.id))) return json({ paired: false, items: [] });
+      const link = await linkOf(env, user.id);
+      if (!link) return json({ paired: false, items: [] });
+      // last_seen is written only when it's a minute old (or an offline note is pending), not on every 2-second pass:
+      // a write per pass kept D1 near its daily write limit with nobody messaging. A minute is well inside OFFLINE_AFTER.
+      let seen = link.offline_noted ? 0 : link.last_seen;
       const wait = Math.min(25, Math.max(0, Number(new URL(request.url).searchParams.get("wait")) || 0)) * 1000;
       const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
       for (const end = t + wait; ;) {
-        await env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=?").bind(now(), user.id).run();
+        if (now() - seen >= SEEN_EVERY) { seen = now(); await env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=?").bind(seen, user.id).run(); }
         const { results } = await env.DB.prepare("SELECT id,kind,sealed,created_at FROM telegram_inbox WHERE user_id=? AND lease_until<? ORDER BY created_at,id LIMIT 20").bind(user.id, now()).all();
         if (results.length || now() >= end) {
           const k = await vaultKey(env), items = [];

@@ -82,6 +82,15 @@ test("worker: inbox pull and ack are idempotent; taps round-trip; replies, typin
   await hook(env, tg, msg(42, p.code));
   const first = await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
   assert.deepEqual(first, { paired: true, items: [] }, "a pull also marks the engine online");
+  // D1 writes: a pull that finds nothing doesn't rewrite last_seen while it's under a minute old, only when it's stale.
+  const seenAt = () => (env.DB.db.prepare("SELECT last_seen FROM telegram_links WHERE user_id='u1'").get() as any).last_seen;
+  env.DB.db.prepare("UPDATE telegram_links SET last_seen=?").run(Date.now() - 30_000);
+  const recent = seenAt();
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=1");
+  assert.equal(seenAt(), recent, "fresh: not written again");
+  env.DB.db.prepare("UPDATE telegram_links SET last_seen=?").run(Date.now() - 90_000);
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
+  assert.ok(Date.now() - seenAt() < 5_000, "a minute old: written");
   const m = msg(42, "send me lecture 3 slides");
   await hook(env, tg, m);
   await hook(env, tg, m); // Telegram resends an update: kept once
