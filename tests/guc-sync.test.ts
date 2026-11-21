@@ -13,6 +13,7 @@ import { checkGrade, examSeats, fakeEws, fakeGuc, fixture, host, noWait, site } 
 test("connecting checks the password, keeps it encrypted, and the first sync is a quiet baseline", async () => {
   const pages = site(), guc = fakeGuc(pages), h = host();
   const engine = await Engine.open("owner-1", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     const progress: string[] = [];
     const status = await engine.connect("student.name", "secret", (p) => progress.push(p.label));
@@ -35,6 +36,7 @@ test("connecting checks the password, keeps it encrypted, and the first sync is 
 test("a full sync reads every current course's page (files listed, none downloaded), skips unchanged pages and turns changes into events", async () => {
   const pages = site(), guc = fakeGuc(pages, { etags: true }), h = host();
   const engine = await Engine.open("owner-2", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     await engine.db.query("insert into subject_links (owner_id, subject_id, course_key) values ('owner-2', 'subject-a', '1201:64')");
@@ -85,6 +87,7 @@ test("a full sync reads every current course's page (files listed, none download
 test("a content hash skips pages that come back identical without an ETag", async () => {
   const pages = site(), guc = fakeGuc(pages), h = host();
   const engine = await Engine.open("owner-3", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     // Only the view state changes between loads.
@@ -115,6 +118,7 @@ test("logins are retried as GUC\\username, and failures are typed and told once"
 
   const pages = site(), h = host(), flaky = fakeGuc(pages);
   const engine = await Engine.open("owner-4", h, { http: flaky.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     pages[urls.home] = "<html><body>Something new</body></html>";
@@ -136,6 +140,7 @@ test("reconnecting after a disconnect is a quiet baseline: no events, and the or
   h.workspace = async () => ({ spaces: [], plans: [], chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
   h.complete = async () => { h.calls++; return '{"levels":[],"actions":[]}'; };
   const engine = await Engine.open("owner-re", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     await engine.sync();
@@ -173,6 +178,7 @@ test("with a model, the AI reads each course's posts once, with the schedule, an
   const pages = site(), guc = fakeGuc(pages, { etags: true }), h = host(), asked: string[] = [];
   h.complete = async ({ user }) => { asked.push(user); return JSON.stringify({ deadlines: /Course: CSEN 701/.test(user) ? [{ title: "Quiz 2", due: "2099-01-01 10:00" }, { title: "Assignment 5", due: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) + " 15:30", timeKnown: true, quote: "Assignment 5 is due next week." }] : [], cancel: [] }); };
   const engine = await Engine.open("owner-ai", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     assert.ok(asked.length >= 1 && asked.length <= 3, "one request per course with posts to read");
@@ -195,6 +201,7 @@ test("a post that gains a table row is one Updated announcement; posts keep thei
   const pages = site(), guc = fakeGuc(pages), h = host();
   pages[urls.course(1201, 64)] = withBox(box("math"));
   const engine = await Engine.open("owner-ann", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     const first = await engine.announcements({ courseKey: "1201:64" });
@@ -217,6 +224,7 @@ test("the new announcement reader takes over silently: whole posts, read state a
   const pages = site(), guc = fakeGuc(pages), h = host();
   pages[urls.course(1201, 64)] = withBox(box("math"));
   const engine = await Engine.open("owner-switch", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  h.speaker = engine.organizer;
   try {
     await engine.connect("student.name", "secret");
     // What an older reader left: one row per paragraph or table cell, all read, seen over the past weeks, and the

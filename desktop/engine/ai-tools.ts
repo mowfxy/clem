@@ -229,13 +229,32 @@ function toRule(r: { type: string; days?: number; from?: string; words?: string[
   if (r?.type === "ignore") return { type: "ignore", ...(r.from ? { from: r.from } : {}), ...(r.words?.length ? { words: r.words } : {}), ...(r.message && item?.ref ? { ref: item.ref } : {}) };
   return { type: "note" };
 }
+/** guc.correct "add": an item the person told Clem about that no post gave it (a quiz posted as a picture, one told in
+ *  class). It is theirs: kept through every sync (core/guc/corrections.ts "add") until they remove it or a post brings
+ *  the same item. */
+async function addItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, list: HubDeadline[]): Promise<string | { error: string }> {
+  if (!course) return { error: 'guc.correct add: say which course: "subject".' };
+  if (!a.date) return { error: 'guc.correct add: give "date" (YYYY-MM-DD), and "time" (HH:MM) when known.' };
+  const title = String(a.title || a.item).trim().slice(0, 80);
+  const at = a.time ? /^(\d{1,2}):(\d{2})$/.exec(a.time) : null;
+  const due = new Date(cairoInstant(+a.date.slice(0, 4), +a.date.slice(5, 7), +a.date.slice(8, 10), at ? +at[1] : 23, at ? +at[2] : 59)).toISOString();
+  const kind = a.kind || (/quiz/i.test(title) ? "quiz" : /exam|midterm|final/i.test(title) ? "exam" : /assignment|sheet|homework/i.test(title) ? "assignment" : "other");
+  const item: GucDeadline = { id: "you-" + fingerprintId(course.courseKey + "|" + title.toLowerCase()), courseKey: course.courseKey, title, due, source: "you", kind, timeKnown: !!at, ...(a.place ? { place: a.place } : {}), ...(a.note ? { note: a.note } : {}) };
+  // Already there under the same quiz/assignment: that one is corrected instead, so Coming up never holds it twice.
+  const same = list.find((d) => d.courseKey === course.courseKey && fingerprint(d) === fingerprint(item));
+  if (same) return correctItem(ctx, { ...a, do: "edit", item: same.id, title: undefined }, course, Date.now());
+  const done = await ctx.engine.correct({ kind: "add", itemId: item.id, fingerprint: fingerprint(item), courseKey: course.courseKey, patch: { item }, label: `Added ${course.code ? course.code + " " : ""}${title} (${whenText(due, !!at)}${a.place ? ", " + a.place : ""}) to Coming up` }, { put: item });
+  return `${done.label}. It holds through every sync. Tell them in one plain sentence ("undo that" takes it out).`;
+}
+const fingerprintId = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, "0"); };
 /** guc.correct: one item removed, edited, marked done, annotated or brought back, and what it taught kept as a rule. */
-async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, now: number) {
+async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, now: number): Promise<string | { error: string }> {
   if (a.what === "grade" || a.what === "class" || a.what === "announcement" || a.what === "midterm") return correctRecord(ctx, a, a.what, course);
   const e = ctx.engine, list = await e.deadlines();
   if (a.do === "restore") return restore(ctx, a.item, list, course);
+  if (a.do === "add") return addItem(ctx, a, course, list);
   const found = findItem(list, a.item, course);
-  if ("error" in found) return found;
+  if ("error" in found) return a.do === "edit" && a.date ? { error: found.error + ` If it isn't in Coming up at all, add it: the same request with "do":"add".` } : found;
   // An exam seat is the portal's own record: an edit changes Clem's copy (what it shows and reminds from), not the portal.
   const portal = found.source === "portal" || found.id.startsWith("exam-");
   const stored = portal ? undefined : (await e.trackedItems()).find((d) => d.id === found.id);

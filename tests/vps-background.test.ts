@@ -41,6 +41,7 @@ async function side(kind: "laptop" | "worker", o: { clock: { t: number }; disk?:
     h.fileStores = () => ({ vps: store! });
   }
   const engine = await Engine.open("owner-1", h, { http: guc.http, sleep: noWait, memory: true, jobs: false, clock: () => o.clock.t, ...(store ? { store } : {}) });
+  h.speaker = engine.organizer;
   if (store) waiting = store.waiting = new Waiting(engine.db, "owner-1");
   h.workspace = async () => ({ spaces: [{ id: "subj-1", name: "Circuits", kind: "subject" }], plans: [], files: [], studySets: [], automations: [], chats: [{ id: "main", kind: "main", messages: [] }] });
   const pair = async () => { const p = await engine.telegram.pair(); await hook(env, tg, msg(42, p.code)); await engine.telegram.status(true); };

@@ -35,6 +35,7 @@ export type Message = { id: string; role: 'user' | 'assistant'; content: string;
   /** The size cap's one quiet line (core/main-thread/trim.ts): shown small, never sent back as context. */ trim?: { bytes: number; files: number; messages: number };
   /** A setup question Clem asked in a subject's Setup chat (core/guc/setup-flow.ts), so it is asked once. */ setupStep?: string;
   /** Sent from the person's paired Telegram chat (docs/DESKTOP.md "Telegram"); the answer goes back there too. */ via?: 'telegram';
+  /** Said by Clem by itself, from a briefing of its background engine (desktop/telegram-thread.ts ownTurn): the briefing's key. */ own?: string;
   /** A main-thread message bringing back what a subject or project chat did for a hand-off (core/main-thread/handoff.ts):
    *  that chat's answer and files, with a link to it. */ brought?: { chat: string; space: string; name: string };
   /** A main-thread digest (core/main-thread/fold.ts): a `compact` brief standing in for the messages between `from` and

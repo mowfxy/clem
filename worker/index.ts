@@ -85,6 +85,8 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     },
     // A Telegram message answered here by the Telegram main thread, as the window answers it (desktop/engine/vps/agent.ts).
     ...(complete ? { converse: (turn) => agent!.converse(turn) } : {}),
+    // What Clem says by itself is written by the server's AI (the organizer's briefings), never a template.
+    ...(complete ? { speak: (own) => agent!.speak(own) } : {}),
     fileStore: () => disk,
     fileStores: () => ({ vps: disk }),
     vps: () => ({ files: true }),

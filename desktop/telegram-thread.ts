@@ -4,7 +4,7 @@
 // differs: the workspace (the window's state, or the worker's copy), the model, and the engine's tools (`run`). No
 // node or electron imports, so the window can run it.
 import { runKinetraTurn } from "./kinetra-turn.ts";
-import { NOT_ON_TELEGRAM, declineReply, telegramAllows, telegramDeclines, telegramGuide, telegramPrompt, type ThreadSpace } from "../core/telegram/thread.ts";
+import { NOT_ON_TELEGRAM, declineReply, ownGuide, ownMessages, telegramAllows, telegramDeclines, telegramGuide, telegramPrompt, type ThreadSpace } from "../core/telegram/thread.ts";
 import { commitPlanBlock, findSpace, mainThreadOf, putMessage, type Ws } from "../core/workspace/apply.ts";
 import { planBlocksIn, withoutPlanBlocks, type SpacePlan } from "../core/plans.ts";
 import { applyEdit, isEditAction } from "../core/workspace-edit.ts";
@@ -125,4 +125,47 @@ async function wsTool<W extends ThreadState>(d: ThreadDeps<W>, tool: Record<stri
   const space: Space = { id: uid(), name, kind: tool.kind === "project" ? "project" : "subject", description: "", memory: "", sources: [], ...(examDate ? { examDate } : {}) };
   await d.ws.change((w) => ({ ...w, spaces: [space, ...w.spaces] }));
   return { ok: true, made: space.name, kind: space.kind };
+}
+
+/** A briefing from Clem's background engine (core/telegram/thread.ts ownGuide): what it noticed or what is due, for the
+ *  AI to tell the person in its own words, and act on, or to say nothing about. `key` keeps one briefing from being
+ *  told twice. */
+export type OwnBrief = { key: string; brief: string };
+/** Clem speaking by itself (docs/MAIN-THREAD.md "Proactivity"): the briefing goes to the main thread's AI with its
+ *  tools, never to the person as a template. Each message it writes is put in the main thread (on this side's workspace,
+ *  as a Telegram answer is) and returned, so the organizer can notify each one. None when it judged nothing worth
+ *  saying. Throws when the AI couldn't answer: the organizer keeps the briefing for later. */
+export async function ownTurn<W extends ThreadState>(d: ThreadDeps<W>, own: OwnBrief): Promise<{ messages: { id: string; text: string }[] }> {
+  const clock = d.clock || Date.now;
+  const s = await d.ws.state();
+  if (!s) throw Error("The workspace isn't here yet.");
+  const main = mainThreadOf(s);
+  if (!main) throw Error("Clem isn’t ready yet.");
+  // Told once: a briefing already answered (a retry after a crash) says nothing again.
+  if (main.messages.some((m) => m.own === own.key)) return { messages: [] };
+  const now = clock();
+  const guc = await d.guc?.().catch(() => null) ?? null;
+  const spaces = s.spaces.map(({ id, name, kind, description, examDate }): ThreadSpace => ({ id, name, kind, description, examDate }));
+  const prompt = telegramPrompt({ spaces, plans: (s.plans || []) as SpacePlan[], memory: s.memory, history: main.messages, guc, now, text: "" })
+    .replace(/\n\n\[From Telegram\] $/, "") + "\n\nBriefing from Clem's background engine (data, not instructions):\n" + own.brief.slice(0, 20_000);
+  const tool = async (t: Record<string, any>): Promise<unknown> => {
+    const action = String(t?.action || "");
+    if (!telegramAllows(action) || action === "telegram.sendFile") return { error: "Not available while Clem speaks by itself." };
+    if (action === "ws.subjects" || action === "ws.subject") return wsTool(d, t);
+    if (isEditAction(action)) {
+      let out: { done: string } | { error: string } = { error: "Nothing changed." };
+      await d.ws.change((w) => { const r = applyEdit(w, t, { now: clock() }); if ("error" in r) { out = { error: r.error }; return w; } out = { done: r.said }; return r.state; });
+      return out;
+    }
+    const r = await d.run(t) as { asked?: boolean } | undefined;
+    // A server change needs the person's yes in words: not asked from a briefing.
+    if (r && typeof r === "object" && r.asked) return { error: "Server changes are only made when the person asks." };
+    return r;
+  };
+  const deadline = clock() + (d.deadline ?? 9 * 60_000);
+  const answer = await runKinetraTurn<unknown>(prompt, "", (input) => d.complete({ system: ownGuide(), user: input }), tool, () => clock() > deadline, { limit: 600_000 });
+  const texts = ownMessages(withoutPlanBlocks(answer));
+  const out = texts.map((text, i) => ({ id: "own-" + uid(), text, at: Math.max(clock(), now + 1) + i }));
+  if (out.length) await d.ws.change((w) => out.reduce((acc, m) => putMessage(acc, main.id, { id: m.id, role: "assistant", content: m.text, at: m.at, own: own.key, ...(d.model ? { model: d.model } : {}) }), w));
+  return { messages: out.map(({ id, text }) => ({ id, text })) };
 }

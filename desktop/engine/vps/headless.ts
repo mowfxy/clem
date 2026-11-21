@@ -27,9 +27,16 @@ const run = (cmd: string, args: string[], input: string, timeout = 180_000, env:
   const t = setTimeout(() => { p.kill(); reject(Error("The model took too long.")); }, timeout);
   p.stdout.on("data", (b) => { out += b; }); p.stderr.on("data", (b) => { err += b; });
   p.on("error", (e) => { clearTimeout(t); reject(e); });
-  p.on("close", (code) => { clearTimeout(t); code === 0 ? resolve(out.trim()) : reject(Error(err.trim().slice(0, 300) || "The model CLI failed.")); });
+  // A CLI says why it failed on stderr or, like Claude Code and Gemini in print mode, on stdout: either is kept, so
+  // Settings shows the real reason ("Invalid API key", "quota exceeded") instead of "failed".
+  p.on("close", (code) => { clearTimeout(t); code === 0 ? resolve(out.trim()) : reject(Error(failure(cmd, code, err, out))); });
   p.stdin.end(input);
 });
+/** Why a CLI run failed, in a few lines: its stderr, else the end of its stdout, else its exit code. */
+export function failure(cmd: string, code: number | null, err: string, out: string) {
+  const tail = (t: string) => t.replace(/\x1b\[[0-9;]*m/g, "").trim().split("\n").slice(-6).join("\n").slice(-600);
+  return tail(err) || tail(out) || `${cmd} stopped with exit code ${code ?? "unknown"} and said nothing.`;
+}
 /** The environment of the CLIs Clem installed and signed in to on the server itself (desktop/engine/vps/cli.ts):
  *  under the worker's data folder, with their own sign-in folders, never the server user's own ~/.claude or ~/.codex. */
 export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
@@ -61,6 +68,7 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
   const has = (cmd: string) => (own ? existsSync(join(o.data!, "cli", "node_modules", ".bin", cmd)) : false);
   // The one Clem signed in on this server comes first (only that one has a sign-in under `data`), then one on PATH.
   const order = (["claude", "codex", "gemini"] as const).slice().sort((a, b) => Number(has(b)) - Number(has(a)));
+  const found: { name: string; complete: Complete }[] = [];
   for (const name of order) {
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env))) continue;
@@ -68,11 +76,22 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
     // Headless, it refuses to run in a folder no one trusted (exit 55, "not running in a trusted directory"), and the
     // worker's folder never is: trusting it by the environment works on every version (older ones ignore it; the
     // --skip-trust flag would fail on them).
-    if (name === "gemini") return { name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, geminiEnv(env)) };
-    return name === "claude"
-      // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
-      ? { name, complete: ({ system, user }) => system.length > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) }
-      : { name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, STEP_MS, env) };
+    if (name === "gemini") found.push({ name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, geminiEnv(env)) });
+    // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
+    else if (name === "claude") found.push({ name, complete: ({ system, user }) => Buffer.byteLength(system) > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) });
+    else found.push({ name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, STEP_MS, env) });
   }
-  return undefined;
+  if (!found.length) return undefined;
+  // More than one on the server: one that fails (signed out, out of quota) hands the step to the next, and the one that
+  // answered is asked first from then on. The first one's reason is what Settings shows when none can answer.
+  let first = 0;
+  return { name: found[0].name, complete: async (r) => {
+    let reason: unknown;
+    for (let k = 0; k < found.length; k++) {
+      const i = (first + k) % found.length;
+      try { const out = await found[i].complete(r); first = i; return out; }
+      catch (e) { reason ??= e; }
+    }
+    throw reason;
+  } };
 }

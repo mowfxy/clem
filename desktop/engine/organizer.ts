@@ -259,23 +259,32 @@ export class Organizer {
     const x: SayContext = { now, name, deadlines };
     const also = plan.rated.filter((r) => r.level === "digest" && !hitKeys.has(r.change.key)).map((r) => r.change);
     const msgs = sweepMessages(kind, { told: [...told, ...held], asked: hitKeys, also, message: plan.message, brief: plan.brief, actions: taken }, x);
-    const posting = msgs.length > 0 && say.post;
+    // Nothing goes to the person as a template (owner, 2026-11-21: "sent to AI and AI does the action itself"): what
+    // this sweep would say, with each change in full, is a briefing for the main thread's AI, which writes the messages
+    // (or none), and fixes or does what the news calls for first. Without an AI that answers, nothing is said: the news
+    // is held and goes with the next briefing. Quiet speaks only for what is urgent (delivery above).
+    const wanted = msgs.length > 0 && say.post;
     const textOf = new Map(msgs.flatMap((m) => m.tells.map((k) => [k, m.text] as const)));
-    for (const r of told) { const text = textOf.get(r.change.key) || r.say || plainText(r.change, x); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, posting ? "said" : "held", { change: r.change, level: r.level, ...(r.say ? { say: r.say } : {}) }); }
-    // Quiet speaks only for what is urgent; organizing above still happened and is in the log.
-    if (!posting) return false;
-    // Whatever Clem writes in the main thread is worth a notification (user, 2026-11-14): one per message, on the desktop
-    // and Telegram, with no daily limit. What isn't worth interrupting them for is not written at all (the levels above).
-    let posted = false;
-    for (const [i, m] of msgs.entries()) {
-      const postId = await this.post(m.text, `sweep:${kind}:${now}:${i}`);
-      if (!postId) continue;
-      posted = true;
-      const open: Open = { chat: snap.mainId || "main", message: postId };
-      await this.push(m.tells.length ? m.key : `sweep:${kind}:${now}:${i}`, "Clem", m.text, open, s, { channels: ASKED });
-    }
-    if (posted && heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
-    return posted;
+    const spoken = wanted ? await this.voice(`sweep:${kind}:${now}`, sweepBrief(kind, now, msgs, [...told, ...held], x), s) : null;
+    for (const r of told) { const text = textOf.get(r.change.key) || r.say || plainText(r.change, x); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, spoken !== null ? "said" : "held", { change: r.change, level: r.level, ...(r.say ? { say: r.say } : {}) }); }
+    if (spoken !== null && heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
+    return !!spoken;
+  }
+  /** A briefing for the main thread's AI (EngineHost.speak): it writes what to tell the person, each message its own
+   *  post in the main thread, and every message is notified on the desktop and Telegram. The number of messages (0: it
+   *  judged nothing worth saying), or null when no AI could answer (the caller keeps the briefing for later). */
+  async voice(key: string, brief: string, s?: ProSettings, o: { loud?: boolean } = {}): Promise<number | null> {
+    if (!this.host.speak) { this.host.log("warn", "[organizer] no AI to speak with: kept for later"); return null; }
+    let said: { id: string; text: string }[];
+    try { said = (await this.host.speak({ key, brief })).messages; }
+    catch (e) { this.host.log("warn", "[organizer] the AI couldn't speak: " + (e as Error).message); return null; }
+    s ||= await this.settings();
+    const main = (await this.workspace()).mainId || "main";
+    for (const [i, m] of said.entries()) await this.push(`${key}:${i}`, "Clem", m.text, { chat: main, message: m.id }, s, { channels: ASKED, loud: o.loud });
+    const line = said.map((m) => m.text).join(" / ") || "Nothing worth saying.";
+    await this.record(`said:${key}`, "voice", { type: "note", kind: "info", text: line.slice(0, 300) }, line, "said");
+    this.host.changed?.();
+    return said.length;
   }
   /** Records an action once (by key); false when it was already there. */
   private async record(key: string, sweep: string, action: ProAction, text: string, status: string, extra?: object) {
@@ -354,45 +363,21 @@ export class Organizer {
       const due = deadlineReminders(this.deadlines(g, snap), now, s.deadlineHours);
       const said: (typeof due[number] & { text: string })[] = [];
       for (const r of due) {
+        if ((await this.db.query("select 1 from organizer_actions where owner_id = $1 and key = $2", [this.owner, r.key])).length) continue;
         // Just told as news (a deadline that appeared already inside the window): the 48-hour reminder would only repeat it.
         if (r.hours > 3 && (await this.db.query("select 1 from organizer_actions where owner_id = $1 and (key = $2 or key like $3) and created_at > $4 limit 1", [this.owner, "change:dl:" + r.deadline.id, "change:dl:" + r.deadline.id.replace(/[\\%_]/g, "\\$&") + ":%", new Date(now - 12 * 3600e3)])).length) {
           await this.record(r.key, "reminder", { type: "note", kind: "info", text: `${r.deadline.title}: told as news, not reminded again` }, `Skipped a repeat reminder for ${r.deadline.title}`.slice(0, 300), "skipped");
           continue;
         }
-        // One message each: "MATH 301 Quiz 2 is tomorrow at 3:45 pm in D1.003.", "Assignment 2 is due in 3 hours, at 11:59 pm."
-        const text = deadlineText(r.deadline, now, name, { left: r.left });
-        if (!(await this.record(r.key, "reminder", { type: "note", kind: "info", text: text.slice(0, 300) }, text, "said"))) continue;
-        said.push({ ...r, text });
+        said.push({ ...r, text: deadlineText(r.deadline, now, name, { left: r.left }) });
       }
-      // The organizer's AI writes them (owner, 2026-11-16: "I want AI itself to do it, not automated reminders"): it sees
-      // what Clem told them lately and what's on, says each in its own words, folds two into one, or says nothing when it
-      // already told them. Without a model, or an answer it can't stand behind, the plain sentence stays.
-      if (said.length && this.host.complete) {
-        try {
-          const recent = await this.db.query<{ content: string; created_at: Date }>("select content, created_at from organizer_posts where owner_id = $1 and created_at > $2 order by created_at", [this.owner, new Date(now - 36 * 3600e3)]);
-          const context = await this.routineContext().catch(() => "");
-          const user = `Now: ${cairo(now).ymd} ${cairo(now).time} (Cairo)\n\nReminders due (facts):\n${said.map((r, i) => `${i}. ${r.text}`).join("\n")}\n\nWhat you told them in the last 36 hours:\n${recent.map((p) => `- ${cairo(ms(p.created_at)).ymd} ${cairo(ms(p.created_at)).time}: ${p.content.replace(/\s+/g, " ").slice(0, 300)}`).join("\n") || "(nothing)"}\n\nTheir next days:\n${context}`;
-          const reply = await this.host.complete({ system: REMINDER_SYSTEM, user, model: snap.organizer?.model, reasoning: snap.organizer?.reasoning });
-          const items = (parseModelJson(reply) as { items?: { i?: number; say?: string | null }[] } | null)?.items;
-          if (Array.isArray(items)) {
-            const facts = said.map((r) => r.text).join("\n") + "\n" + context;
-            const kept: typeof said = [];
-            for (const [i, r] of said.entries()) {
-              const it = items.find((x) => x?.i === i);
-              if (it && it.say === null) { await this.record(r.key + ":quiet", "reminder", { type: "note", kind: "info", text: `${r.deadline.title}: already told, not reminded again` }, `Skipped a repeat reminder for ${r.deadline.title}`.slice(0, 300), "skipped"); continue; }
-              const text = typeof it?.say === "string" ? it.say.replace(/\*\*|__|`/g, "").trim().slice(0, 600) : "";
-              kept.push(text && grounded(text, facts) ? { ...r, text } : r);
-            }
-            said.splice(0, said.length, ...kept);
-          }
-        } catch (e) { this.host.log("warn", "[organizer] reminder words: " + (e as Error).message); }
-      }
-      const tight = said.some((r) => r.hours <= 3);
-      // A click opens the message itself.
-      if (said.length && delivery(s, { news: true, urgent: tight }).post) for (const r of said) {
-        const postId = await this.post(r.text, "reminders:" + r.key);
-        if (postId) await this.push(r.key, "Clem", r.text, { chat: snap.mainId || "main", message: postId }, s, { channels: ASKED });
-      }
+      // The AI tells them (owner, 2026-11-16 and 2026-11-21): what is coming up goes to it as a briefing with the item as
+      // Coming up holds it, and it checks, corrects and says it in its own words, or says nothing when it already told
+      // them. Recorded once it has; without an AI it is tried again on the next tick while the reminder is still due.
+      if (said.length && delivery(s, { news: true, urgent: said.some((r) => r.hours <= 3) }).post) {
+        const spoken = await this.voice("reminders:" + said.map((r) => r.key).join("|").slice(0, 200), reminderBrief(now, said, await this.routineContext().catch(() => "")), s);
+        if (spoken !== null) for (const r of said) await this.record(r.key, "reminder", { type: "note", kind: "info", text: r.text.slice(0, 300) }, r.text, "said");
+      } else for (const r of said) await this.record(r.key, "reminder", { type: "note", kind: "info", text: r.text.slice(0, 300) }, r.text, "skipped");
     }
     await this.gucPassword().catch((e) => this.host.log("warn", "[organizer] guc password: " + (e as Error).message));
     await this.routinePages().catch((e) => this.host.log("warn", "[organizer] page routines: " + (e as Error).message));
@@ -532,9 +517,15 @@ export class Organizer {
     for (const r of due) {
       const at = ms(r.at), key = `reminder:${r.id}:${new Date(at).toISOString()}`;
       {
-        const text = reminderText(r.text);
-        const postId = await this.post(text, key);
-        if (postId) await this.push(key, "Clem", text, { chat: snap.mainId || "main", message: postId }, s, { channels: ASKED, loud: r.source === "person" });
+        // The AI says it (their own words are the fact). Only when no AI answers is a reminder they set said as they wrote
+        // it, so something they asked for never stays silent.
+        const late = now - at > 30 * 60_000;
+        const spoken = await this.voice(key, `A reminder ${r.source === "person" ? "the person set" : "Clem set for a study session"} is due now (${cairo(at).ymd} ${cairo(at).time} Cairo${late ? ", rung late because Clem was off" : ""}): "${r.text}". Remind them in your own words, in one message, with anything from their day that makes it useful. Say it even if it seems small: they asked for it.\n${draftsLine([reminderText(r.text)])}`, s, { loud: r.source === "person" && !late });
+        if (spoken === null && r.source === "person") {
+          const text = reminderText(r.text);
+          const postId = await this.post(text, key);
+          if (postId) await this.push(key, "Clem", text, { chat: snap.mainId || "main", message: postId }, s, { channels: ASKED, loud: true });
+        }
         await this.record(key, "reminder", { type: "note", kind: "info", text: ("Reminded you: " + r.text).slice(0, 300) }, "Reminded you: " + r.text, "said");
       }
       if (r.repeat) {
@@ -787,10 +778,10 @@ export class Organizer {
     if (say) {
       // A plain message like anything else Clem says by itself: no title over it, no markdown.
       say = say.replace(/\*\*|__|`/g, "").replace(/^\s*[-*•]\s+/gm, "").trim();
-      postId = await this.post(say, `routine:${id}:${now}`);
-      const urgent = important || event.kind === "change" && (event.changes as RoutineChange[] | undefined)?.some((c) => c.kind === "new_grade" || c.kind === "exam_posted");
-      const out = delivery(s, { news: true, urgent }).channels.filter((c): c is Outward => c !== "app");
-      if (postId) await this.push(`routine:${id}:${now}`, "Clem", say, { chat: (await this.workspace()).mainId || "main", message: postId }, s, { channels: ASKED, loud: r.loud });
+      // Said by the AI from what the routine found (a draft and its event), never posted as it is.
+      const spoken = await this.voice(`routine:${id}:${now}`, `The person's routine "${r.title}" ran (${describeTrigger(r.trigger)}). Its instructions: ${r.instructions || "tell them what happened, briefly"}.\nWhat it found (a draft, facts only)${important ? ", marked important" : ""}:\n${say}\n\nEvent (data):\n${JSON.stringify(event).slice(0, 6000)}\n${draftsLine([say])}`, s, { loud: r.loud });
+      if (!spoken) say = null;
+      postId = spoken ? "said" : undefined;
     }
     const result = [say ? "told" : r.tell ? "nothing worth saying" : "", posted].filter(Boolean).join(", ") || "ran";
     await this.db.query("update organizer_routines set last_result = $3 where owner_id = $1 and id = $2", [this.owner, id, result.slice(0, 200)]);
@@ -836,3 +827,23 @@ function plainRoutine(r: Routine, event: { kind: string; [k: string]: unknown })
 const safeEqual = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 
 function groupBy<T>(xs: T[], key: (x: T) => string) { const out: Record<string, T[]> = {}; for (const x of xs) (out[key(x)] ||= []).push(x); return out; }
+
+/** A sweep's briefing for the AI (Organizer.voice): what it would say, as drafts, and every item it is about in full,
+ *  so the AI reads the post itself (their group's row, the room, what it covers) and writes its own messages. */
+export function sweepBrief(kind: SweepKind, now: number, msgs: { text: string; level: string }[], told: RatedChange[], x: SayContext) {
+  const c = cairo(now), what = kind === "event" ? "a check after something changed" : `the ${kind} run`;
+  const out = [`Now: ${c.ymd} ${c.time} (Cairo). Clem's background engine just did ${what}.`, "", "What it would tell them (drafts: facts to go by, not words to copy; most urgent first):", ...msgs.map((m) => `- [${m.level}] ${m.text}`)];
+  if (told.length) out.push("", "Each item in full (data):", ...told.map((r) => `- ${r.change.kind}${r.level === "urgent" ? " (urgent)" : ""}${r.held ? " (held from earlier)" : ""}: ${plainText(r.change, x)}\n  ${String(r.change.detail || "").replace(/\s+/g, " ").slice(0, 1500)}`));
+  out.push("", "Tell them what matters to them, one message per thing (a timed brief is one message). If something here shows Coming up or their plan is wrong, fix it first.");
+  return out.join("\n").slice(0, 17_000) + "\n" + draftsLine(msgs.map((m) => m.text));
+}
+/** Deadline reminders as a briefing: each item as Coming up holds it (with its id, so the AI can correct it), and the
+ *  person's next days. */
+export function reminderBrief(now: number, due: { text: string; deadline: { id: string; place?: string; covers?: string; note?: string } }[], context: string) {
+  const c = cairo(now);
+  return [`Now: ${c.ymd} ${c.time} (Cairo).`, "Coming up soon, as Clem's Coming up list holds it (check with guc.deadlines; if the conversation shows it is wrong, fix it with guc.correct and tell them the right one):",
+    ...due.map((r) => `- ${r.text}${r.deadline.place ? ` Place: ${r.deadline.place}.` : ""}${r.deadline.covers ? ` Covers: ${r.deadline.covers}.` : ""}${r.deadline.note ? ` Note: ${r.deadline.note}.` : ""} (Coming up id ${r.deadline.id})`),
+    "Remind them of what still matters, in your own words: one message per item unless two belong together.", context ? "\nTheir next days:\n" + context : "", draftsLine(due.map((r) => r.text))].filter(Boolean).join("\n");
+}
+/** The drafts a briefing carries, last and machine-readable: facts for the AI, never sent as they are. */
+export const draftsLine = (drafts: string[]) => "Drafts (JSON, facts only): " + JSON.stringify(drafts);

@@ -1260,6 +1260,18 @@ void app.whenReady().then(async () => {
       window.webContents.send("clem:telegram", turn);
       setTimeout(() => { if (telegramWaits.delete(turn.id)) reject(Error("timeout")); }, ANSWER_MS).unref();
     }),
+    // What Clem says by itself: the organizer's briefing, told by the window's main thread AI (desktop/telegram-thread.ts
+    // ownTurn), which puts its messages in the main thread and sends them back here as JSON to be notified.
+    speak: (own) => new Promise((resolve, reject) => {
+      if (window.isDestroyed()) { reject(Error("Clem's window is closed.")); return; }
+      const id = "own-" + randomUUID();
+      telegramWaits.set(id, { owner, reject, resolve: (r) => {
+        try { const j = JSON.parse(r.text); if (!Array.isArray(j?.messages)) throw Error(); resolve(j); }
+        catch { reject(Error(r.text || "The AI didn't answer.")); }
+      } });
+      window.webContents.send("clem:telegram", { id, own });
+      setTimeout(() => { if (telegramWaits.delete(id)) reject(Error("timeout")); }, ANSWER_MS).unref();
+    }),
     open: (o) => { showWindow(); if (!window.isDestroyed()) window.webContents.send("clem:open", o); },
     // This PC keeps every file; "Keep a copy of my files on the VPS" copies them there too (desktop/engine/vps/router.ts).
     // Saved CMS files stay on this PC (it keeps everything; the VPS fetches from the CMS when it needs one).

@@ -59,6 +59,7 @@ async function setup(o: { converse?: (t: TelegramTurn) => Promise<{ text: string
   const h = Object.assign(fakeHost(), { account: account(env, tg, "owner-1"), converse: o.converse || (async (t: TelegramTurn) => { turns.push(t); return { text: "**Sheet 3** is due tomorrow." }; }), open: (x: unknown) => opened.push(x) });
   h.workspace = async () => ({ spaces: [{ id: "circ", name: "Circuits", kind: "subject" }], plans: [], chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
   const engine = await Engine.open("owner-1", h, { memory: true, jobs: false, ...(o.clock ? { clock: () => o.clock!.t } : {}) });
+  h.speaker = engine.organizer;
   const pairNow = async () => { const p = await engine.telegram.pair(); await hook(env, tg, msg(42, p.code)); await engine.telegram.status(true); };
   return { env, tg, h, engine, relay: engine.telegram, turns, opened, pairNow };
 }

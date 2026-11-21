@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { nextAutomation } from "../../../core/automation-schedule.ts";
 import { mainThreadOf, putMessage } from "../../../core/workspace/apply.ts";
-import { telegramTurn, type ThreadDeps } from "../../telegram-thread.ts";
+import { ownTurn, telegramTurn, type OwnBrief, type ThreadDeps } from "../../telegram-thread.ts";
 import { runThreadTool, threadBefore, type ThreadVps } from "../thread-tools.ts";
 import type { VpsAsk } from "../../../core/vps/ask.ts";
 import type { StoredFile } from "../../../core/types.ts";
@@ -116,9 +116,12 @@ export class WorkerAgent {
       model: "vps", clock: this.clock, deadline: this.d.deadline, log: (m) => this.log(m),
     };
   }
+  /** Clem speaking by itself on the VPS: the organizer's briefing, told by the server's AI (desktop/telegram-thread.ts). */
+  speak(own: OwnBrief) { return ownTurn(this.deps(), own); }
   /** One Telegram message, or a tap on an older message's button, answered here as the window's main thread would. */
   async converse(turn: TelegramTurn): Promise<{ text: string }> {
     if ("text" in turn) return telegramTurn(this.deps(), turn.text);
+    if ("own" in turn) return { text: JSON.stringify(await this.speak(turn.own)) };
     const tap = turn.tap, o = this.d.engine().organizer;
     if (tap.t === "undo") { const u = await o.undo(tap.key); if (!u) return { text: "That can’t be undone any more." }; const { undoAction } = await import("../../../core/proactivity/actions.ts"); await this.d.ws.change((s) => undoAction(s, u, this.clock())); return { text: "Undone." }; }
     if (tap.t === "confirm") { const got = await o.confirm(tap.key); if (!got) return { text: "That couldn’t be done." }; await this.d.ws.drain(o); return { text: "Done." }; }

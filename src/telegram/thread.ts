@@ -2,7 +2,7 @@
 // (desktop/telegram-thread.ts), on the window's workspace, with Clem's organizer model and the engine's actions in the
 // main process (desktop/engine/thread-tools.ts, the same as the worker's). It never goes through the app's chat
 // pipeline: no working folder, no hand-off, no file tools. Messages are answered one at a time, in the order they came.
-import { telegramTurn, type ThreadDeps } from '../../desktop/telegram-thread.ts';
+import { ownTurn, telegramTurn, type ThreadDeps } from '../../desktop/telegram-thread.ts';
 import type { State } from '../store';
 import type { TelegramTurn } from '../../desktop/contracts';
 
@@ -38,6 +38,8 @@ export function windowTelegram(w: WindowThread & { answer: (id: string, text: st
   const seen = new Set<string>();
   const one = async (turn: TelegramTurn): Promise<string> => {
     if ('text' in turn) return (await telegramTurn(windowThreadDeps(w), turn.text)).text;
+    // A briefing from the organizer: the messages go back as JSON (desktop/main.ts speak reads them).
+    if ('own' in turn) return JSON.stringify(await ownTurn(windowThreadDeps(w), turn.own));
     const tap = turn.tap;
     if (tap.t === 'undo') return (await w.undo(tap.key)) ? 'Undone.' : 'That can’t be undone any more.';
     if (tap.t === 'confirm') return (await w.confirm(tap.key)) ? 'Done.' : 'That couldn’t be done.';

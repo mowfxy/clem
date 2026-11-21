@@ -102,8 +102,9 @@ export class TelegramRelay {
       let backoff = 15_000;
       while (!this.stopped) {
         try {
-          if (!(await this.status(true)).paired) { await this.nap(60_000); continue; }
-          await this.introduce().catch((e) => this.host.log("warn", "[telegram] intro: " + errorText(e)));
+          // The pairing as last read (within a minute): the inbox itself says when it is gone, so asking before every pull
+          // only cost Clem's server another request.
+          if (!(await this.status()).paired) { await this.nap(60_000); continue; }
           await this.pullOnce(25);
           backoff = 15_000;
         } catch (e) {
