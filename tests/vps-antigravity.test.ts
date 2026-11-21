@@ -9,7 +9,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import { agyCommand, agyEnv, antigravityComplete, installAgy, installedAgy, linuxRelease, openAgy, SignedOutAgy } from "../desktop/engine/vps/antigravity.ts";
+import { agyCommand, agyEnv, antigravityComplete, caBundle, installAgy, installedAgy, linuxRelease, openAgy, SignedOutAgy } from "../desktop/engine/vps/antigravity.ts";
 import { ANTIGRAVITY_REGISTRY } from "../desktop/antigravity-engine.ts";
 
 const fixture = join(import.meta.dirname, "fixtures", "fake-antigravity.mjs");
@@ -85,6 +85,22 @@ test("the agent runs with only its own folders and Google's sign-in, never a key
   assert.equal(env.AGY_ACP_FORCE_FILE_STORAGE, "1");
   assert.equal(env.ANTIGRAVITY_HARNESS_PATH, "/data/cli/antigravity/1.5.2/localharness_external");
   assert.match(env.BROWSER || "", /__CLEM_ANTIGRAVITY_URL__/);
+});
+
+test("the agent always has certificates to check Google's servers, even in an image without a system bundle", async () => {
+  const data = await mkdtemp(join(tmpdir(), "clem-agy-"));
+  try {
+    // node:22-slim has no /etc/ssl/certs: Node's own roots are written to the worker's data folder.
+    const written = await caBundle(data, [join(data, "missing.crt")]);
+    assert.equal(written, join(data, "certs", "roots.pem"));
+    assert.match(await readFile(written, "utf8"), /^-----BEGIN CERTIFICATE-----/);
+    // A server's own bundle is used as it is.
+    const system = join(data, "system.crt");
+    await writeFile(system, "x");
+    assert.equal(await caBundle(data, [join(data, "missing.crt"), system]), system);
+    assert.equal(agyEnv("/data", { PATH: "/bin" }, undefined, written).SSL_CERT_FILE, written);
+    assert.equal(agyEnv("/data", { PATH: "/bin", SSL_CERT_FILE: "/own.pem" }, undefined, written).SSL_CERT_FILE, "/own.pem", "a bundle the server sets stays");
+  } finally { await rm(data, { recursive: true, force: true }); }
 });
 
 test("the worker answers through the agent: the rules as its system prompt, the message as the prompt, no tools", async () => {
