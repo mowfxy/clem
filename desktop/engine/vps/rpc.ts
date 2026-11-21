@@ -59,7 +59,9 @@ export function serveWorker(o: { token: string; port: number; host?: string; han
     }
   });
   // A request that never finishes doesn't hold the endpoint: long agent calls get 10 minutes, headers 30 seconds.
-  server.requestTimeout = 600_000; server.headersTimeout = 30_000; server.keepAliveTimeout = 5_000;
+  // Kept open between the window's requests for a minute (Node's default is 5 s): each new connection through the SSH
+  // tunnel opens a channel first, one more trip to the server. The client follows the Keep-Alive hint this sends.
+  server.requestTimeout = 600_000; server.headersTimeout = 30_000; server.keepAliveTimeout = 60_000;
   return new Promise((resolve, reject) => { server.on("error", reject); server.listen(o.port, o.host || "127.0.0.1", () => resolve(server)); });
 }
 

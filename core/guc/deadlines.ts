@@ -13,7 +13,8 @@ import { stableId } from "./parse.ts";
 import type { GucDeadline, GucSlot } from "./types.ts";
 
 /** Bump when extraction changes: the sync re-reads course pages and takes the new deadlines as a baseline, not news. */
-export const DEADLINE_VERSION = 7;
+// 8 (2026-11-21): posts a VPS worker counted as read before its AI was signed in are read again by the AI.
+export const DEADLINE_VERSION = 8;
 
 const WORDS = /\b(deadlines?|due|submi(?:t|ts|tted|tting|ssions?)|hand(?:ed)?[- ]?in|quiz(?:zes)?|midterms?|final exams?|exams?|assignments?|projects?|milestones?|lab reports?|reports?|presentations?|evaluations?|deliverables?|homeworks?)\b/i;
 const MOVED = /\b(postpone[ds]?|moved?|reschedul\w*|delayed|extended|extension|instead|changed?|new date|now (?:on|due))\b/i;

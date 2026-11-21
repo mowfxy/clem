@@ -4,7 +4,9 @@
 // there themselves), else none: sweeps run on rules alone and Telegram stays with the desktop.
 // The agent that answers with it is desktop/engine/vps/agent.ts (the window's loop, actions and workspace).
 import Anthropic from "@anthropic-ai/sdk";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { AppServer } from "../../app-server.ts";
+import { streamTurn } from "../../codex-stream.ts";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { agySignedIn, antigravityComplete, installedAgy } from "./antigravity.ts";
@@ -61,10 +63,118 @@ export function watchedComplete(base: Complete, log?: (m: string) => void): { co
     error: () => last,
   };
 }
+// ---------- Kept warm ----------
+// Starting a CLI is the slowest part of an answer (the desktop keeps its own open: desktop/claude.ts, desktop/codex.ts),
+// so the worker does the same: Claude Code with a spare process always waiting, Codex as one open app-server.
+const SEND_MS = STEP_MS;
+/** A spare process older than this is replaced (it only ever waits, so nothing is lost). */
+const SPARE_AGE = 60 * 60_000;
+/** Instructions go in the message: a process started ahead of time can't be given them on its command line. */
+const withRules = (system: string, user: string) => (system ? `<instructions>\n${system}\n</instructions>\n\n` : "") + user;
+// Claude Code on stream-json, as the desktop runs it: no built-in tools or MCP servers (the agent asks for Clem's actions
+// in text), and no session files left behind.
+export const CLAUDE_WARM_ARGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config", "--no-session-persistence"];
+
+type Proc = { stdin: NodeJS.WritableStream; stdout: NodeJS.ReadableStream; stderr: NodeJS.ReadableStream; kill(): unknown; on(e: "close" | "error", f: (x?: unknown) => void): unknown };
+/** One open Claude Code: each `send` is one message, answered by its `result` event. */
+/** The kept process ended before it answered (it couldn't start, or crashed): the caller runs the request the old way. */
+export class WarmStopped extends Error {}
+class ClaudeProcess {
+  dead = false;
+  private buffer = ""; private err = ""; private out = "";
+  private waiting?: { resolve(s: string): void; reject(e: Error): void; timer: ReturnType<typeof setTimeout> };
+  private child: Proc;
+  constructor(start: () => Proc) {
+    this.child = start();
+    this.child.stdout.on("data", (b: Buffer) => {
+      this.buffer += b.toString("utf8");
+      let i;
+      while ((i = this.buffer.indexOf("\n")) >= 0) { this.line(this.buffer.slice(0, i)); this.buffer = this.buffer.slice(i + 1); }
+    });
+    this.child.stderr.on("data", (b: Buffer) => { this.err = (this.err + b.toString("utf8")).slice(-4000); });
+    const gone = (e?: unknown) => { this.dead = true; this.settle(undefined, new WarmStopped((e as Error)?.message || failure("claude", null, this.err, this.out))); };
+    this.child.on("close", () => gone()); this.child.on("error", gone);
+  }
+  private line(raw: string) {
+    if (!raw.trim()) return;
+    this.out = (this.out + raw + "\n").slice(-4000);
+    let e: { type?: string; subtype?: string; is_error?: boolean; result?: unknown };
+    try { e = JSON.parse(raw); } catch { return; }
+    if (e.type !== "result") return;
+    if (e.is_error || (e.subtype && e.subtype !== "success")) this.settle(undefined, Error(String(e.result || e.subtype || "Claude Code failed.").slice(0, 600)));
+    else this.settle(String(e.result ?? "").trim());
+  }
+  private settle(value?: string, error?: Error) {
+    const w = this.waiting; if (!w) return;
+    this.waiting = undefined; clearTimeout(w.timer);
+    if (error) w.reject(error); else w.resolve(value!);
+  }
+  send(text: string): Promise<string> {
+    if (this.dead) return Promise.reject(new WarmStopped(failure("claude", null, this.err, this.out)));
+    if (this.waiting) return Promise.reject(Error("Claude Code is still answering."));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.settle(undefined, Error("The model took too long.")); this.close(); }, SEND_MS);
+      this.waiting = { resolve, reject, timer };
+      this.child.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }] } }) + "\n");
+    });
+  }
+  close() { if (this.dead) return; this.dead = true; try { this.child.kill(); } catch { /* gone */ } }
+}
+
+/** Claude Code started ahead of time: one spare is always waiting, and each request takes it (a new spare starts at once). */
+export class WarmClaude {
+  private spare?: { p: ClaudeProcess; at: number };
+  private refresh?: ReturnType<typeof setInterval>;
+  private start: () => Proc;
+  constructor(env: NodeJS.ProcessEnv, start?: () => Proc) {
+    this.start = start || (() => spawn("claude", CLAUDE_WARM_ARGS, { stdio: ["pipe", "pipe", "pipe"], env: { ...env } }) as unknown as Proc);
+  }
+  /** Keeps one spare ready (replaced when it died or has waited too long). */
+  warm() {
+    if (this.spare && !this.spare.p.dead && Date.now() - this.spare.at < SPARE_AGE) return;
+    this.spare?.p.close();
+    try { this.spare = { p: new ClaudeProcess(this.start), at: Date.now() }; } catch { this.spare = undefined; }
+    if (!this.refresh) { this.refresh = setInterval(() => this.warm(), 10 * 60_000); this.refresh.unref?.(); }
+  }
+  complete: Complete = async ({ system, user }) => {
+    this.warm();
+    const p = this.spare?.p || new ClaudeProcess(this.start);
+    this.spare = undefined;
+    setImmediate(() => this.warm());
+    try { return await p.send(withRules(system, user)); } finally { p.close(); }
+  };
+  stop() { clearInterval(this.refresh); this.refresh = undefined; this.spare?.p.close(); this.spare = undefined; }
+}
+
+/** Codex kept open as `codex app-server` (the connection the desktop keeps warm, desktop/codex.ts): each request is its
+ *  own ephemeral, read-only thread on it, with no shell. */
+export class WarmCodex {
+  private server?: AppServer;
+  private start: () => ChildProcessWithoutNullStreams;
+  constructor(env: NodeJS.ProcessEnv, start?: () => ChildProcessWithoutNullStreams) {
+    this.start = start || (() => spawn("codex", ["app-server", "-c", 'cli_auth_credentials_store="file"', "-c", "features.shell_tool=false", "-c", "features.unified_exec=false"], { stdio: ["pipe", "pipe", "pipe"], env: { ...env } }));
+  }
+  /** The open connection (a new one when there is none or it closed). */
+  warm(): AppServer {
+    if (!this.server || this.server.dead) this.server = new AppServer(this.start());
+    return this.server;
+  }
+  complete: Complete = async ({ system, user }) => {
+    let server: AppServer;
+    try { server = this.warm(); await server.ready; } catch (e) { this.server = undefined; throw new WarmStopped((e as Error)?.message || "Codex couldn't start."); }
+    let out = "";
+    try { await streamTurn(server, {}, withRules(system, user), undefined, [], (t) => { out += t; }, () => false, {}, SEND_MS); }
+    // A connection that died mid-answer runs it again the old way; one that ran out of time doesn't wait twice.
+    catch (e) { if (server.dead && !/timed out/i.test(String((e as Error)?.message))) throw new WarmStopped((e as Error)?.message || "Codex stopped."); throw e; }
+    if (!out.trim()) throw Error("Codex gave an empty answer.");
+    return out.trim();
+  };
+  stop() { this.server?.close(); this.server = undefined; }
+}
 /** A CLI that answers one prompt on stdin: Claude Code (`claude -p`) or Codex (`codex exec -`), and Gemini through the
  *  Antigravity agent Clem installed (./antigravity.ts). The ones Clem installed under `data` (and signed in to from
  *  Settings) first, else one the person put on the server's PATH. */
-export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; signedIn?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; /** Tests: Gemini's agent. */ agy?: { installed: () => boolean; signedIn: () => Promise<boolean>; complete: Complete } } = {}): Promise<{ name: string; names: string[]; complete: Complete } | undefined> {
+export async function cliComplete(o: { data?: string; /** The worker: keep Claude Code and Codex open between requests (WarmClaude, WarmCodex). */ warm?: boolean; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; signedIn?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; /** Tests: Gemini's agent. */ agy?: { installed: () => boolean; signedIn: () => Promise<boolean>; complete: Complete } } = {}): Promise<{ name: string; names: string[]; complete: Complete } | undefined> {
   const probe = o.probe || ((cmd: string, env: NodeJS.ProcessEnv) => run(cmd, ["--version"], "", 10_000, env).then(() => true, () => false));
   // Installed is not enough: a CLI that isn't signed in answers every prompt with "Not logged in", after which the
   // next one is tried, so each step pays for it and Settings shows a reason that isn't the real one.
@@ -76,14 +186,21 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
   const found: { name: string; complete: Complete }[] = [];
   // Gemini: Google's Antigravity agent Clem installed and signed in on this server. Set up only when it is the person's
   // AI (Settings), so it comes first.
-  const agy = o.agy || (o.data ? { installed: () => !!installedAgy(o.data!), signedIn: () => agySignedIn(o.data!), complete: antigravityComplete(o.data) } : undefined);
+  const agy = o.agy || (o.data ? { installed: () => !!installedAgy(o.data!), signedIn: () => agySignedIn(o.data!), complete: antigravityComplete(o.data, { keep: o.warm }) } : undefined);
   if (agy?.installed() && await agy.signedIn().catch(() => false)) found.push({ name: "antigravity", complete: agy.complete });
   for (const name of order) {
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env)) || !(await signedIn(name, env).catch(() => false))) continue;
     // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
+    const at = found.length;
     if (name === "claude") found.push({ name, complete: ({ system, user }) => Buffer.byteLength(system) > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) });
     else found.push({ name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, STEP_MS, env) });
+    if (o.warm) {
+      // Kept open; a process that can't start, or crashes, runs that request the old way instead.
+      const once = found[at].complete, w = name === "claude" ? new WarmClaude(env) : new WarmCodex(env);
+      if (at === 0) try { w.warm(); } catch { /* started on first use */ }
+      found[at] = { name, complete: (r) => w.complete(r).catch((e) => { if (e instanceof WarmStopped) return once(r); throw e; }) };
+    }
   }
   if (!found.length) return undefined;
   // More than one on the server: one that fails (signed out, out of quota) hands the step to the next, and the one that

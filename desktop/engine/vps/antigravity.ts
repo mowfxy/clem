@@ -212,7 +212,8 @@ export async function agySignedIn(data: string) {
 /** Idle this long, the agent is closed; it holds every session in memory, so it is also renewed after this many. */
 const IDLE_MS = 10 * 60_000, SESSIONS = 20, STEP_MS = 300_000;
 /** The worker's model through the agent: one session per request, its rules as the session's system prompt, no tools. */
-export function antigravityComplete(data: string, o: { start?: Parameters<typeof openAgy>[2] } = {}): Complete {
+/** `keep` (the worker): started at once and kept open, not closed when idle; renewed at once after SESSIONS. */
+export function antigravityComplete(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean } = {}): Complete {
   let live: Promise<Live> | null = null;
   const ready = () => {
     if (live) return live;
@@ -221,6 +222,7 @@ export function antigravityComplete(data: string, o: { start?: Parameters<typeof
     opening.then((l) => { l.child.on("close", () => { if (live === opening) live = null; }); }, () => { if (live === opening) live = null; });
     return opening;
   };
+  if (o.keep) ready().catch(() => {});
   return async ({ system, user }) => {
     const l = await ready();
     clearTimeout(l.idle);
@@ -241,8 +243,8 @@ export function antigravityComplete(data: string, o: { start?: Parameters<typeof
       if (!text.trim()) throw Error("Gemini on your VPS gave an empty answer.");
       return text.trim();
     } finally {
-      if (l.sessions >= SESSIONS) { live = null; l.child.kill("SIGTERM"); }
-      else l.idle = setTimeout(() => { if (live) { live = null; l.child.kill("SIGTERM"); } }, IDLE_MS);
+      if (l.sessions >= SESSIONS) { live = null; l.child.kill("SIGTERM"); if (o.keep) ready().catch(() => {}); }
+      else if (!o.keep) l.idle = setTimeout(() => { if (live) { live = null; l.child.kill("SIGTERM"); } }, IDLE_MS);
       l.idle?.unref?.();
     }
   };
