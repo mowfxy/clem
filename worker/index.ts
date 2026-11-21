@@ -213,7 +213,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
       },
       ops: (cursor) => ws!.opsAfter(cursor),
       lease: () => lease("desktop"),
-      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, ...(watched?.error() ? { aiError: watched.error() } : {}), db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
+      health: async () => ({ ok: true, version: WORKER_VERSION, owner: config.owner, runner: engine!.isRunner ? "worker" : "desktop", model, ...(cli ? { cli: cli.names } : {}), ...(watched?.error() ? { aiError: watched.error() } : {}), db: env.DATABASE_URL ? "postgres" : "pglite", at: Date.now(), ws: await ws!.head().catch(() => null), waiting: await waiting.sentences().catch(() => []), disk: limit.last || null,
         copiesWish: (await state.get<boolean>("copies-wish").catch(() => undefined)) ?? null, waitingCms: (await waiting.items().catch(() => [])).filter((i) => i.item.startsWith("cms:") || i.item.startsWith("pc:")).length,
         pendingSends: ((await state.get<PendingSend[]>(PENDING_SENDS).catch(() => undefined)) || []).length }),
       notices: () => notices.splice(0),

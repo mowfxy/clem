@@ -5,7 +5,7 @@ import { ANNOUNCEMENT_VERSION, portalUrls, urls } from "../core/guc/parse.ts";
 import { EWS_URL } from "../core/guc/ews.ts";
 import { diffSnapshots } from "../core/guc/diff.ts";
 import { emptySnapshot } from "../core/guc/types.ts";
-import { Engine } from "../desktop/engine/index.ts";
+import { Engine, STUCK_MS } from "../desktop/engine/index.ts";
 import { GucError } from "../desktop/engine/errors.ts";
 import { GucClient, login, type Http } from "../desktop/engine/guc-client.ts";
 import { checkGrade, examSeats, fakeEws, fakeGuc, fixture, host, noWait, site } from "./guc-fake.ts";
@@ -263,5 +263,22 @@ test("the new announcement reader takes over silently: whole posts, read state a
     pages[urls.course(1201, 64)] = withBox(box("math") + "<hr><p>Lab 4 is cancelled this week.</p>");
     await engine.sync();
     assert.deepEqual((await engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'new_announcement'")).map((e) => [e.title, e.detail]), [["New announcement in CSEN 701", "Lab 4 is cancelled this week."]]);
+  } finally { await engine.close(); }
+});
+
+test("a sync that hangs doesn't stop GUC being read: after STUCK_MS the next pulse goes on (the VPS, Nov 17-21)", async () => {
+  let now = FIXED();
+  const pages = site(), guc = fakeGuc(pages), logs: string[] = [], h = { ...host(), log: (_l: string, m: string) => { logs.push(m); } };
+  const engine = await Engine.open("owner-stuck", h, { http: guc.http, sleep: noWait, memory: true, jobs: false, clock: () => now });
+  try {
+    await engine.connect("student.name", "secret");
+    const e = engine as unknown as { running?: Promise<unknown>; busySince: number };
+    e.running = new Promise(() => {}); e.busySince = now; // a run that never finishes
+    now += 10 * 60_000;
+    assert.equal(await engine.pulse(), null, "a run going for 10 minutes is left alone");
+    now += STUCK_MS;
+    const done = await engine.pulse();
+    assert.ok(done, "past STUCK_MS the pulse reads GUC again");
+    assert.ok(logs.some((l) => /a sync has been running for \d+ min/.test(l)), logs.join("\n"));
   } finally { await engine.close(); }
 });
