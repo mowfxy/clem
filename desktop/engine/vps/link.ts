@@ -144,15 +144,21 @@ export class SshLink implements VpsLink {
   tunnel(remotePort: number) {
     return new Promise<{ port: number; close(): void }>((resolve, reject) => {
       const server = createServer((socket) => {
-        this.client.forwardOut("127.0.0.1", 0, "127.0.0.1", remotePort, (err, stream) => {
-          if (err) { socket.destroy(); return; }
-          socket.pipe(stream).pipe(socket);
-          socket.on("error", () => stream.close()); stream.on("error", () => socket.destroy());
-        });
+        socket.on("error", () => {});
+        // On a dropped connection ssh2's forwardOut throws ("Not connected") instead of calling back. This runs in a
+        // socket event, so an escaped throw crashed the whole app: refuse this one request; the manager reconnects.
+        if (this.gone) { socket.destroy(); return; }
+        try {
+          this.client.forwardOut("127.0.0.1", 0, "127.0.0.1", remotePort, (err, stream) => {
+            if (err) { socket.destroy(); return; }
+            socket.pipe(stream).pipe(socket);
+            socket.on("error", () => stream.close()); stream.on("error", () => socket.destroy());
+          });
+        } catch { this.gone = true; socket.destroy(); }
       });
       server.on("error", reject);
       server.listen(0, "127.0.0.1", () => resolve({ port: (server.address() as AddressInfo).port, close: () => server.close() }));
     });
   }
-  async close() { await this.sftp.end().catch(() => {}); }
+  async close() { this.gone = true; await this.sftp.end().catch(() => {}); }
 }

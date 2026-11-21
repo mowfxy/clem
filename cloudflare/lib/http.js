@@ -47,6 +47,17 @@ export async function readJson(request, max = 64000) {
   }
 }
 
+/** The per-IP and per-person limits every request passes: Cloudflare's rate-limiting binding (`binding`, set up in
+ *  account.wrangler.jsonc with the same numbers) when the Worker has it, which costs no D1 writes (they were two of
+ *  every request's writes); else the D1 counter below. */
+export async function limitFast(env, binding, key, max) {
+  const rl = env[binding];
+  if (rl?.limit) {
+    try { return (await rl.limit({ key })).success; } catch { /* the D1 counter instead */ }
+  }
+  return limit(env, key, max);
+}
+
 export async function limit(env, key, max) {
   const now = Math.floor(Date.now() / 60000);
   const row = await env.DB.prepare(

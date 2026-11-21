@@ -175,6 +175,26 @@ test("while the worker is rebuilt after an update it isn't called broken, nor re
   } finally { await d.close(); }
 });
 
+test("right after an update the worker gets a beat and a half to start: no \"can't reach\" flash, then real trouble shows", async () => {
+  let now = 16_000_000;
+  const clock = () => now, w = await fakeWorker({ clock });
+  const vps = new Server2(); vps.port = await w.start();
+  w.beat();
+  const d = await desk({ clock, link: () => { vps.offline = false; return vps; } });
+  try {
+    await d.m.heartbeat();
+    const m = d.m as unknown as { updating: boolean; settle(): void };
+    await w.stop();
+    m.updating = false; m.settle(); // what refreshWorker() does once the rebuild is done; the worker is still booting
+    await d.m.heartbeat();
+    assert.equal((await d.m.status()).worker.error, undefined, "still starting: nothing alarming in Settings");
+    now += MIN; await d.m.heartbeat();
+    assert.equal((await d.m.status()).worker.error, undefined, "a minute later, still within the window");
+    now += MIN; await d.m.heartbeat();
+    assert.ok((await d.m.status()).worker.error, "past the window and still down: shown");
+  } finally { await d.close(); }
+});
+
 test("the VPS gets the AI this PC uses: Gemini stays Gemini (Google's Antigravity agent), never swapped for Claude", async () => {
   const d = await desk({ clock: () => 1, link: () => new Server2() });
   try {

@@ -8,7 +8,7 @@ import {
   ownerEligible,
   verifySignature,
 } from "./account-policy.js";
-import { corsHeaders, HttpError, json, lemon, limit, readJson } from "./lib/http.js";
+import { corsHeaders, HttpError, json, lemon, limit, limitFast, readJson } from "./lib/http.js";
 import {
   complimentary,
   hasActiveSubscription,
@@ -154,8 +154,9 @@ async function route(request, env) {
       if (request.method !== "GET" && request.method !== "POST")
         return json({ error: "Method not allowed" }, 405);
       if (
-        !(await limit(
+        !(await limitFast(
           env,
+          path.startsWith("/admin/") ? "RL_ADMIN_IP" : "RL_IP",
           "ip:" + (request.headers.get("CF-Connecting-IP") || "unknown"),
           path.startsWith("/admin/") ? 300 : 90,
         ))
@@ -168,7 +169,7 @@ async function route(request, env) {
         if (!owner) return json({ error: "Session expired" }, 401);
         // The inbox is a long poll the engine makes back to back all day: it paces itself, and counting it wrote to D1 on
         // every pull.
-        if (path !== "/telegram/inbox" && !(await limit(env, "user:" + owner.id, 60))) return json({ error: "Try again shortly." }, 429);
+        if (path !== "/telegram/inbox" && !(await limitFast(env, "RL_USER", "user:" + owner.id, 60))) return json({ error: "Try again shortly." }, 429);
         if (await suspension(env, owner.id)) return json({ error: "This account is suspended.", reason: "suspended" }, 403);
         return (await handleTelegram(request, env, owner, path)) || json({ error: "Not allowed" }, 403);
       }
@@ -212,7 +213,7 @@ async function route(request, env) {
         if (suspended) return json({ error: "This account is suspended. Contact support@m4labs.xyz." }, 403);
         return await handleAdmin(request, env, user, path, authorization);
       }
-      if (path !== "/telegram/inbox" && !(await limit(env, "user:" + user.id, 60)))
+      if (path !== "/telegram/inbox" && !(await limitFast(env, "RL_USER", "user:" + user.id, 60)))
         return json({ error: "Try again shortly." }, 429);
       // Suspended people keep support (to read replies and appeal), announcements, their profile and the
       // entitlement answer that explains the suspension. Everything else is blocked.

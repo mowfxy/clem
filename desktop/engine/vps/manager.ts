@@ -53,6 +53,8 @@ export type ManagerDeps = {
 };
 /** Reconnecting after a failure waits one beat, then two, four, eight, at most ten minutes (any action tries at once). */
 export const RETRY_MAX_MS = 10 * 60_000;
+/** How long a just-updated or restarted worker gets to start before not answering counts (a beat and a half). */
+export const SETTLE_MS = 90_000;
 /** Beats in a row the worker didn't answer while SSH did, before Clem starts it again (at most once in 10 minutes). */
 export const REVIVE_AFTER = 3;
 /** What the person reads when the connection drops during the switch and a second try didn't help either. */
@@ -288,6 +290,11 @@ export class VpsManager {
   /** The worker is being rebuilt with this version (an app update): it doesn't answer for a few minutes, which is
    *  not a fault, so Settings says "Updating" and nothing restarts it meanwhile. */
   private updating = false;
+  /** Until when a worker that was just updated or restarted may still be starting: not answering then is expected, so
+   *  it is neither shown as an error nor counted as a failure (the person saw "unable to connect" flash after updates). */
+  private settleUntil = 0;
+  private settling() { return this.updating || this.now() < this.settleUntil; }
+  private settle() { this.settleUntil = this.now() + SETTLE_MS; }
   /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs), and a
    *  worker whose health names another protocol than this desktop's (WORKER_PROTOCOL) may not understand it: either
    *  is refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
@@ -304,7 +311,7 @@ export class VpsManager {
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       await this.pushWorkspace(true);
     })().then(() => { this.refreshing = undefined; }, (e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; this.refreshFailed = this.now(); })
-      .finally(() => { if (this.updating) { this.updating = false; this.workerDown = 0; this.failures = 0; this.retryAt = 0; void this.heartbeat(); } });
+      .finally(() => { if (this.updating) { this.updating = false; this.settle(); this.workerDown = 0; this.failures = 0; this.retryAt = 0; void this.heartbeat(); } });
     return this.refreshing;
   }
   async disableWorker() {
@@ -354,7 +361,9 @@ export class VpsManager {
         if (!ok || !(await cliSignedIn(l, kind, owner, cli))) throw Error("The sign-in on your VPS didn't finish. Try again.");
       }
       step({ cli, step: "finishing" });
+      this.settle();
       await restartWorker(l, kind, owner);
+      this.settle();
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       // It answers again within seconds; the next heartbeat reads its model.
       for (let i = 0; i < 12 && this.workerModel !== "cli"; i++) { await new Promise((r) => setTimeout(r, 5000)); await this.heartbeat().catch(() => {}); }
@@ -440,8 +449,8 @@ export class VpsManager {
       for (const n of await c.notices().catch(() => [])) this.d.notify?.(n);
     } catch (e) {
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
-      this.workerError = this.updating ? undefined : (e as Error).message;
-      if (now >= this.retryAt && !this.updating) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
+      this.workerError = this.settling() ? undefined : (e as Error).message;
+      if (now >= this.retryAt && !this.settling()) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
       // Just woke and still can't reach it: decide on the next beat, not on a connection the sleep broke.
       desktopRuns = slept ? engine.isRunner : desktopRunsOffline(Math.max(this.lastWorker, this.awakeSince), now);
       if (desktopRuns) this.workerRunner = false;
@@ -459,13 +468,15 @@ export class VpsManager {
       return { c, health: await c.health() };
     } catch (e) {
       const unreachable = (e as { unreachable?: boolean }).unreachable || /Not allowed|refused|isn't answering|didn't answer/i.test((e as Error).message);
-      if (!unreachable || l.closed || this.updating) throw e;
+      if (!unreachable || l.closed || this.settling()) throw e;
       this.workerDown++;
       const v = await this.vault();
       if (this.workerDown >= REVIVE_AFTER && v.worker?.kind && this.now() - this.revivedAt > 10 * 60_000) {
         this.revivedAt = this.now();
         this.log("[vps] the worker isn't answering; starting it again");
+        this.settle();
         await reviveWorker(l, this.owner, v.worker.kind).catch((err) => this.log("[vps] revive: " + (err as Error).message));
+        this.settle();
         this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       }
       throw e;
@@ -607,7 +618,7 @@ export class VpsManager {
     if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
-    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled && !this.updating ? { error: this.workerError } : {}), ...(this.updating && v.worker?.enabled ? { updating: true } : {}), ...(this.workerAiError && v.worker?.enabled ? { aiError: this.workerAiError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
+    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled && !this.settling() ? { error: this.workerError } : {}), ...(this.updating && v.worker?.enabled ? { updating: true } : {}), ...(this.workerAiError && v.worker?.enabled ? { aiError: this.workerAiError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }
   async close() { this.stopHeartbeat(); if (this.pushTimer) clearTimeout(this.pushTimer); await this.migrator?.abort().catch(() => {}); await this.drop(); }
