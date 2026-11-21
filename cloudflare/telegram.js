@@ -15,6 +15,10 @@ export const BAD_CODE = "That code didn't work. Codes work once and last 10 minu
 export const OFFLINE = "Got it. Your Clem isn't online right now, so I'll answer as soon as it's back.";
 /** How long an engine may go without pulling before a message is answered with OFFLINE (at most once an hour). */
 const OFFLINE_AFTER = 120_000, LEASE_MS = 120_000;
+// D1's free plan allows 100k row writes a day, and an engine pulls around the clock: "seen" is written only when it is
+// a minute old (well inside OFFLINE_AFTER) or an offline note needs clearing, and a token's last_used once an hour.
+const SEEN_EVERY = 60_000, USED_EVERY = 3600_000;
+const seen = (env, userId) => env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=? AND (last_seen<? OR offline_noted<>0)").bind(now(), userId, now() - SEEN_EVERY).run();
 
 const now = () => Date.now();
 const secretOk = (a, b) => { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
@@ -118,12 +122,11 @@ export async function handleTelegram(request, env, user, path, o = {}) {
     }
     if (path === "/telegram/inbox" && request.method === "GET") {
       if (!(await linkOf(env, user.id))) return json({ paired: false, items: [] });
-      const wait = Math.min(25, Math.max(0, Number(new URL(request.url).searchParams.get("wait")) || 0)) * 1000;
+      const wait = Math.min(50, Math.max(0, Number(new URL(request.url).searchParams.get("wait")) || 0)) * 1000;
       const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
-      // Seen once per pull, not on every look: D1 counts each write, and an engine pulls around the clock (a write every
-      // 2 s of every pull used most of the free plan's daily writes by itself).
-      await env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=?").bind(now(), user.id).run();
       for (const end = t + wait; ;) {
+        // Checked on every look (a pull can last 50 s), written at most once a minute (SEEN_EVERY).
+        await seen(env, user.id);
         const { results } = await env.DB.prepare("SELECT id,kind,sealed,created_at FROM telegram_inbox WHERE user_id=? AND lease_until<? ORDER BY created_at,id LIMIT 20").bind(user.id, now()).all();
         if (results.length || now() >= end) {
           const k = await vaultKey(env), items = [];
@@ -234,6 +237,6 @@ export async function engineUser(env, token) {
   if (!/^[a-f0-9]{32}$/.test(id || "") || !/^[a-f0-9]{64}$/.test(secret || "")) return null;
   const row = await env.DB.prepare("SELECT user_id,hash FROM engine_tokens WHERE id=?").bind(id).first();
   if (!row || !secretOk(await sha(secret), row.hash)) return null;
-  await env.DB.prepare("UPDATE engine_tokens SET last_used=? WHERE id=?").bind(now(), id).run();
+  await env.DB.prepare("UPDATE engine_tokens SET last_used=? WHERE id=? AND (last_used IS NULL OR last_used<?)").bind(now(), id, now() - USED_EVERY).run();
   return { id: row.user_id };
 }

@@ -149,3 +149,37 @@ test("worker: Telegram stays off until its secrets and bot name are set", async 
   assert.equal((await hook(env, tg, msg(1, "hi"))).status, 404);
   assert.equal(tg.calls.length, 0);
 });
+
+test("worker: an inbox pull writes last_seen at most once a minute (D1's daily write limit), yet always clears an offline note", async () => {
+  const env = ENV(), tg = fakeTelegram();
+  const p = await call(env, tg, "u1", "/telegram/pair", {});
+  await hook(env, tg, msg(42, p.code));
+  const seen = () => (env.DB.db.prepare("SELECT last_seen,offline_noted FROM telegram_links WHERE user_id='u1'").get() as any);
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
+  const first = seen().last_seen;
+  assert.ok(Date.now() - first < 5000, "a pull marks the engine online");
+  env.DB.db.prepare("UPDATE telegram_links SET last_seen=? WHERE user_id='u1'").run(first - 30_000);
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
+  assert.equal(seen().last_seen, first - 30_000, "seen 30 s ago: no write");
+  env.DB.db.prepare("UPDATE telegram_links SET offline_noted=? WHERE user_id='u1'").run(Date.now());
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
+  assert.equal(seen().offline_noted, 0, "back online: the offline note is cleared at once");
+  env.DB.db.prepare("UPDATE telegram_links SET last_seen=? WHERE user_id='u1'").run(Date.now() - 61_000);
+  await call(env, tg, "u1", "/telegram/inbox", undefined, "?wait=0");
+  assert.ok(Date.now() - seen().last_seen < 5000, "a minute old: refreshed, well inside the 2-minute offline window");
+});
+
+test("limits: Cloudflare's rate-limit binding when present (no D1 write), the D1 counter otherwise", async () => {
+  const { limitFast } = await import("../cloudflare/lib/http.js");
+  const env = ENV();
+  const rows = () => (env.DB.db.prepare("SELECT count(*) AS n FROM desktop_rate_limits").get() as any).n;
+  const before = rows();
+  const asked: string[] = [];
+  const withBinding = { ...env, RL_USER: { limit: async ({ key }: { key: string }) => { asked.push(key); return { success: asked.length <= 1 }; } } };
+  assert.equal(await limitFast(withBinding, "RL_USER", "user:a", 60), true);
+  assert.equal(await limitFast(withBinding, "RL_USER", "user:a", 60), false, "the binding's answer is used");
+  assert.equal(rows(), before, "nothing written to D1");
+  const broken = { ...env, RL_USER: { limit: async () => { throw Error("down"); } } };
+  assert.equal(await limitFast(broken, "RL_USER", "user:b", 1), true, "binding failing: D1 counts instead");
+  assert.equal(await limitFast(env, "RL_USER", "user:b", 1), false, "no binding: D1's count (2 > 1)");
+});
