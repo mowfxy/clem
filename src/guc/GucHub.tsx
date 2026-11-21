@@ -427,9 +427,20 @@ function AttendanceHead({ a }: { a: HubTerm["attendance"][number] }) {
     <small>{a.total ? `Absent ${a.absent} of ${a.total}` : ""}</small>
   </div>;
 }
+/** GUC names a session like "… Practical @2026.09.21 - Regular - Slot2 - 2h" and lists practicals, tutorials and
+ *  lectures as separate runs; the date after "@" puts them back in the order they happened (same day: by slot). */
+function sessionWhen(name: string): string {
+  const m = /@\s*(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/.exec(name || "");
+  if (!m) return "";
+  const slot = /\bSlot\s*(\d+)/i.exec(name)?.[1] || "0";
+  return `${m[1]}${m[2].padStart(2, "0")}${m[3].padStart(2, "0")}${slot.padStart(2, "0")}`;
+}
 function AttendanceSessions({ a }: { a: HubTerm["attendance"][number] }) {
   if (!a.sessions.length) return <p className="guc-att-none">GUC lists no sessions for this course yet.</p>;
-  return <ol className="guc-att-sessions">{a.sessions.map((s, i) => <li key={i} className={"is-" + s.status}>
+  // Undated sessions keep GUC's order, after the dated ones.
+  const sorted = a.sessions.map((s, i) => ({ s, i, when: sessionWhen(s.session) }))
+    .sort((x, y) => (x.when && y.when ? x.when.localeCompare(y.when) : x.when ? -1 : y.when ? 1 : 0) || x.i - y.i);
+  return <ol className="guc-att-sessions">{sorted.map(({ s, i }) => <li key={i} className={"is-" + s.status}>
     <span>{s.session || `Session ${i + 1}`}</span><b>{s.status === "absent" ? "Absent" : s.status === "excused" ? "Excused" : "Attended"}</b>
   </li>)}</ol>;
 }

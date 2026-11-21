@@ -194,3 +194,24 @@ test("the worker answers only with a CLI that is signed in", async () => {
   } finally { await rm(data, { recursive: true, force: true }); }
   assert.equal(aiReason("Not logged in · Please run /login"), "Claude Code on your VPS is signed out.");
 });
+
+test("the worker keeps Claude Code warm: a spare waits, each request takes it with its instructions, one that dies says so", async () => {
+  const { WarmClaude, WarmStopped } = await import("../desktop/engine/vps/headless.ts");
+  const { spawn } = await import("node:child_process");
+  const NL = "String.fromCharCode(10)";
+  // A stand-in for `claude -p --input-format stream-json`: answers each message with its text.
+  const script = `let b="";process.stdin.on("data",d=>{b+=d;let i;while((i=b.indexOf(${NL}))>=0){const m=JSON.parse(b.slice(0,i));b=b.slice(i+1);process.stdout.write(JSON.stringify({type:"result",subtype:"success",result:"got:"+m.message.content[0].text})+${NL});}});`;
+  let started = 0;
+  const warm = new WarmClaude(process.env, () => { started++; return spawn(process.execPath, ["-e", script], { stdio: ["pipe", "pipe", "pipe"] }) as never; });
+  warm.warm();
+  assert.equal(started, 1, "a spare starts ahead of the first request");
+  assert.equal(await warm.complete({ system: "RULES", user: "hi" }), "got:<instructions>\nRULES\n</instructions>\n\nhi");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(started, 2, "the next spare is already waiting");
+  assert.equal(await warm.complete({ system: "", user: "plain" }), "got:plain");
+  warm.stop();
+  // A Claude Code that can't run this way (an older one, a crash): WarmStopped, so the caller runs it the old way.
+  const broken = new WarmClaude(process.env, () => spawn(process.execPath, ["-e", "process.exit(2)"], { stdio: ["pipe", "pipe", "pipe"] }) as never);
+  await assert.rejects(broken.complete({ system: "S", user: "q" }), (e) => e instanceof WarmStopped);
+  broken.stop();
+});

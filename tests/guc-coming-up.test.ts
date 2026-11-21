@@ -454,3 +454,27 @@ test("the corrections run through the VPS worker's agent too", async () => {
     assert.ok(GUC_GUIDE.includes('never answer that something "is synced automatically"'), "the worker's guide carries the correction rules");
   } finally { await t.close(); }
 });
+
+test("posts read before there was a model (a VPS worker before its AI is signed in) are read by the AI once there is one", async () => {
+  // As in the app with no model: no rule reader stands in either.
+  const t = await owner("cu-blind", { before: async (e) => { (e as unknown as { host: { ruleReader?: boolean } }).host.ruleReader = false; } });
+  try {
+    // Connected with no model: the posts count as read and Coming up has nothing from them.
+    const rows = async () => await t.engine.db.query<{ title: string; course_key: string }>("select title, course_key from guc_deadlines where owner_id = 'cu-blind'");
+    assert.ok(!(await rows()).some((r) => r.course_key === "399:70"));
+    const client = new GucClient({ username: "student.name", password: "secret" }, t.guc.http, noWait);
+    const asked: string[] = [];
+    const reader = async (ask: { system: string; user: string }) => {
+      asked.push(ask.user);
+      return /Quiz 2\/ Assignment 2/.test(ask.user) ? JSON.stringify({ deadlines: [{ title: "Quiz 2 / Assignment 2", due: "2026-11-19 10:50", kind: "quiz" }] }) : JSON.stringify({ deadlines: [] });
+    };
+    // The model arrives: the same, unchanged page is read again in full and its post goes to the AI.
+    await syncGuc({ db: t.engine.db, owner: "cu-blind", client, parts: ["pages", "catalog"], reader, now: new Date(NOW) });
+    assert.ok(asked.some((u) => /Quiz 2\/ Assignment 2/.test(u)), "the post read without a model reaches the AI");
+    assert.ok((await rows()).some((r) => r.course_key === "399:70" && /Quiz 2/.test(r.title)), "and its quiz is in Coming up");
+    // Once read, it isn't read again.
+    asked.length = 0;
+    await syncGuc({ db: t.engine.db, owner: "cu-blind", client, parts: ["pages", "catalog"], reader, now: new Date(NOW) });
+    assert.ok(!asked.some((u) => /Quiz 2\/ Assignment 2/.test(u)));
+  } finally { await t.close(); }
+});

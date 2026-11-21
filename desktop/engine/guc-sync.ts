@@ -216,6 +216,11 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   const fresh = new Set(same ? prev.seen.deadlines!.courses : []);
   const textsRead: Record<string, string[]> = same ? { ...prev.seen.deadlines!.read } : {};
   const fails: Record<string, { texts: string; n: number; at?: number }> = same ? { ...prev.seen.deadlines!.fails } : {};
+  // Posts counted as read while there was no model (a VPS worker before its AI was signed in): once there is one, their
+  // course page is read again in full and the AI reads them, so nothing they said is lost.
+  const blind: Record<string, string[]> = same ? { ...prev.seen.deadlines!.blind } : {};
+  const reread = (key: string) => !!o.reader && !!blind[key]?.length;
+  const skippedFor = (key: string) => new Set(o.reader ? blind[key] || [] : []);
   // What an older reader found stays shown until the AI has read that course again; then its answer replaces it.
   const deadlines: GucDeadline[] = [...prev.data.deadlines];
   const stale = new Set(same ? [] : prev.data.deadlines.map((d) => d.id));
@@ -243,7 +248,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   await Promise.all(wanted.map(async (course) => {
     const url = urls.course(course.id, course.seasonId);
     try {
-      const page = await within(client.page(url, fresh.has(course.key) && annRead.has(course.key) ? pages[url] : undefined), PAGE_MS);
+      const page = await within(client.page(url, fresh.has(course.key) && annRead.has(course.key) && !reread(course.key) ? pages[url] : undefined), PAGE_MS);
       if (page.unchanged) skipped++;
       else {
         const parsed = parseCoursePage(page.body, course.key);
@@ -297,7 +302,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   const jobs = new Map<string, { course: GucCourse; texts: CourseText[]; page?: { url: string; memo: PageMemo } }>();
   for (const [key, r] of read) jobs.set(key, { course: r.course, texts: [...r.texts, ...mailTexts(next.mail || [], r.course, who)], page: { url: r.url, memo: r.memo } });
   for (const course of next.courses.filter(current)) if (!jobs.has(course.key) && fresh.has(course.key)) {
-    const mail = mailTexts(next.mail || [], course, who), had = new Set(textsRead[course.key] || []);
+    const skipped = skippedFor(course.key), mail = mailTexts(next.mail || [], course, who), had = new Set((textsRead[course.key] || []).filter((id) => !skipped.has(id)));
     if (mail.some((t) => !had.has(t.id))) jobs.set(course.key, { course, texts: mail });
   }
   // Seating plans and schedules uploaded as files: the one kind of CMS file Clem reads on its own (cost). Only a file new
@@ -335,7 +340,8 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   }
   seen.files = { read: files.read.slice(-500), tries: files.tries };
   await pool([...jobs.values()], READERS_AT_ONCE, async ({ course, texts, page }) => {
-    const had = new Set(switched.has(course.key) ? [] : textsRead[course.key] || []);
+    const skipped = skippedFor(course.key);
+    const had = new Set(switched.has(course.key) ? [] : (textsRead[course.key] || []).filter((id) => !skipped.has(id)));
     const rules = rulesFor(fixes, course.key);
     const unread = texts.filter((t) => !had.has(t.id) && textAllowed(t, rules, at));
     const tracked = deadlines.filter((d) => d.courseKey === course.key && !stale.has(d.id) && Date.parse(d.due) >= at - 30 * 864e5);
@@ -368,6 +374,10 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     // corrections hold whatever was read.
     const had2 = new Set(tracked.map((d) => d.id));
     list = applyCorrections(list.filter((d) => had2.has(d.id) || endsAt(d) > at), fixes, { now: at, course: course.key });
+    // No model (and no rule reader, which only tests have): the posts count as read (as before) and are remembered, so
+    // the AI reads them once there is one.
+    if (!o.reader && !o.rules && unread.length) blind[course.key] = [...new Set([...(blind[course.key] || []), ...unread.map((t) => t.id)])].slice(-300);
+    else if (o.reader && ok) delete blind[course.key];
     if (ok || changedByRules) deadlines.splice(0, deadlines.length, ...deadlines.filter((d) => d.courseKey !== course.key), ...list);
     // A course the switch read counts as read by this reader only once its deadlines were read too, so a model that
     // didn't answer leaves the next read a baseline as well.
@@ -379,7 +389,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   });
   // Done 14 days ago: gone (the hub shows the rest under Done).
   next.deadlines = deadlines.filter((d) => endsAt(d) > at - DONE_DAYS * 864e5).sort((a, b) => a.due.localeCompare(b.due) || a.id.localeCompare(b.id));
-  seen.deadlines = { v: DEADLINE_VERSION, courses: [...fresh], read: textsRead, ...(Object.keys(fails).length ? { fails } : {}) };
+  seen.deadlines = { v: DEADLINE_VERSION, courses: [...fresh], read: textsRead, ...(Object.keys(fails).length ? { fails } : {}), ...(Object.keys(blind).length ? { blind } : {}) };
   seen.announcements = { v: ANNOUNCEMENT_VERSION, courses: [...annRead] };
   const before2 = { ...emptySnapshot(), courses: next.courses, deadlines: prev.data.deadlines }, after2 = { ...emptySnapshot(), courses: next.courses, deadlines: next.deadlines };
   const deadlineEvents = diffSnapshots(before2, after2, { courses: prev.seen.courses, grades: false, schedule: false, deadlines: prev.seen.deadlines, announcements: prev.seen.announcements }, at);
