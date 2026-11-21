@@ -12,6 +12,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, sep } from "node:path";
 import { Readable } from "node:stream";
+import { rootCertificates } from "node:tls";
 import { pipeline } from "node:stream/promises";
 import { Unzip, UnzipInflate } from "fflate";
 import { AcpConnection } from "../../acp.ts";
@@ -118,14 +119,30 @@ const homeOf = (data: string) => join(data, "antigravity");
 const tempOf = (data: string) => join(data, "tmp", "agy");
 /** Only what the agent needs: an API key or Google Cloud setting in the environment would bypass the plan. Its sign-in
  *  page goes through BROWSER, Clem's helper, which prints it on stderr for Clem instead of opening anything. */
-export function agyEnv(data: string, base: NodeJS.ProcessEnv = process.env, harness?: string): NodeJS.ProcessEnv {
+export function agyEnv(data: string, base: NodeJS.ProcessEnv = process.env, harness?: string, certs?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of ["PATH", "LANG", "LC_ALL", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR"]) if (base[key]) env[key] = base[key];
   const helper = `process.stderr.write(${JSON.stringify(ANTIGRAVITY_URL_MARKER)}+JSON.stringify(process.argv[1])+"\\n",()=>process.exit(0))`;
   const quote = (s: string) => `'${s.replace(/'/g, `'"'"'`)}'`;
-  return { ...env, HOME: join(data, "home"), GEMINI_HOME: homeOf(data), AGY_ACP_FORCE_FILE_STORAGE: "1", ...(harness ? { ANTIGRAVITY_HARNESS_PATH: harness } : {}), PYTHONUNBUFFERED: "1", NO_COLOR: "1",
+  return { ...env, ...(certs && !env.SSL_CERT_FILE ? { SSL_CERT_FILE: certs } : {}), HOME: join(data, "home"), GEMINI_HOME: homeOf(data), AGY_ACP_FORCE_FILE_STORAGE: "1", ...(harness ? { ANTIGRAVITY_HARNESS_PATH: harness } : {}), PYTHONUNBUFFERED: "1", NO_COLOR: "1",
     BROWSER: [process.execPath, "-e", helper, "--", "%s"].map(quote).join(" "), TMPDIR: tempOf(data), TEMP: tempOf(data), TMP: tempOf(data) };
 }
+
+/** Where the agent finds the certificates it trusts for Google's servers. The worker's image (node:22-slim) has no
+ *  system bundle, so Google's agent couldn't verify Google and failed with "Internal error" (CERTIFICATE_VERIFY_FAILED).
+ *  The server's own bundle when it has one, else Node's built-in roots, written to the worker's data folder. */
+const SYSTEM_BUNDLES = ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/cert.pem", "/etc/ssl/ca-bundle.pem"];
+export async function caBundle(data: string, bundles = SYSTEM_BUNDLES): Promise<string> {
+  const found = bundles.find((p) => existsSync(p));
+  if (found) return found;
+  const file = join(data, "certs", "roots.pem");
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, rootCertificates.join("\n") + "\n");
+  return file;
+}
+
+/** The agent's own words for a failure (its "Internal error" carries the reason in `data.details`). */
+const reason = (e: unknown) => { const x = e as { message?: string; data?: { details?: unknown } }; const d = typeof x?.data?.details === "string" ? x.data.details : ""; return [x?.message || "", d].filter(Boolean).join(": "); };
 
 export class SignedOutAgy extends Error {}
 type Live = { acp: AcpConnection; child: ChildProcessWithoutNullStreams; sessions: number; text: Map<string, (t: string) => void>; idle?: ReturnType<typeof setTimeout> };
@@ -142,7 +159,7 @@ export async function openAgy(data: string, login?: (url: string) => void, start
   await mkdir(tempOf(data), { recursive: true });
   // Google's harness ships beside the agent (as on Windows), which is told where it is.
   const harness = join(install.dir, "localharness_external");
-  const child = start(join(install.dir, install.cmd), install.args, agyEnv(data, process.env, existsSync(harness) ? harness : undefined), work) as ChildProcessWithoutNullStreams;
+  const child = start(join(install.dir, install.cmd), install.args, agyEnv(data, process.env, existsSync(harness) ? harness : undefined, await caBundle(data)), work) as ChildProcessWithoutNullStreams;
   const acp = new AcpConnection(child);
   const live: Live = { acp, child, sessions: 0, text: new Map() };
   let failSignIn: (e: Error) => void = () => {}, shown = false, pending = "", tail = "";
@@ -180,7 +197,7 @@ export async function openAgy(data: string, login?: (url: string) => void, start
   } catch (e) {
     child.kill("SIGKILL");
     if (e instanceof SignedOutAgy) throw e;
-    const m = (e as Error)?.message || "";
+    const m = reason(e);
     if (/authentication required|not authenticated|unauthenticated|invalid_grant|sign in/i.test(m)) throw new SignedOutAgy("Gemini on your VPS is signed out. Set up the AI again in Settings.");
     throw Error("Gemini on your VPS couldn't start: " + (m || tail.trim().split("\n").slice(-2).join(" ")).slice(0, 240));
   }
@@ -218,7 +235,7 @@ export function antigravityComplete(data: string, o: { start?: Parameters<typeof
         await l.acp.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: user }] }, STEP_MS);
       } catch (e) {
         l.acp.notify("session/cancel", { sessionId: session });
-        const m = (e as Error)?.message || "";
+        const m = reason(e);
         throw Error(/SUBSCRIPTION_REQUIRED/.test(m) ? "Google says this account has no Gemini plan." : m || "Gemini on your VPS couldn't answer.");
       } finally { l.text.delete(session); }
       if (!text.trim()) throw Error("Gemini on your VPS gave an empty answer.");
