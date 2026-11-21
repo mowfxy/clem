@@ -157,6 +157,35 @@ test("a worker that stops answering while SSH works is started again, at most on
   } finally { await d.close(); }
 });
 
+test("while the worker is rebuilt after an update it isn't called broken, nor restarted half-way", async () => {
+  let now = 15_000_000;
+  const clock = () => now, w = await fakeWorker({ clock });
+  const vps = new Server2(); vps.port = await w.start();
+  w.beat();
+  const d = await desk({ clock, link: () => { vps.offline = false; return vps; } });
+  try {
+    await d.m.heartbeat();
+    (d.m as unknown as { updating: boolean }).updating = true; // refreshWorker() is running `docker compose up -d --build`
+    await w.stop();
+    for (let i = 0; i < 6; i++) { now += MIN; await d.m.heartbeat(); }
+    const s = await d.m.status();
+    assert.equal(s.worker.updating, true);
+    assert.equal(s.worker.error, undefined, "Settings says Updating, not \"isn't answering\"");
+    assert.equal(vps.commands.filter((c) => c.includes("docker compose up -d")).length, 0, "no restart racing the rebuild");
+  } finally { await d.close(); }
+});
+
+test("the VPS gets Claude, not Gemini, once Google refused Gemini CLI there", async () => {
+  const d = await desk({ clock: () => 1, link: () => new Server2() });
+  try {
+    const m = d.m as unknown as { serverCli(c?: string): string | undefined; workerAiError?: string };
+    assert.equal(m.serverCli("gemini"), "gemini");
+    m.workerAiError = "Google no longer lets Gemini CLI use your Gemini plan on a server. Set up Claude or ChatGPT on your VPS instead.";
+    assert.equal(m.serverCli("gemini"), "claude");
+    assert.equal(m.serverCli("codex"), "codex");
+  } finally { await d.close(); }
+});
+
 test("a worker on another protocol is refreshed with this desktop's bundle, whole, keeping its database", async () => {
   let now = 20_000_000;
   const clock = () => now, w = await fakeWorker({ clock, version: WORKER_PROTOCOL - 1 });

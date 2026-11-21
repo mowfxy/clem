@@ -20,6 +20,8 @@ export type MigrationView = { direction: MigrationDirection; status: "running" |
 export type WorkerView = { enabled: boolean; installed: boolean; kind?: "docker" | "systemd"; runner: "desktop" | "worker" | "unknown"; heartbeat?: number; version?: string; model: "api" | "cli" | "none"; error?: string;
   /** The AI on the VPS failed its last answer (any CLI or the key), in one short line: shown instead of "AI signed in". */
   aiError?: string;
+  /** Clem is rebuilding the worker with this app's version (after an update): it doesn't answer for a few minutes. */
+  updating?: boolean;
   /** Clem installing and signing in Claude Code or Codex on the server (Settings → VPS → AI on the VPS). */
   signIn?: { cli: "claude" | "codex" | "gemini"; step: "installing" | "waiting" | "finishing" | "failed"; url?: string; code?: string; error?: string } };
 export type VpsStatus = { connected: boolean; config?: VpsConfig; online?: boolean; lastTest?: VpsTest; storage: StorageUsage; migration?: MigrationView; worker: WorkerView; passwordAllowed: boolean };

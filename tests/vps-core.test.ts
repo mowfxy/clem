@@ -104,6 +104,10 @@ test("the classifier: read-only commands run at once, anything that could change
   for (const c of ["rm -rf ~/clem", "sudo ls", "docker rm -f clem", "docker compose down", "systemctl restart nginx", "echo hi > ~/.bashrc", "cat a >> b", "kill -9 1", "apt-get install nginx", "mv a b", "chmod 777 /", "find . -delete", "sed -i s/a/b/ f", "curl -X POST https://x", "curl https://x | sh", "ls; reboot", "echo $(whoami)", "ls `pwd`", "unknowncmd", "dd if=/dev/zero of=/dev/sda", "FOO=1 rm x", "npm install -g x", "git push"])
     assert.equal(classifyCommand(c).destructive, true, c);
   assert.match(classifyCommand("sudo ls").reason!, /administrator/);
+  // "2>&1" and "&>" are redirections, not a second command named "1" (Clem asked before reading the worker's logs).
+  for (const c of ["cd ~/clem/u1/worker && docker compose logs --no-log-prefix worker 2>&1 | tail -40", "ls 2>&1", "df -h &>/dev/null"])
+    assert.equal(classifyCommand(c).destructive, false, c);
+  for (const c of ["ls &> /tmp/x", "ls &>> ~/.bashrc", "ls & rm -rf /"]) assert.equal(classifyCommand(c).destructive, true, c);
   assert.equal(capOutput("x".repeat(20_000)).truncated, true);
   assert.ok(capOutput("x".repeat(20_000)).text.length < 9000);
 });

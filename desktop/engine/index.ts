@@ -36,6 +36,8 @@ const GUC_TABLES = ["guc_courses", "guc_schedule_slots", "guc_announcements", "g
 /** The GUC pulse: every 2 minutes it reads only the parts whose pace has come round (guc-sync.ts PACE): mail and
  *  course pages every few minutes, grades every 15, heavy pages rarely. Runs where the engine runs (this PC or the VPS). */
 export const GUC_SYNC_CRON = "*/2 * * * *";
+/** A sync still running after this long is treated as hung (a full first sync takes a few minutes at most). */
+export const STUCK_MS = 20 * 60_000;
 /** A settings change that saves or copies files waits this long for the next tap, so a few quick taps are one run. */
 export const SETTLE_MS = 15_000;
 export type CheckTrigger = "schedule" | "now" | "rules";
@@ -54,6 +56,8 @@ export class Engine {
   private clock: () => number;
   private running?: Promise<GucStatus>;
   private light?: Promise<GucStatus>;
+  /** When the sync or light sync now running began (STUCK_MS). */
+  private busySince = 0;
   private reader?: GucClient;
   /** CMS files fetched for viewing: kept in a temp folder for this session only, never in the workspace. */
   private temp = new Map<string, Promise<HubFile & { path: string }>>();
@@ -266,11 +270,13 @@ export class Engine {
 
   /** One sync at a time; a second call while one runs waits for it. Light syncs of one course queue behind it. */
   sync(progress?: (p: GucProgress) => void, initial = false, client?: GucClient) {
+    if (!this.running) this.busySince = this.clock();
     this.running ||= (this.light || Promise.resolve()).catch(() => {}).then(() => this.run(progress, initial, client)).finally(() => { this.running = undefined; });
     return this.running;
   }
   /** A light sync of one course (just linked, "Check now", its scheduled check): its page only. */
   syncCourse(courseKey: string, progress?: (p: GucProgress) => void, client?: GucClient, out?: { result?: SyncResult }) {
+    if (!this.running && !this.light) this.busySince = this.clock();
     const job = Promise.allSettled([this.running, this.light]).then(() => this.run(progress, false, client, courseKey, out));
     this.light = job.finally(() => { if (this.light === job) this.light = undefined; });
     return job;
@@ -279,7 +285,14 @@ export class Engine {
   private get deadlineReader() { return this.host.complete ? (ask: { system: string; user: string }) => this.organizer.complete(ask.system, ask.user) : undefined; }
   /** One pulse: the parts of GUC that are due, nothing when none is or a sync is already running. */
   async pulse() {
+    // A run that never finished (a request that hung past every timeout) doesn't stop GUC being read for days: past
+    // STUCK_MS the next pulse goes ahead and says so in the log.
+    if ((this.running || this.light) && this.clock() - this.busySince > STUCK_MS) {
+      this.host.log("warn", `[guc] a sync has been running for ${Math.round((this.clock() - this.busySince) / 60_000)} min: going on without it`);
+      this.running = undefined; this.light = undefined;
+    }
     if (this.running || this.light) return null;
+    this.busySince = this.clock();
     const prev = await previousSnapshot(this.db, this.owner), now = this.clock();
     const parts = dueParts(prev.seen.lastRead, now, Number(cairo(now).time.slice(0, 2)));
     if (!parts.length) return null;

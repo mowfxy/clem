@@ -42,8 +42,14 @@ export function failure(cmd: string, code: number | null, err: string, out: stri
 export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return { ...base, HOME: join(data, "home"), CLAUDE_CONFIG_DIR: join(data, "claude"), CODEX_HOME: join(data, "codex"), PATH: join(data, "cli", "node_modules", ".bin") + delimiter + (base.PATH || "") };
 }
+/** Google refusing Gemini CLI for the person's plan (free Gemini Code Assist for individuals, since November 2026):
+ *  signing in again can't fix it, so Clem sets up Claude or ChatGPT on the VPS instead. */
+export const geminiRefused = (message: string) => /UNSUPPORTED_CLIENT|no longer supported for Gemini Code Assist|^Google no longer lets Gemini CLI/i.test(String(message || ""));
+export const GEMINI_REFUSED = "Google no longer lets Gemini CLI use your Gemini plan on a server. Set up Claude or ChatGPT on your VPS instead.";
 /** A model failure as one short line for Settings: the CLI's last meaningful line (stack frames and colour codes left out). */
 export function aiReason(message: string): string {
+  if (geminiRefused(message)) return GEMINI_REFUSED;
+  if (/^\s*Not logged in\b/im.test(String(message || ""))) return "Claude Code on your VPS is signed out.";
   const lines = String(message || "").replace(/\x1b\[[0-9;]*m/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^at\s|^\{$|^\}$|^exitCode:/.test(l));
   return (lines.find((l) => /error|not |can't|cannot|required|denied|expired|invalid|limit|log ?in|sign/i.test(l)) || lines[0] || "it failed without saying why").slice(0, 180);
 }
@@ -62,8 +68,11 @@ export function watchedComplete(base: Complete, log?: (m: string) => void): { co
 export const geminiEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({ ...env, NO_BROWSER: "true", GEMINI_CLI_TRUST_WORKSPACE: "true" });
 /** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), Codex (`codex exec -`) or Gemini (`gemini -p`). The one Clem
  *  installed under `data` (and signed in to from Settings) first, else one the person put on the server's PATH. */
-export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; complete: Complete } | undefined> {
+export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; signedIn?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; names: string[]; complete: Complete } | undefined> {
   const probe = o.probe || ((cmd: string, env: NodeJS.ProcessEnv) => run(cmd, ["--version"], "", 10_000, env).then(() => true, () => false));
+  // Installed is not enough: a CLI that isn't signed in answers every prompt with "Not logged in", after which the
+  // next one is tried, so each step pays for it and Settings shows a reason that isn't the real one.
+  const signedIn = o.signedIn || (o.probe ? async () => true : cliSignedInHere);
   const own = o.data ? ownCliEnv(o.data) : undefined;
   const has = (cmd: string) => (own ? existsSync(join(o.data!, "cli", "node_modules", ".bin", cmd)) : false);
   // The one Clem signed in on this server comes first (only that one has a sign-in under `data`), then one on PATH.
@@ -71,7 +80,7 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
   const found: { name: string; complete: Complete }[] = [];
   for (const name of order) {
     const env = has(name) ? own! : process.env;
-    if (!(await probe(name, env))) continue;
+    if (!(await probe(name, env)) || !(await signedIn(name, env).catch(() => false))) continue;
     // Gemini CLI: the prompt comes on stdin (it reads stdin, then the -p text); answers in plain text, no tools asked.
     // Headless, it refuses to run in a folder no one trusted (exit 55, "not running in a trusted directory"), and the
     // worker's folder never is: trusting it by the environment works on every version (older ones ignore it; the
@@ -85,7 +94,7 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
   // More than one on the server: one that fails (signed out, out of quota) hands the step to the next, and the one that
   // answered is asked first from then on. The first one's reason is what Settings shows when none can answer.
   let first = 0;
-  return { name: found[0].name, complete: async (r) => {
+  return { name: found[0].name, names: found.map((f) => f.name), complete: async (r) => {
     let reason: unknown;
     for (let k = 0; k < found.length; k++) {
       const i = (first + k) % found.length;
@@ -94,4 +103,20 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
     }
     throw reason;
   } };
+}
+/** Whether a CLI on this server holds a sign-in it can answer with: Claude Code and Codex say so themselves; Gemini
+ *  keeps Google's sign-in in ~/.gemini/oauth_creds.json. An API key in the environment counts too. */
+export async function cliSignedInHere(name: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+  if (name === "claude") {
+    if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) return true;
+    const out = await run("claude", ["auth", "status"], "", 20_000, env).catch((e: Error) => e.message);
+    try { return JSON.parse(out).loggedIn === true; } catch { return !/not logged in|"loggedIn":\s*false/i.test(out); }
+  }
+  if (name === "codex") {
+    if (env.OPENAI_API_KEY) return true;
+    const out = await run("codex", ["login", "status"], "", 20_000, env).then((o) => o, (e: Error) => "not logged in " + e.message);
+    return /logged in/i.test(out) && !/not logged in/i.test(out);
+  }
+  if (name === "gemini") return !!(env.GEMINI_API_KEY || env.GOOGLE_API_KEY) || existsSync(join(env.HOME || "", ".gemini", "oauth_creds.json"));
+  return true;
 }

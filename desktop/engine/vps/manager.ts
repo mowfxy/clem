@@ -18,6 +18,7 @@ import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
 import { VpsTools } from "./tools.ts";
 import { DiskLimit, sshDisk } from "./limit.ts";
+import { geminiRefused } from "./headless.ts";
 
 /** Everything kept in the Vault under vps-<owner>: the connection, its key or password, and the worker's secrets. */
 export type VpsVault = {
@@ -285,6 +286,9 @@ export class VpsManager {
     }
   }
   private refreshing?: Promise<void>; private refreshFailed = 0;
+  /** The worker is being rebuilt with this version (an app update): it doesn't answer for a few minutes, which is
+   *  not a fault, so Settings says "Updating" and nothing restarts it meanwhile. */
+  private updating = false;
   /** After an app update the worker on the VPS still runs the old version's code (its GUC reading, its jobs), and a
    *  worker whose health names another protocol than this desktop's (WORKER_PROTOCOL) may not understand it: either
    *  is refreshed with this version's bundle once, in the background, keeping its database. The desktop keeps the
@@ -296,10 +300,12 @@ export class VpsManager {
       if (!v.worker?.enabled) return;
       if (!force && (!this.d.version || v.worker.version === this.d.version)) return;
       this.log("[vps] refreshing the worker" + (this.d.version ? " to " + this.d.version : ""));
+      this.updating = true; this.d.changed?.("worker");
       await this.retryDropped(() => this.install());
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
       await this.pushWorkspace(true);
-    })().then(() => { this.refreshing = undefined; }, (e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; this.refreshFailed = this.now(); });
+    })().then(() => { this.refreshing = undefined; }, (e) => { this.log("[vps] worker refresh: " + (e as Error).message); this.refreshing = undefined; this.refreshFailed = this.now(); })
+      .finally(() => { if (this.updating) { this.updating = false; this.workerDown = 0; this.failures = 0; this.retryAt = 0; void this.heartbeat(); } });
     return this.refreshing;
   }
   async disableWorker() {
@@ -326,7 +332,7 @@ export class VpsManager {
    *  Returns at once; progress is in `status().worker.signIn`. */
   async connectCli(chosen?: ServerCli) {
     // Unnamed (Settings' "Set up the AI"): the AI this PC uses, never a default the person may not have.
-    const cli = chosen || await this.d.preferredCli?.().catch(() => undefined);
+    const cli = chosen || this.serverCli(await this.d.preferredCli?.().catch(() => undefined));
     if (!cli) throw Error("Sign in to Gemini, Claude or ChatGPT under Models first, then Clem sets up the same one on your VPS.");
     const v = await this.vault();
     if (!v.worker?.enabled || !v.worker.kind) throw Error("Turn on background jobs on your VPS first.");
@@ -357,6 +363,13 @@ export class VpsManager {
     })().catch((e) => { this.pasteCode = undefined; step({ cli, step: "failed", error: (e as Error).message }); });
     return this.status();
   }
+  /** The CLI for the VPS when none was named: the one this PC uses, except Gemini once Google refused it there (its
+   *  free plan no longer works from Gemini CLI): then Claude, with a sign-in of its own on the server. */
+  private serverCli(preferred?: ServerCli): ServerCli | undefined {
+    return preferred === "gemini" && this.workerAiError && geminiRefused(this.workerAiError) || preferred === "gemini" && this.geminiOut ? "claude" : preferred;
+  }
+  /** The worker said Google refuses its Gemini CLI (kept after the error clears, so "Try again" never picks it again). */
+  private geminiOut = false;
   /** A code the person copied from Claude's page, if the window didn't hand it over by itself. */
   pasteCliCode(code: string) { if (!this.pasteCode) throw Error("No sign-in is waiting for a code."); this.pasteCode(code); return { ok: true }; }
 
@@ -396,6 +409,7 @@ export class VpsManager {
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
       this.workerAiError = typeof health.aiError === "string" && health.aiError ? health.aiError.slice(0, 200) : undefined;
+      if (this.workerAiError && geminiRefused(this.workerAiError)) this.geminiOut = true;
       this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
       // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
       if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
@@ -420,8 +434,8 @@ export class VpsManager {
       for (const n of await c.notices().catch(() => [])) this.d.notify?.(n);
     } catch (e) {
       this.client = undefined; this.tunnel?.close(); this.tunnel = undefined;
-      this.workerError = (e as Error).message;
-      if (now >= this.retryAt) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
+      this.workerError = this.updating ? undefined : (e as Error).message;
+      if (now >= this.retryAt && !this.updating) { this.failures++; this.retryAt = now + Math.min(RETRY_MAX_MS, BEAT_MS * 2 ** (this.failures - 1)) - 1000; }
       // Just woke and still can't reach it: decide on the next beat, not on a connection the sleep broke.
       desktopRuns = slept ? engine.isRunner : desktopRunsOffline(Math.max(this.lastWorker, this.awakeSince), now);
       if (desktopRuns) this.workerRunner = false;
@@ -439,7 +453,7 @@ export class VpsManager {
       return { c, health: await c.health() };
     } catch (e) {
       const unreachable = (e as { unreachable?: boolean }).unreachable || /Not allowed|refused|isn't answering|didn't answer/i.test((e as Error).message);
-      if (!unreachable || l.closed) throw e;
+      if (!unreachable || l.closed || this.updating) throw e;
       this.workerDown++;
       const v = await this.vault();
       if (this.workerDown >= REVIVE_AFTER && v.worker?.kind && this.now() - this.revivedAt > 10 * 60_000) {
@@ -587,7 +601,7 @@ export class VpsManager {
     if (v.config && this.current && !this.current.closed) await this.limit.size().catch(() => undefined);
     const storage = v.config ? await this.router().then((r) => r.usage(), () => none) : none;
     const migration = v.config ? await this.migratorFor().then((m) => m.view(), () => undefined) : undefined;
-    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled ? { error: this.workerError } : {}), ...(this.workerAiError && v.worker?.enabled ? { aiError: this.workerAiError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
+    const worker: WorkerView = { enabled: !!v.worker?.enabled, installed: !!v.worker?.installedAt, ...(v.worker?.kind ? { kind: v.worker.kind } : {}), runner: !v.worker?.enabled ? "desktop" : this.lastWorker ? (this.workerRunner ? "worker" : "desktop") : "unknown", ...(this.lastWorker ? { heartbeat: this.lastWorker } : {}), model: v.modelKey ? "api" : this.workerModel, ...(this.workerError && v.worker?.enabled && !this.updating ? { error: this.workerError } : {}), ...(this.updating && v.worker?.enabled ? { updating: true } : {}), ...(this.workerAiError && v.worker?.enabled ? { aiError: this.workerAiError } : {}), ...(this.signIn && v.worker?.enabled ? { signIn: this.signIn } : {}) };
     return { connected: !!v.config?.host && !!(v.privateKey || v.password), ...(v.config ? { config: v.config } : {}), ...(this.online !== undefined ? { online: this.online } : {}), ...(this.lastTest ? { lastTest: this.lastTest } : {}), storage, ...(migration ? { migration } : {}), worker, passwordAllowed: !!v.allowPassword };
   }
   async close() { this.stopHeartbeat(); if (this.pushTimer) clearTimeout(this.pushTimer); await this.migrator?.abort().catch(() => {}); await this.drop(); }

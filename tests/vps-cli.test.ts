@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeCode, claudeSignIn, cliSignedIn, codexSignIn, geminiCode, geminiSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
-import { aiReason, cliComplete, geminiEnv, ownCliEnv, watchedComplete } from "../desktop/engine/vps/headless.ts";
+import { GEMINI_REFUSED, aiReason, cliComplete, geminiEnv, geminiRefused, ownCliEnv, watchedComplete } from "../desktop/engine/vps/headless.ts";
 import type { LiveCommand } from "../desktop/engine/vps/link.ts";
 import { FakeVps } from "./vps-fake.ts";
 
@@ -158,4 +158,21 @@ test("Gemini runs headless in the worker's folder: trusted, no browser (else it 
   assert.equal(env.GEMINI_CLI_TRUST_WORKSPACE, "true");
   assert.equal(env.NO_BROWSER, "true");
   assert.equal(env.HOME, "/data/home");
+});
+
+test("the worker answers only with a CLI that is signed in, and says plainly when Google refuses Gemini", async () => {
+  const data = await mkdtemp(join(tmpdir(), "clem-cli-"));
+  try {
+    await mkdir(join(data, "cli", "node_modules", ".bin"), { recursive: true });
+    for (const n of ["claude", "gemini"]) await writeFile(join(data, "cli", "node_modules", ".bin", n), "");
+    // Both installed; Claude Code was never signed in on the server (the real VPS, 2026-11-21): Gemini alone answers.
+    const c = await cliComplete({ data, probe: async () => true, signedIn: async (cmd) => cmd === "gemini" });
+    assert.equal(c?.name, "gemini");
+    assert.deepEqual(c?.names, ["gemini"]);
+    assert.equal(await cliComplete({ data, probe: async () => true, signedIn: async () => false }), undefined, "none signed in: no AI, so Settings offers the sign-in");
+  } finally { await rm(data, { recursive: true, force: true }); }
+  const refused = "Error: {\n ineligibleTiers: [ { reasonCode: 'UNSUPPORTED_CLIENT', reasonMessage: 'This client is no longer supported for Gemini Code Assist for individuals.' } ]\n    at throwIneligibleOrProjectIdError (file:///x.js:1:1)";
+  assert.ok(geminiRefused(refused));
+  assert.equal(aiReason(refused), GEMINI_REFUSED);
+  assert.equal(aiReason("Not logged in · Please run /login"), "Claude Code on your VPS is signed out.");
 });

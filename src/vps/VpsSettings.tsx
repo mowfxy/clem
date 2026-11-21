@@ -147,15 +147,16 @@ function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: (
   return <div className="gd-picker gd-connect vps-manage" data-busy={busy || undefined}>
     <div className="gd-hero" aria-hidden="true"><span className="gd-hero-tile vps-tile"><Icon name="server" size={34} /></span></div>
     <h3>Your VPS</h3>
-    <p className="vps-where"><StatusDot dot={d} label={d === "on" ? "Online" : d === "warn" ? "Needs attention" : "Not checked yet"} /><b>{c.user}@{c.host}{c.port !== 22 ? ":" + c.port : ""}</b><span>{d === "on" ? "Online" : d === "warn" ? "Can't reach it" : "Not checked yet"}</span></p>
+    <p className="vps-where"><StatusDot dot={d} label={d === "on" ? "Online" : d === "warn" ? "Needs attention" : "Not checked yet"} /><b>{c.user}@{c.host}{c.port !== 22 ? ":" + c.port : ""}</b><span>{d === "on" ? "Online" : d === "warn" ? (status.online === false || status.lastTest?.ok === false ? "Can't reach it" : "Online · the worker needs attention") : "Not checked yet"}</span></p>
     {status.lastTest && <TestResult test={status.lastTest} />}
     <Act className="secondary vps-small" label="Test connection" busyLabel="Testing…" busy={busy === "test"} disabled={!!busy} onClick={() => void run("test", () => desktop!.invoke({ action: "vpsTest" }))} />
 
     <Section title="Run Clem on my VPS" aside={<Switch checked={on} label="Run Clem on my VPS" disabled={!!busy} onChange={(v) => void run(v ? "worker-on" : "worker-off", () => desktop!.invoke({ action: "vpsWorker", on: v }))} />}>
       {busy === "worker-on" ? <Status spin>{step || "Setting up your VPS…"}</Status>
         : busy === "worker-off" ? <Status spin>Turning off…</Status>
+        : w.updating ? <Status spin>Updating Clem on your VPS… this takes a few minutes</Status>
         : w.error ? <Status warn>{w.error}</Status>
-        : w.enabled && w.runner === "worker" && w.aiError ? <Status warn>{`The AI on your VPS can't answer: ${w.aiError}`}</Status>
+        : w.enabled && w.runner === "worker" && w.aiError ? <Status warn>{/^Google no longer|signed out/.test(w.aiError) ? w.aiError : `The AI on your VPS can't answer: ${w.aiError}`}</Status>
         : w.enabled ?<Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
         : <Status>GUC checks, reminders and your main thread on Telegram keep going while this PC is off.</Status>}
       <SettingRow title="Keep a copy of my files on the VPS" description={copies && s.vpsLimit ? `${bytes(s.vpsLimit.used)} of ${bytes(s.vpsLimit.max)} used on your VPS` : "This PC keeps them either way."}>
@@ -181,14 +182,16 @@ function ServerAi({ w }: { w: VpsStatus["worker"] }) {
   const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false), [sent, setSent] = useState(false);
   const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : s?.cli === "gemini" ? "Gemini" : "Claude";
   // Clem picks the AI this PC uses (Gemini, Claude or ChatGPT): a retry never repeats one the person doesn't use.
-  const start = () => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli" }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
+  // Gemini refused by Google, or Claude signed out on the server: Claude is what gets signed in there.
+  const claude = !!w.aiError && /^Google no longer|signed out/.test(w.aiError);
+  const start = () => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli", ...(claude ? { cli: "claude" as const } : {}) }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
   const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
   // Signed in and answering: nothing to show. Signed in but failing (w.aiError): "Try again" signs it in once more.
   if (w.model === "cli" && !s && !w.aiError) return null;
   return <div className="vps-ai">
     {!s || s.step === "failed" ? <>
       {s?.error && <Status warn>{s.error}</Status>}
-      <Act className="secondary vps-small" label={s || w.aiError ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={start} />
+      <Act className="secondary vps-small" label={claude ? "Sign in to Claude on my VPS" : s || w.aiError ? "Try again" : "Set up the AI"} busyLabel="Starting…" busy={sent} onClick={start} />
     </> : s.step === "installing" ? <Status spin>Installing {name} on your VPS…</Status>
       : s.step === "finishing" ? <Status spin>Signed in. Restarting…</Status>
       : s.cli === "codex" ? <div className="provider-challenge cx-challenge">

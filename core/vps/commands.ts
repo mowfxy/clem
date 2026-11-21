@@ -33,6 +33,8 @@ function parts(cmd: string) {
     if (q) { cur += c; if (c === q) q = null; continue; }
     if (c === "'" || c === '"') { q = c; cur += c; continue; }
     if (c === ";" || c === "\n" || c === "|" || (c === "&" && cmd[i + 1] === "&")) { out.push(cur); cur = ""; if (cmd[i + 1] === c) i++; continue; }
+    // "2>&1" and "&>" redirect output; only a lone "&" (run in the background) ends a command.
+    if (c === "&" && (cmd[i - 1] === ">" || cmd[i + 1] === ">")) { cur += c; continue; }
     if (c === "&") { out.push(cur); cur = ""; continue; }
     cur += c;
   }
@@ -45,7 +47,7 @@ export function classifyCommand(command: string): CommandCheck {
   if (!cmd) return { destructive: true, reason: "empty command" };
   if (/\$\(|`|<\(|>\(/.test(cmd)) return { destructive: true, reason: "runs a nested command" };
   // Redirection into anything but /dev/null writes a file.
-  if (/(^|[^\d&])>{1,2}\|?\s*(?!\/dev\/null\b)\S/.test(cmd.replace(/\d?>&\d/g, "")) || /(^|\s)\d>{1,2}\s*(?!\/dev\/null\b|&)\S/.test(cmd)) return { destructive: true, reason: "writes to a file" };
+  if (/(^|[^\d&])>{1,2}\|?\s*(?!\/dev\/null\b)\S/.test(cmd.replace(/\d?>&\d/g, "")) || /(^|\s)\d>{1,2}\s*(?!\/dev\/null\b|&)\S/.test(cmd) || /&>{1,2}\s*(?!\/dev\/null\b)\S/.test(cmd)) return { destructive: true, reason: "writes to a file" };
   for (const part of parts(cmd)) {
     const words = part.replace(/^(\w+=\S*\s+)+/, "");
     const [name, ...rest] = words.split(/\s+/), args = rest.join(" ");
