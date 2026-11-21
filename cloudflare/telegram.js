@@ -18,7 +18,8 @@ const OFFLINE_AFTER = 120_000, LEASE_MS = 120_000;
 // D1's free plan allows 100k row writes a day, and an engine pulls around the clock: "seen" is written only when it is
 // a minute old (well inside OFFLINE_AFTER) or an offline note needs clearing, and a token's last_used once an hour.
 const SEEN_EVERY = 60_000, USED_EVERY = 3600_000;
-const seen = (env, userId) => env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=? AND (last_seen<? OR offline_noted<>0)").bind(now(), userId, now() - SEEN_EVERY).run();
+// Both are bookkeeping: a write D1 refuses (its daily limit) never stops the inbox or the engine's sign-in.
+const seen = (env, userId) => env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=? AND (last_seen<? OR offline_noted<>0)").bind(now(), userId, now() - SEEN_EVERY).run().catch((e) => console.error("Seen not recorded", e?.message));
 
 const now = () => Date.now();
 const secretOk = (a, b) => { if (!a || !b || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
@@ -237,6 +238,6 @@ export async function engineUser(env, token) {
   if (!/^[a-f0-9]{32}$/.test(id || "") || !/^[a-f0-9]{64}$/.test(secret || "")) return null;
   const row = await env.DB.prepare("SELECT user_id,hash FROM engine_tokens WHERE id=?").bind(id).first();
   if (!row || !secretOk(await sha(secret), row.hash)) return null;
-  await env.DB.prepare("UPDATE engine_tokens SET last_used=? WHERE id=? AND (last_used IS NULL OR last_used<?)").bind(now(), id, now() - USED_EVERY).run();
+  await env.DB.prepare("UPDATE engine_tokens SET last_used=? WHERE id=? AND (last_used IS NULL OR last_used<?)").bind(now(), id, now() - USED_EVERY).run().catch((e) => console.error("Token use not recorded", e?.message));
   return { id: row.user_id };
 }

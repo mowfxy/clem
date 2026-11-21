@@ -52,7 +52,8 @@ export async function subscriptions(env, userId) {
 export const hasActiveSubscription = (rows) =>
   rows.some((row) => subscriptionActive(row));
 
-/** Lets staff find a person by email. Only written from authenticated requests. */
+/** Lets staff find a person by email. Only written from authenticated requests. Bookkeeping only: a write D1 refuses
+ *  (its daily write limit reached) never fails the request that recorded it, so sign-in keeps working. */
 export async function recordActivity(env, user) {
   const at = now();
   await tolerant(() => env.DB.prepare(
@@ -60,5 +61,5 @@ export async function recordActivity(env, user) {
     "INSERT INTO desktop_activity(user_id,email,first_seen_at,last_seen_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET email=excluded.email,last_seen_at=excluded.last_seen_at WHERE desktop_activity.email<>excluded.email OR desktop_activity.last_seen_at<?",
   )
     .bind(user.id, String(user.email || "").toLowerCase(), at, at, new Date(Date.parse(at) - 3600000).toISOString())
-    .run(), null);
+    .run(), null).catch((error) => console.error("Activity not recorded", error?.message));
 }

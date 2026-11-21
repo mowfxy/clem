@@ -189,3 +189,31 @@ test("a username belongs to the M4 Labs account and is mirrored to Supabase", as
     database.close();
   }
 });
+
+test("D1's daily write limit reached: signing in still works (owner grant and activity are bookkeeping)", async () => {
+  const { database, env } = setup(), original = globalThis.fetch;
+  const { ownerEmails } = await import("../../cloudflare/account-policy.js");
+  const refused = () => { throw new Error("D1_ERROR: Exceeded maximum daily rows written"); };
+  const readOnly = {
+    prepare(sql: string) {
+      const s = env.DB.prepare(sql);
+      const write = /^\s*(INSERT|UPDATE|DELETE)/i.test(sql);
+      return { bind: (...v: any[]) => { const b = s.bind(...v); return write ? { first: async () => refused(), all: async () => refused(), run: async () => refused() } : b; } };
+    },
+  };
+  const ok = { limit: async () => ({ success: true }) };
+  const e = { ...env, DB: readOnly, RL_IP: ok, RL_USER: ok, RL_ADMIN_IP: ok };
+  for (const email of ["someone@example.com", [...ownerEmails][0]]) {
+    const id = "user-" + email.length;
+    database.prepare("INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)").run(id, "2026-11-01");
+    globalThis.fetch = async () => Response.json({ id, email, email_confirmed_at: "2026-09-19" });
+    try {
+      const call = (path: string) => worker.fetch(new Request("https://account.example" + path, { headers: { Authorization: "Bearer test" } }), e);
+      const profile = await call("/profile");
+      assert.equal(profile.status, 200, email + " profile");
+      const entitlement = await call("/entitlement");
+      assert.equal(entitlement.status, 200, email + " entitlement");
+      assert.equal((await entitlement.json()).active, true);
+    } finally { globalThis.fetch = original; }
+  }
+});

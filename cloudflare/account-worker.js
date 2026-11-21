@@ -194,12 +194,14 @@ async function route(request, env) {
       }
       if (!(await emailProofAccepted(request, env, user, authorization)))
         return json({ error: "Confirm the code we emailed you before continuing.", code: "EMAIL_MFA" }, 403);
+      // Recorded once and then only read: a write D1 refuses (its daily limit) must not stop the owner signing in.
       if (ownerEligible(user))
         await env.DB.prepare(
           "INSERT OR IGNORE INTO desktop_owner_grants(user_id,granted_at) VALUES(?,?)",
         )
           .bind(user.id, new Date().toISOString())
-          .run();
+          .run()
+          .catch((error) => console.error("Owner grant not recorded", error?.message));
       const grant = await env.DB.prepare(
         "SELECT user_id FROM desktop_owner_grants WHERE user_id=?",
       )
