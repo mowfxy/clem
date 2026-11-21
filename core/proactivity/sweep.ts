@@ -68,7 +68,7 @@ export function shortGroup(group?: string) {
   const m = /(?:^|\s)([TLP])0*(\d{1,3})\s*$/i.exec(group || "");
   return m ? GROUPS[m[1].toUpperCase()] + m[2] : undefined;
 }
-const KIND: Record<ChangeKind, string> = { new_announcement: "course post", new_mail: "email", new_grade: "grade", new_material: "new file", file_saved: "file saved", deadline_added: "new deadline", deadline_changed: "deadline moved", schedule_changed: "timetable", slot_cancelled: "class cancelled", slot_moved: "class moved", slot_added: "class added", room_changed: "room changed", exam_posted: "exam seat" };
+const KIND: Record<ChangeKind, string> = { new_announcement: "course post", new_mail: "email", new_grade: "grade", new_material: "new file", file_saved: "file saved", deadline_added: "new deadline", deadline_changed: "deadline moved", schedule_changed: "timetable", slot_cancelled: "class cancelled", slot_moved: "class moved", slot_added: "class added", room_changed: "room changed", exam_posted: "exam seat", attendance_warning: "attendance warning" };
 
 /** Decides a sweep. `done`: keys of actions already taken or offered; `lastDay`: the Cairo day this kind last ran. */
 export function planSweep(kind: SweepKind, f: rules.Facts, o: { done: Set<string>; lastDay?: string; now?: NowCard; model?: boolean; voice?: boolean; mutes?: Mute[]; watches?: WatchRow[] }): SweepPlan {

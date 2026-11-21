@@ -166,7 +166,7 @@ export class Engine {
   /** What the organizer reads from GUC: this week's classes, deadlines, links and the Now card (all local rows; empty
    *  once GUC is disconnected). */
   private async gucFacts() {
-    const [slots, list, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(Date.now()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, this.clock()), this.links(), this.now()]);
+    const [slots, list, links, now] = await Promise.all([read.schedule(this.db, this.owner, cairo(this.clock()).ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, this.clock()), this.links(), this.now()]);
     // Coming up as the hub shows it (exam seats included, as kind "exam" with their hall and seat), but nothing done:
     // what is over is never handed to the organizer.
     return { slots, deadlines: list.filter((d) => !d.done), links, now };
@@ -550,7 +550,7 @@ export class Engine {
 
   /** The main thread's Now card from GUC: today's classes, deadlines in the next 7 days and unread news. Cached until
    *  the data changes (sync, check, marking read) or the Cairo hour turns. */
-  async now(t = Date.now()): Promise<GucNow> {
+  async now(t = this.clock()): Promise<GucNow> {
     const c = cairo(t), key = `${this.version}:${c.ymd}:${c.time.slice(0, 2)}`;
     if (this.nowCache?.key === key) return this.nowCache.value;
     const [slots, deadlines, counts] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, t), read.counts(this.db, this.owner)]);

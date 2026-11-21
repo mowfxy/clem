@@ -1,7 +1,7 @@
 // The GUC hub's shared shapes and pure helpers: the read API's results, the Sat–Thu week grid, deadline order and
 // relative times in Cairo, semester order and the hub's #/app/guc routes. No I/O, no cheerio: the window imports it.
 import { sameCode } from "./codes.ts";
-import type { GucCoursework, GucDeadline, GucErrorKind, GucExam, GucMail, GucMidterm, GucSlot } from "./types.ts";
+import type { GucAttendance, GucCoursework, GucDeadline, GucErrorKind, GucExam, GucMail, GucMidterm, GucSlot } from "./types.ts";
 
 export const TZ = "Africa/Cairo";
 /** GUC's teaching slots ("periods"), first to eighth. */
@@ -17,7 +17,7 @@ export type HubOverview = {
   /** Parts of GUC the last sync couldn't read ("schedule", "grades", "mail"…). */
   missed?: string[];
 };
-export type HubTerm = { midterms: (GucMidterm & { fresh?: boolean })[]; coursework: GucCoursework[]; exams: GucExam[] };
+export type HubTerm = { midterms: (GucMidterm & { fresh?: boolean })[]; coursework: GucCoursework[]; exams: GucExam[]; /** Each course's attendance; `attendanceRead`: the portal's attendance page has been read at least once. */ attendance: GucAttendance[]; attendanceRead?: boolean };
 export type HubMail = { items: GucMail[]; missed: boolean };
 export type HubCourse = { key: string; code: string; name: string; season: string; active: boolean; subjectId?: string; unread: number; materials: number };
 export type HubSchedule = { weekStart: string; slots: GucSlot[] };

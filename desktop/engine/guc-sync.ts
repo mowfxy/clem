@@ -12,7 +12,7 @@ import { slotCourse } from "../../core/guc/match.ts";
 import { stableId } from "../../core/guc/parse.ts";
 import { parseModelJson } from "../../core/model-json.ts";
 import { sameCode } from "../../core/guc/codes.ts";
-import { ANNOUNCEMENT_VERSION, courseworkOptions, formFields, nextTranscriptYear, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
+import { ANNOUNCEMENT_VERSION, SiteChanged, attendanceOptions, courseworkOptions, formFields, nextTranscriptYear, parseAbsenceReport, parseCourseAttendance, parseCourseList, parseCoursePage, parseCoursework, parseExamSeats, parseMidterms, parseSchedule, parseTranscript, portalBounce, portalUrls, postbackForm, reportOnly, studyYear, transcriptYears, urls } from "../../core/guc/parse.ts";
 import { readMail } from "./guc-mail.ts";
 import { withOpened } from "./guc-read.ts";
 import { emptySnapshot, type GucCourse, type GucDeadline, type GucEvent, type GucProgress, type GucSnapshot, type GucSyncStats } from "../../core/guc/types.ts";
@@ -43,11 +43,11 @@ async function portalPage(client: GucClient, url: string, memo?: PageMemo): Prom
 
 /** The parts of GUC a sync reads. A pulse reads only the ones whose pace (PACE) has come round, so GUC is checked
  *  every few minutes in small bites instead of all at once every few hours. */
-export const PARTS = ["mail", "pages", "catalog", "grades", "exams", "courses", "schedule", "transcript"] as const;
+export const PARTS = ["mail", "pages", "catalog", "grades", "exams", "attendance", "courses", "schedule", "transcript"] as const;
 export type Part = (typeof PARTS)[number];
 /** Minutes between reads of each part, daytime (Cairo). At night (01:00–07:00) they are four times as far apart.
  *  "pages" is linked courses; "catalog" is every current course (announcements and the file list, never the files). */
-export const PACE: Record<Part, number> = { mail: 3, pages: 5, catalog: 20, grades: 15, exams: 30, courses: 60, schedule: 180, transcript: 360 };
+export const PACE: Record<Part, number> = { mail: 3, pages: 5, catalog: 20, grades: 15, exams: 30, attendance: 60, courses: 60, schedule: 180, transcript: 360 };
 /** The parts due at `now`, given when each was last read. */
 export function dueParts(lastRead: Record<string, number> | undefined, now: number, cairoHour: number): Part[] {
   const night = cairoHour >= 1 && cairoHour < 7 ? 4 : 1;
@@ -134,6 +134,27 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
       if (page.unchanged) return page.unavailable ? undefined : false;
       next.exams = parseExamSeats(page.body); pages[portalUrls.exams] = page.memo; return true;
     }, () => { seen.exams = true; readAt("exams"); });
+    say("attendance", 0, 1, "Reading your attendance…");
+    // The attendance page: the absence report (each course's warning) on the page itself, then each course's sessions,
+    // one postback at a time (its dropdown posts back by itself, so __EVENTTARGET names it).
+    if (want("attendance")) await part("attendance", async () => {
+      const page = await portalPage(client, portalUrls.attendance);
+      if (page.unavailable) return undefined;
+      const report = parseAbsenceReport(page.body), list = attendanceOptions(page.body);
+      if (!list && !report.length) throw new SiteChanged("attendance");
+      const out = [];
+      let form = page.body;
+      for (const [i, c] of (list?.options || []).slice(0, 15).entries()) {
+        say("attendance", i + 1, (list?.options.length || 0) + 1, `Reading attendance… ${i + 1} of ${list!.options.length}`);
+        const res = await client.page(page.url, {}, { method: "POST", form: { ...postbackForm(form, list!.field, c.value), __EVENTTARGET: list!.field, __EVENTARGUMENT: "" } });
+        if (res.unavailable) break;
+        out.push(parseCourseAttendance(res.body, c, report));
+        form = res.body;
+      }
+      const before = sameJson(prev.data.attendance || []);
+      next.attendance = [...out, ...reportOnly(report, out)];
+      return sameJson(next.attendance) !== before;
+    }, () => { seen.attendance = true; readAt("attendance"); });
     say("grades", 1, 2, "Reading your transcript…");
     // The landing page holds no grades (only the bounce and the year dropdown), so it is never compared: one study
     // year is posted back per sync (nextTranscriptYear), and while past years are unread the part stays due, so the

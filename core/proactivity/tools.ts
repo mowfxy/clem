@@ -59,7 +59,7 @@ export function readClemArgs<A extends ClemAction>(action: A, request: Record<st
 
 /** The kinds of news a mute names, read from the person's words ("new files", "emails", "classes") or a change kind. */
 const MUTE_WORDS: [RegExp, string][] = [[/^(new )?(files?|materials?|slides?|uploads?|lectures?)$/, "files"], [/^(course )?(announcements?|posts?|news)$/, "announcements"], [/^(e-?mails?|mails?|inbox)$/, "mail"],
-  [/^(grades?|marks?|results?)$/, "grades"], [/^(deadlines?|due dates?)$/, "deadlines"], [/^(timetable|schedule|classes|class changes?|rooms?)$/, "timetable"], [/^(exams?|exam seats?|seats?)$/, "exams"]];
+  [/^(grades?|marks?|results?)$/, "grades"], [/^(deadlines?|due dates?)$/, "deadlines"], [/^(timetable|schedule|classes|class changes?|rooms?)$/, "timetable"], [/^(exams?|exam seats?|seats?)$/, "exams"], [/^(attendance|absences?|attendance warnings?)$/, "attendance"]];
 export function muteKinds(kind: string): ChangeKind[] | null {
   const k = kind.trim().toLowerCase();
   const named = MUTE_WORDS.find(([re]) => re.test(k))?.[1];

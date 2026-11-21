@@ -114,7 +114,7 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
       {route.tab === "schedule" ? <Schedule week={route.id} go={go} onConnect={onConnect} />
         : route.tab === "announcements" ? <Announcements focus={route.id} onConnect={onConnect} />
         : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} actions={actions} subjects={subjects} />
-        : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Grades onConnect={onConnect} /></>
+        : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Attendance quiet onConnect={onConnect} /><Grades onConnect={onConnect} /></>
         : route.tab === "exams" ? <Deadlines onConnect={onConnect} />
         : route.tab === "mail" ? <Mail onConnect={onConnect} />
         : <Deadlines focus={route.id} onConnect={onConnect} />}
@@ -393,6 +393,35 @@ export function ThisTerm({ onConnect, code }: { onConnect: () => void; code?: st
       <ul>{w.entries.map((e, i) => <li key={i}><span>{e.name}</span><span className="guc-work-parts">{e.elements.map((x, j) => <span key={j}>{x.name && x.name !== e.name ? <small>{x.name}</small> : null}<strong>{markText(x.grade) || "—"}</strong></span>)}</span></li>)}</ul>
     </details>)}
   </section>;
+}
+
+/** This term's attendance from the portal. `code`: one course (a subject's Attendance tab: its sessions shown open);
+ *  without it every course, folded (the hub's Grades tab). `quiet`: nothing at all until GUC has recorded some. */
+export function Attendance({ onConnect, code, quiet }: { onConnect: () => void; code?: string; quiet?: boolean }) {
+  const term = useGuc<HubTerm>({ action: "gucTerm" });
+  if (!term.data) return quiet ? null : term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : <Skeleton rows={3} />;
+  const list = (term.data.attendance || []).filter((a) => !code || sameCode(a.code || a.course, code));
+  if (!list.length) return quiet ? null : <EmptyState scene="calendar" line={!term.data.attendanceRead ? "Clem reads your attendance from the GUC portal. It shows here after the next check." : `GUC hasn’t recorded any attendance${code ? " for " + code : ""} yet.`} />;
+  return <section className="guc-sem is-latest guc-att" aria-label="Attendance">
+    {!code && <h3>Attendance<span className="guc-tag">Live</span></h3>}
+    {list.map((a) => code ? <div key={a.id}><AttendanceHead a={a} /><AttendanceSessions a={a} /></div>
+      : <details key={a.id} className="guc-work"><summary><AttendanceHead a={a} /></summary><AttendanceSessions a={a} /></details>)}
+  </section>;
+}
+const WARNING_NAMES = ["No warning", "Warning 1", "Warning 2", "Last warning"];
+function AttendanceHead({ a }: { a: HubTerm["attendance"][number] }) {
+  const name = a.course.replace(a.code, "").replace(/^\s*[-–:]\s*/, "").trim();
+  return <div className={`guc-att-head warn-${Math.min(3, a.warning)}`}>
+    <span><b>{a.code || name}</b>{a.code && name}</span>
+    <span className="guc-att-level" title={a.level || undefined}>{a.warning ? (a.level || WARNING_NAMES[Math.min(3, a.warning)]) : "No warning"}</span>
+    <small>{a.total ? `Absent ${a.absent} of ${a.total}` : ""}</small>
+  </div>;
+}
+function AttendanceSessions({ a }: { a: HubTerm["attendance"][number] }) {
+  if (!a.sessions.length) return <p className="guc-att-none">GUC lists no sessions for this course yet.</p>;
+  return <ol className="guc-att-sessions">{a.sessions.map((s, i) => <li key={i} className={"is-" + s.status}>
+    <span>{s.session || `Session ${i + 1}`}</span><b>{s.status === "absent" ? "Absent" : s.status === "excused" ? "Excused" : "Attended"}</b>
+  </li>)}</ol>;
 }
 
 export function Mail({ onConnect }: { onConnect: () => void }) {

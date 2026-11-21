@@ -8,6 +8,8 @@ import { Swr } from "../src/guc/swr.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { GucError } from "../desktop/engine/errors.ts";
 import { fakeGuc, host, noWait, site } from "./guc-fake.ts";
+/** The fixtures' posts date from mid-November 2026: tests read them on a fixed day before any of them is due. */
+const FIXED = () => Date.UTC(2026, 10, 14, 10, 0);
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -103,7 +105,7 @@ test("the cache shows what it has at once, shares one fetch, keeps old data on f
 /** An engine synced from the fixture GUC, with course 1201 linked to a subject. */
 async function synced(owner: string, files: Record<string, Uint8Array> = {}, temp?: string) {
   const guc = fakeGuc(site(), { files });
-  const engine = await Engine.open(owner, host({ temp }), { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  const engine = await Engine.open(owner, host({ temp }), { http: guc.http, sleep: noWait, memory: true, jobs: false, clock: FIXED });
   await engine.connect("student.name", "secret");
   await engine.db.query("insert into subject_links (owner_id, subject_id, course_key) values ($1, 'circuits', '1201:64')", [owner]);
   return { engine, guc };

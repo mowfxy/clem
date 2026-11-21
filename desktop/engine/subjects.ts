@@ -101,7 +101,7 @@ export async function ackNewCourses(db: Db, owner: string, keys: string[]) {
   await thread(db, owner, keys.map((k) => "course:" + k));
 }
 
-const INBOX = ["file_saved", "new_announcement", "new_grade", "deadline_added", "deadline_changed"];
+const INBOX = ["file_saved", "new_announcement", "new_grade", "deadline_added", "deadline_changed", "attendance_warning"];
 /** Saved files and news of linked courses since they were linked that the window hasn't shown (channel 'thread'). */
 export async function inbox(db: Db, owner: string): Promise<InboxItem[]> {
   const rows = await db.query<{ event_key: string; kind: InboxItem["kind"]; course_key: string; title: string; detail: string; created_at: Date; subject_id: string }>(`select e.event_key, e.kind, e.course_key, e.title, e.detail, e.created_at, l.subject_id from guc_events e

@@ -3,13 +3,14 @@
 // tab: the person says them in a chat and the AI changes them (guc.settings).
 // Not linked: a picker that puts the likeliest course first, and the setup chat.
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { hubPath, PERIOD_TIMES, type HubCourse } from "../../core/guc/hub";
+import { hubPath, PERIOD_TIMES, type HubCourse, type HubTerm } from "../../core/guc/hub";
+import { sameCode } from "../../core/guc/codes";
 import { matchCourse } from "../../core/guc/match";
 import type { Space, StoredFile } from "../../core/types";
 import { Icon } from "../Icons";
 import { EmptyState } from "../ui/Calm";
 import { dayShort, type GucActions } from "./GucCards";
-import { Announcements, CourseFiles, Deadlines, Grades, Problem, Skeleton, ThisTerm } from "./GucHub";
+import { Announcements, Attendance, CourseFiles, Deadlines, Grades, Problem, Skeleton, ThisTerm } from "./GucHub";
 import { checkSubjectNow, unlinkSubject, useSubject } from "./subject";
 import { confirmDialog } from "../dialogs";
 import { useGuc } from "./useGuc";
@@ -18,12 +19,13 @@ import { PASSWORD_ROUTE } from "../../core/guc/password";
 import "../library.css";
 import "./guc.css";
 
-const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Coming up"], ["grades", "Grades"], ["classes", "Classes"]] as const;
+const TABS = [["files", "Files"], ["announcements", "Announcements"], ["deadlines", "Coming up"], ["grades", "Grades"], ["attendance", "Attendance"], ["classes", "Classes"]] as const;
 type Tab = (typeof TABS)[number][0];
 const ORDER = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"];
 
 export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Space; actions: GucActions; onOpenFile: (file: StoredFile) => void; onToast: (message: string) => void }) {
   const v = useSubject(space.id), [tab, setTab] = useState<Tab>("files");
+  const term = useGuc<HubTerm>({ action: "gucTerm" });
   const connect = () => actions.openHub("/app/guc");
   const bar = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -34,6 +36,8 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
   if (!v.data) return v.error ? <Problem message={v.error} onRetry={() => void v.reload()} onConnect={connect} /> : <Skeleton rows={4} />;
   const course = v.data.course;
   if (!course) return <LinkPicker space={space} actions={actions} />;
+  // A GUC attendance warning for this course shows on its tab, whichever tab is open.
+  const warning = (term.data?.attendance || []).find((a) => sameCode(a.code || a.course, course.code))?.warning || 0;
   const slots = [...v.data.slots].sort((a, b) => ORDER.indexOf(a.day.toLowerCase()) - ORDER.indexOf(b.day.toLowerCase()) || a.period - b.period);
   return <div className="guc-hub guc-subject">
     <SubjectPasswordBanner onUpdate={() => actions.openHub(PASSWORD_ROUTE)} />
@@ -41,6 +45,7 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
     <nav className="guc-tabs" role="tablist" aria-label={`${course.code} on GUC`} ref={bar}>
       {TABS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
         {label}{id === "announcements" && course.unread > 0 && <span className="guc-count">{course.unread}</span>}
+        {id === "attendance" && warning > 0 && <span className="guc-count is-warn" aria-label={`Attendance warning ${warning}`}>{warning >= 3 ? "!" : warning}</span>}
       </button>)}
     </nav>
     <section className="guc-panel" role="tabpanel" aria-label={TABS.find(([id]) => id === tab)?.[1]} key={tab}>
@@ -48,6 +53,7 @@ export function SubjectGuc({ space, actions, onOpenFile, onToast }: { space: Spa
         : tab === "announcements" ? <Announcements only={course.key} onConnect={connect} />
         : tab === "deadlines" ? <Deadlines courseKey={course.key} onConnect={connect} />
         : tab === "grades" ? <><ThisTerm code={course.code} onConnect={connect} /><Grades courseKey={course.key} onConnect={connect} /></>
+        : tab === "attendance" ? <Attendance code={course.code} onConnect={connect} />
         : slots.length ? <ul className="guc-classes">{slots.map((s) => <li key={s.id}>
             <b>{dayShort(s.day)}</b><span>{s.start || PERIOD_TIMES[s.period - 1]?.[0]}–{s.end || PERIOD_TIMES[s.period - 1]?.[1]}</span><span>{s.type || "Class"}</span><small>{[s.location, s.group].filter(Boolean).join(" · ")}</small>
           </li>)}</ul> : <EmptyState scene="calendar" line={`No ${course.code} classes on your GUC schedule yet.`} />}

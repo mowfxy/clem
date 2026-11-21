@@ -133,7 +133,7 @@ export async function grades(db: Db, owner: string, courseKey?: string): Promise
 
 /** The latest snapshot's portal parts and Inbox (kept in the snapshot, not in tables of their own). */
 async function latest(db: Db, owner: string) {
-  const [row] = await db.query<{ data: Partial<GucSnapshot>; stats: { missed?: string[] } | null; seen: { mailRead?: string[] } | null }>("select data, stats, seen from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
+  const [row] = await db.query<{ data: Partial<GucSnapshot>; stats: { missed?: string[] } | null; seen: { mailRead?: string[]; attendance?: boolean } | null }>("select data, stats, seen from guc_snapshots where owner_id = $1 order by id desc limit 1", [owner]);
   return row;
 }
 
@@ -155,7 +155,7 @@ export async function term(db: Db, owner: string): Promise<HubTerm> {
   const row = await latest(db, owner), d = row?.data || {};
   const fresh = new Set((await db.query<{ event_key: string }>("select event_key from guc_events where owner_id = $1 and kind in ('new_grade', 'exam_posted') and created_at > now() - interval '7 days'", [owner])).map((e) => e.event_key));
   const freshMid = new Set([...fresh].filter((k) => k.startsWith("mid:")).map((k) => k.split(":")[1]));
-  return { midterms: applyRecordCorrections((d.midterms || []).map((m) => ({ ...m, fresh: freshMid.has(m.id) })), await loadCorrections(db, owner), "midterm"), coursework: d.coursework || [], exams: d.exams || [] };
+  return { midterms: applyRecordCorrections((d.midterms || []).map((m) => ({ ...m, fresh: freshMid.has(m.id) })), await loadCorrections(db, owner), "midterm"), coursework: d.coursework || [], exams: d.exams || [], attendance: d.attendance || [], attendanceRead: !!row?.seen?.attendance };
 }
 export async function mail(db: Db, owner: string): Promise<HubMail> {
   const row = await latest(db, owner);
