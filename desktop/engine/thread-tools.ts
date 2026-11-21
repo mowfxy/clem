@@ -7,7 +7,7 @@ import { clemAction } from "../../core/proactivity/tools.ts";
 import { isVpsAction } from "../../core/vps/tools.ts";
 import { isYes, ranReport, type VpsAsk } from "../../core/vps/ask.ts";
 import { NOT_ON_TELEGRAM, telegramAllows } from "../../core/telegram/thread.ts";
-import { runGucTool, runTelegramTool } from "./ai-tools.ts";
+import { runGucTool, runTelegramTool, type GucToolContext } from "./ai-tools.ts";
 import type { Engine } from "./index.ts";
 
 /** A question about a server change is answered within a day, or it lapses. */
@@ -36,6 +36,8 @@ export type ThreadToolCtx = {
   workspaceFile?(file: string): Promise<FileToSend>;
   /** The person's VPS, when one is connected. */
   vps?: ThreadVps;
+  /** guc.* on the VPS worker while it runs Clem's jobs (GucToolContext.remote). */
+  gucRemote?: GucToolContext["remote"];
 };
 
 const waitingText = (w: { items: { name: string }[] }) => ({
@@ -49,7 +51,7 @@ export async function runThreadTool(ctx: ThreadToolCtx, tool: Record<string, any
   if (!telegramAllows(action)) return NOT_ON_TELEGRAM;
   const { engine, owner, subjects } = ctx;
   if (clemAction(action)) return engine.organizer.tool(tool, {}).catch((e: Error) => ({ error: e.message }));
-  if (gucAction(action)) return runGucTool({ engine, owner, subjects, now: ctx.now, changed: ctx.changed }, tool);
+  if (gucAction(action)) return runGucTool({ engine, owner, subjects, now: ctx.now, changed: ctx.changed, remote: ctx.gucRemote }, tool);
   if (action === "telegram.sendFile") return sendFileTool(ctx, tool);
   if (isVpsAction(action)) {
     if (!ctx.vps) return { error: "No VPS is connected. The person can add one in Clem on their PC: Settings → Connectors → VPS." };
