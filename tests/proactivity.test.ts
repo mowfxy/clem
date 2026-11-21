@@ -249,6 +249,7 @@ async function engineWith(ws: Ws, clock: { t: number }, reply: (r: { system: str
   h.complete = async (r) => { h.calls.push(r); return reply(r); };
   h.notify = (n) => { h.notices.push(n.body); h.opened.push(n.open); };
   const engine = await Engine.open("pro-owner", h, { memory: true, jobs: false, clock: () => clock.t });
+  h.speaker = engine.organizer;
   return { engine, h, o: engine.organizer };
 }
 const event = (engine: Engine, key: string, kind: string, title: string, detail: string, course: string | null = null) =>
@@ -292,7 +293,7 @@ test("engine: Clem judges all the news in one call and says each thing in its ow
     assert.deepEqual(h.notices, posts.map((p) => p.content), "one notification per message, the message as its body");
     assert.deepEqual(h.opened, posts.map((p) => ({ chat: "main", message: p.id })), "each opens its own message");
     assert.equal((await o.sweep("event")).called, false);
-    assert.equal(await o.push("change:ann:3", "x", "y", {}), "sent-before", "never twice on a channel");
+    assert.equal(h.notices.length, posts.length, "nothing is told twice");
   } finally { await engine.close(); }
 });
 

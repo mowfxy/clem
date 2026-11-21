@@ -11,8 +11,9 @@ import type { GucDeadline } from "./types.ts";
 
 /** hide: gone from Coming up · edit: its title, date, time or place changed · done: shown as done · note: a note added
  *  (the portal's own records can only be hidden or annotated) · rule: something learned · link: a subject's course
- *  link changed (undo puts the old one back). */
-export type CorrectionKind = "hide" | "edit" | "done" | "note" | "rule" | "link";
+ *  link changed (undo puts the old one back) · add: an item the person told Clem about that no post gave it (kept in
+ *  Coming up through every sync until the person removes it or a post brings the same item). */
+export type CorrectionKind = "hide" | "edit" | "done" | "note" | "rule" | "link" | "add";
 /** What a correction taught. max_age: texts sent more than `days` before Clem reads them create nothing. ignore: texts
  *  from a sender, or one message (`ref`), or items whose title or note has one of `words`, create nothing. note: a plain
  *  sentence the reader follows (nothing to enforce in code). */
@@ -20,7 +21,7 @@ export type Rule = { type: "max_age"; days: number } | { type: "ignore"; from?: 
 export type Correction = {
   id: string; kind: CorrectionKind; at: number; label: string;
   itemId?: string; sourceRef?: string; fingerprint?: string; courseKey?: string;
-  /** edit: { title?, due?, timeKnown?, place? } · note: { note } · rule: { rule, text } · link: { subjectId, from?, to? }. */
+  /** edit: { title?, due?, timeKnown?, place? } · note: { note } · rule: { rule, text } · link: { subjectId, from?, to? } · add: { item }. */
   patch: Record<string, any>;
   /** The item as it was, put back on undo. */
   before?: unknown;
@@ -43,10 +44,13 @@ export function matches(c: Correction, d: Item) {
 /** The list with the person's corrections applied, oldest first so the latest wins: hidden items leave, edits and notes
  *  change them. `hub`: the read-time list (HubDeadline), where "done" shows the item as done until DONE_DAYS after;
  *  at sync time done items are kept as they are. The learned rules' ignored items leave too. */
-export function applyCorrections<T extends Item>(list: T[], corrections: Correction[], o: { now: number; hub?: boolean }): T[] {
+export function applyCorrections<T extends Item>(list: T[], corrections: Correction[], o: { now: number; hub?: boolean; /** Sync time: the one course being read (its added items join). */ course?: string }): T[] {
   const live = [...corrections].sort((a, b) => a.at - b.at), rules = live.filter((c) => c.kind === "rule");
+  // Items the person added that nothing read since has brought (same id or the same quiz/assignment of the course).
+  const added = live.filter((c) => c.kind === "add" && c.patch?.item && (!o.course || c.courseKey === o.course)
+    && !list.some((d) => d.id === c.patch.item.id || (!!c.fingerprint && fingerprint(d) === c.fingerprint && d.courseKey === c.patch.item.courseKey))).map((c) => c.patch.item as T);
   const out: T[] = [];
-  for (const item of list) {
+  for (const item of [...list, ...added]) {
     let d: T = item, hidden = false;
     for (const c of live) {
       if (!matches(c, d)) continue;

@@ -1,4 +1,5 @@
 import type { TurnStats } from "./turn-timing.ts";
+import { unbackedClaim } from "../core/claims.ts";
 import { GUC_ACTIONS } from "../core/guc/ai-tools.ts";
 import { TELEGRAM_ACTIONS } from "../core/telegram/guide.ts";
 import { VPS_ACTIONS } from "../core/vps/tools.ts";
@@ -469,6 +470,7 @@ export async function runKinetraTurn<Picture = unknown>(
   const { limit = 3_000_000, unfinished, review, sentBack, stats = { steps: 0, calls: 0, broken: 0 } } = options;
   let continued = !!(options.continued && options.stateful);
   const reviewed = new Set<string>();
+  const claimed = new Set<string>();
   // Cleared when a provider's session is lost part-way: the rest of the turn then resends the whole context each step.
   let stateful = options.stateful ?? false;
   const history: { request: any; result: any }[] = [];
@@ -631,6 +633,16 @@ export async function runKinetraTurn<Picture = unknown>(
       const gap = !closing && calls < MAX_CALLS ? unfinished?.() : undefined;
       if (!gap) {
         // The answer itself is checked once per problem: a wrong or unverified number goes back before the person relies on it.
+        // A change it says it made that no tool made (Coming up, a reminder) goes back once, whoever asked for the answer.
+        const claim = !closing && calls < MAX_CALLS ? unbackedClaim(text, history) : undefined;
+        if (claim && !claimed.has(claim)) {
+          claimed.add(claim);
+          calls++;
+          rejected = text;
+          sentBack?.("review");
+          history.push({ request: { answer: "not accepted yet" }, result: { error: claim } });
+          continue;
+        }
         const problem = !closing && calls < MAX_CALLS && reviewed.size < REVIEWS ? await review?.(text, history) : undefined;
         if (!problem || reviewed.has(problem)) return text;
         reviewed.add(problem);

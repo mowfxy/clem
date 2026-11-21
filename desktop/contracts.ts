@@ -4,7 +4,8 @@ import { settingsPatch } from "../core/guc/settings.ts";
 import { proPatch } from "../core/proactivity/settings.ts";
 import { vpsHostOk, vpsUserOk } from "../core/vps/types.ts";
 /** A Telegram message, or a tap that needs the agent or the workspace, for the main thread to answer. */
-export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../core/telegram/render.ts").Tap };
+/** A Telegram message or tap for the window to answer, or a briefing (`own`) for it to tell the person by itself. */
+export type TelegramTurn = { id: string; text: string } | { id: string; tap: import("../core/telegram/render.ts").Tap } | { id: string; own: { key: string; brief: string } };
 
 export type FolderDelta = { added: string[]; changed: string[]; removed: string[] };
 export type FolderEvent = FolderDelta & { folderId: string; scope: string; folder: string };

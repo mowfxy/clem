@@ -34,10 +34,21 @@ export function fakeGuc(pages: Record<string, FakePage>, o: { password?: string;
   return { http, log };
 }
 
-export function host(o: { temp?: string; files?: string; drive?: EngineHost["drive"] } = {}): EngineHost & { notices: string[]; store: Map<string, unknown>; changes: number } {
-  const store = new Map<string, unknown>(), notices: string[] = [];
+/** The main thread's AI as these tests stand it in (EngineHost.speak): it says each draft of a briefing as it is, through
+ *  the organizer's posts, so a test reads what was said in the inbox. `briefs` keeps every briefing it was given. */
+export type Speaker = { announce(content: string, key: string): Promise<string | undefined> };
+export const draftsOf = (brief: string): string[] => { const m = /^Drafts \(JSON, facts only\): (.*)$/m.exec(brief); return m ? JSON.parse(m[1]) : []; };
+export function host(o: { temp?: string; files?: string; drive?: EngineHost["drive"] } = {}): EngineHost & { notices: string[]; store: Map<string, unknown>; changes: number; speaker?: Speaker; briefs: string[] } {
+  const store = new Map<string, unknown>(), notices: string[] = [], briefs: string[] = [];
   return {
-    store, notices,
+    store, notices, briefs,
+    async speak(this: { speaker?: Speaker }, own: { key: string; brief: string }) {
+      briefs.push(own.brief);
+      if (!this.speaker) throw Error("No AI in this test.");
+      const messages: { id: string; text: string }[] = [];
+      for (const [i, text] of draftsOf(own.brief).entries()) { const id = await this.speaker.announce(text, `${own.key}:${i}`); if (id) messages.push({ id, text }); }
+      return { messages };
+    },
     secrets: { get: async (k) => store.get(k) as any, set: async (k, v) => { store.set(k, v); }, delete: async (k) => { store.delete(k); } },
     notify: (n) => notices.push(n.body),
     paths: { data: "", migrations, temp: o.temp, files: o.files },

@@ -32,6 +32,8 @@ export async function undoCorrection(db: Db, owner: string, id: string): Promise
   if (!row) return null;
   const c = fromRow(row), before = c.before as GucDeadline | undefined;
   if (before && typeof before === "object" && before.id && !before.id.startsWith("exam-")) await putItem(db, owner, before);
+  // An item the person added leaves again.
+  if (c.kind === "add" && c.itemId) await dropItems(db, owner, { id: c.itemId });
   return c;
 }
 

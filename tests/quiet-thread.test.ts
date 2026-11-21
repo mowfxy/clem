@@ -75,6 +75,7 @@ async function engineAt(clock: { t: number }) {
   h.complete = async (r) => { h.calls.push(r); return '{"message":"Something about next week\'s quiz.","levels":[],"actions":[]}'; };
   h.notify = (n) => { h.notices.push(n.title + " | " + n.body); };
   const engine = await Engine.open("quiet-owner", h, { memory: true, jobs: false, clock: () => clock.t });
+  h.speaker = engine.organizer;
   return { engine, h, o: engine.organizer };
 }
 const event = (engine: Engine, key: string, kind: string, title: string, detail: string, course: string | null = null) =>

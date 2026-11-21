@@ -32,6 +32,9 @@ export type EngineHost = {
    *  (desktop/telegram-thread.ts: the window on the desktop, the worker's agent on a VPS). The reply is Markdown with
    *  clem-cards; Telegram makes no files. */
   converse?(turn: TelegramTurn): Promise<{ text: string }>;
+  /** Clem speaking by itself (desktop/telegram-thread.ts ownTurn): a briefing from the organizer for the main thread's AI,
+   *  which writes the messages (put in the main thread) and may act first. Throws when no AI could answer. */
+  speak?(own: { key: string; brief: string }): Promise<{ messages: { id: string; text: string }[] }>;
   /** Shows a route or a chat's message in Clem (a tap on Open in Clem). */
   open?(o: { route?: string; chat?: string; message?: string }): void;
   /** Where newly saved CMS files go (the VPS store while files live there and it is reachable); left out: this PC. */

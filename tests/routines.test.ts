@@ -19,6 +19,7 @@ async function engine(o: { complete?: (r: { system: string; user: string }) => P
   h.notify = (n) => { h.pushed.push({ title: n.title, body: n.body }); };
   if (o.complete) h.complete = o.complete;
   const e = await Engine.open("rt-owner", h, { memory: true, jobs: false, http: o.http, sleep: noWait });
+  h.speaker = e.organizer;
   return { e, o: e.organizer, h };
 }
 /** A local server standing in for the person's own webhook (or a page they watch). */

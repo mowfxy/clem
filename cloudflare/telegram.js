@@ -120,8 +120,10 @@ export async function handleTelegram(request, env, user, path, o = {}) {
       if (!(await linkOf(env, user.id))) return json({ paired: false, items: [] });
       const wait = Math.min(25, Math.max(0, Number(new URL(request.url).searchParams.get("wait")) || 0)) * 1000;
       const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+      // Seen once per pull, not on every look: D1 counts each write, and an engine pulls around the clock (a write every
+      // 2 s of every pull used most of the free plan's daily writes by itself).
+      await env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=?").bind(now(), user.id).run();
       for (const end = t + wait; ;) {
-        await env.DB.prepare("UPDATE telegram_links SET last_seen=?,offline_noted=0 WHERE user_id=?").bind(now(), user.id).run();
         const { results } = await env.DB.prepare("SELECT id,kind,sealed,created_at FROM telegram_inbox WHERE user_id=? AND lease_until<? ORDER BY created_at,id LIMIT 20").bind(user.id, now()).all();
         if (results.length || now() >= end) {
           const k = await vaultKey(env), items = [];
@@ -132,7 +134,7 @@ export async function handleTelegram(request, env, user, path, o = {}) {
           }
           return json({ paired: true, items });
         }
-        await sleep(2000);
+        await sleep(3000);
       }
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);

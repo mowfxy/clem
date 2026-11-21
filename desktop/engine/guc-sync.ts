@@ -344,7 +344,7 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
     // Something new that is already over never joins Coming up (an old message read late), and the person's
     // corrections hold whatever was read.
     const had2 = new Set(tracked.map((d) => d.id));
-    list = applyCorrections(list.filter((d) => had2.has(d.id) || endsAt(d) > at), fixes, { now: at });
+    list = applyCorrections(list.filter((d) => had2.has(d.id) || endsAt(d) > at), fixes, { now: at, course: course.key });
     if (ok || changedByRules) deadlines.splice(0, deadlines.length, ...deadlines.filter((d) => d.courseKey !== course.key), ...list);
     // A course the switch read counts as read by this reader only once its deadlines were read too, so a model that
     // didn't answer leaves the next read a baseline as well.

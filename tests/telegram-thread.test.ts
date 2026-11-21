@@ -272,6 +272,7 @@ test("a routine run by hand: the prompt comes from where the routines are, the w
   let asks = 0;
   const h = Object.assign(fakeHost(), { complete: async () => { asks++; return '{"say":"from the server"}'; } });
   const engine = await Engine.open("owner-1", h, { memory: true, jobs: false, clock: () => T0 });
+  h.speaker = engine.organizer;
   try {
     const made = await engine.organizer.tool({ action: "clem.routine", title: "Evening prep", instructions: "Say what tomorrow needs.", trigger: { type: "schedule", cron: "0 20 * * *" } }, {}) as { id: string };
     const prompt = await engine.organizer.routinePrompt(made.id);
