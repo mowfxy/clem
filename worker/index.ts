@@ -26,6 +26,8 @@ import { serveHooks } from "../desktop/engine/hooks.ts";
 import { WORKER_PROTOCOL } from "../core/vps/types.ts";
 import { StudyReminders } from "../desktop/study-reminders.ts";
 import { agyCommand } from "../desktop/engine/vps/antigravity.ts";
+import { runGucTool } from "../desktop/engine/ai-tools.ts";
+import type { ToolSubject } from "../core/guc/ai-tools.ts";
 
 /** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
 export const WORKER_VERSION = WORKER_PROTOCOL;
@@ -191,6 +193,12 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
         // Files asked for on Telegram while only on the PC: the PC sends them when it is online, then says so here.
         if (path === "worker.pendingSends") return (await state.get<PendingSend[]>(PENDING_SENDS)) || [];
         if (path === "worker.sendsDone") { const done = new Set((Array.isArray(args[0]) ? args[0] : []).map(String)); await state.set(PENDING_SENDS, ((await state.get<PendingSend[]>(PENDING_SENDS)) || []).filter((x) => !done.has(x.id))); return { ok: true }; }
+        // The PC's AI asking for GUC (guc.*) while this worker runs Clem's jobs: run here, on the database the hub reads.
+        if (path === "worker.gucTool") {
+          const request = (args[0] && typeof args[0] === "object" ? args[0] : {}) as Record<string, unknown>;
+          const ctx = (args[1] && typeof args[1] === "object" ? args[1] : {}) as { subjects?: ToolSubject[]; scope?: string; now?: number };
+          return runGucTool({ engine: engine!, owner: config.owner, subjects: Array.isArray(ctx.subjects) ? ctx.subjects : [], scope: typeof ctx.scope === "string" ? ctx.scope : undefined, now: typeof ctx.now === "number" ? ctx.now : undefined, changed: () => {} }, request);
+        }
         if (path === "worker.blobs") return (((await ws!.state())?.files || []) as { blob?: { sha256: string } }[]).map((f) => f.blob?.sha256).filter(Boolean);
         return callPath(engine!, path, args);
       },

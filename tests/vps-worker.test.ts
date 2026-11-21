@@ -41,6 +41,9 @@ test("the worker bundle builds, starts on PGlite, takes the lease and answers on
     assert.deepEqual(await c.call("links"), []);
     assert.equal((await c.call<{ connected: boolean }>("status")).connected, false);
     await assert.rejects(c.call("disconnectEverything"), /Not allowed/);
+    // The PC's AI asks for GUC here while the worker runs the jobs: the same tools, on the database the hub reads.
+    assert.match(await c.call<string>("worker.gucTool", [{ action: "guc.help" }, { subjects: [] }]), /guc\.deadlines/);
+    assert.deepEqual(await c.call("worker.gucTool", [{ action: "guc.deadlines" }, { subjects: [] }]), { error: "GUC isn't connected. The person can connect it in Settings → Connectors → GUC." });
     // The workspace snapshot the organizer sweeps read.
     await c.pushWorkspace({ __snapshot: true, spaces: [], plans: [], study: [], loose: [], rooms: [], said: [], automations: [] });
     assert.doesNotMatch(log, new RegExp(rpc), "the token never reaches the log");

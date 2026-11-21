@@ -79,7 +79,7 @@ import type { LocalBlobs, StorageRouter } from './engine/vps/router';
 import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
-import { runGucTool, runTelegramTool } from './engine/ai-tools';
+import { runGucTool, runTelegramTool, type GucToolContext } from './engine/ai-tools';
 import { runThreadTool, sendFileTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
 import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
@@ -1374,6 +1374,12 @@ void app.whenReady().then(async () => {
   };
   /** What the Telegram main thread's actions need on this PC: the subjects, the person's files (their bytes here or on
    *  the VPS), and the VPS with server changes asked in words, as on the worker. */
+  /** guc.* on the VPS worker while it runs Clem's jobs: its database is the one the hub reads (ai-tools.ts remote). */
+  const gucRemote = (owner: string): GucToolContext["remote"] => async (request, ctx) => {
+    const remote = await vpsManagers.get(owner)?.remote();
+    if (!remote) throw Error("No such method: no worker running");
+    return remote.call<string | { error: string }>("worker.gucTool", [request, ctx]);
+  };
   const threadCtx = async (owner: string, engine: Engine): Promise<ThreadToolCtx> => {
     const state = await disk.readState(owner).catch(() => null) as { spaces?: { id: string; name: string; kind?: string; description?: string; examDate?: string }[]; files?: { id: string; name: string; type?: string }[] } | null;
     const files = state?.files || [];
@@ -1382,6 +1388,7 @@ void app.whenReady().then(async () => {
     return {
       engine, owner, subjects: (state?.spaces || []).filter((s) => s.kind === "subject").map(({ id, name, description, examDate }) => ({ id, name, description, examDate })),
       changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }),
+      gucRemote: gucRemote(owner),
       workspaceFile: async (name) => {
         const near = named(name);
         if (!near.length) return null;
@@ -2732,7 +2739,7 @@ void app.whenReady().then(async () => {
           const spaces = ((await disk.readState(user.id).catch(() => null))?.spaces || []) as { id: string; name: string; kind?: string; description?: string; examDate?: string }[];
           const engine = await engineFor(user.id).catch((e: Error) => e);
           if (engine instanceof Error) return { error: engineError(engine) };
-          return runGucTool({ engine, owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined, changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }) }, tool);
+          return runGucTool({ engine, owner: user.id, subjects: spaces.filter((s) => s.kind === "subject"), scope: request.scope?.startsWith("subject:") ? spaceOf : undefined, changed: () => gucProgress({ phase: "done", done: 1, total: 1, label: "Up to date" }), remote: gucRemote(user.id) }, tool);
         }
         // A file named by its path in the working folder ("Subjects/Physics/Week 1/notes.pdf") is that Clem file, whichever
         // subject or project it is in: the window opens it by its id. Any other path is the file of that name.

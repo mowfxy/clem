@@ -26,11 +26,23 @@ export type GucToolContext = {
   now?: number;
   /** A setting changed: the window refreshes its cards. */
   changed?: () => void;
+  /** The VPS worker, while it runs Clem's jobs: its database is the one the hub shows, so every guc.* request (reads,
+   *  corrections, re-reads) runs there. A worker too old for it says "Not allowed" and the request runs here. */
+  remote?: (request: Record<string, unknown>, ctx: { subjects: ToolSubject[]; scope?: string; now?: number }) => Promise<string | { error: string }>;
 };
 
 /** One guc.* request's result: text for the model, or { error }. */
 export async function runGucTool(ctx: GucToolContext, request: Record<string, unknown>): Promise<string | { error: string }> {
   if (ctx.engine.owner !== ctx.owner) throw Error("GUC tools: the engine is not this owner's.");
+  if (ctx.remote && gucAction(request.action)) {
+    try {
+      const out = await ctx.remote(request, { subjects: ctx.subjects, scope: ctx.scope, now: ctx.now });
+      ctx.changed?.();
+      return out;
+    } catch (e) {
+      if (!/Not allowed|No such method/.test(String((e as Error)?.message))) return { error: "Your VPS couldn't do that just now: " + String((e as Error)?.message || "no answer").slice(0, 200) };
+    }
+  }
   const action = gucAction(request.action);
   if (!action) return { error: `Unknown GUC action "${String(request.action)}". ${GUC_GUIDE}` };
   if (action === "guc.help") return GUC_GUIDE;
