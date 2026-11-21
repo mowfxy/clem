@@ -9,7 +9,7 @@ import type { GucSlot } from "../guc/types.ts";
 import type { Level } from "./settings.ts";
 
 export type Importance = "urgent" | "notify" | "digest" | "silent";
-export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "file_saved" | "deadline_added" | "deadline_changed" | "schedule_changed" | "slot_cancelled" | "slot_moved" | "slot_added" | "room_changed" | "exam_posted" | "new_mail";
+export type ChangeKind = "new_grade" | "new_announcement" | "new_material" | "file_saved" | "deadline_added" | "deadline_changed" | "schedule_changed" | "slot_cancelled" | "slot_moved" | "slot_added" | "room_changed" | "exam_posted" | "new_mail" | "attendance_warning";
 /** A change since the last sweep: a GUC event, or a timetable change found by `slotChanges`. `soon`: it is about today
  *  or tomorrow. `everyone`: a mail GUC sent to all students that names none of this student's courses
  *  (core/guc/mail-about.ts); `mine`: a mail written to the student alone. */
@@ -37,6 +37,7 @@ export function importance(c: Change, mutes: Mute[] = []): Rated {
     case "deadline_added": case "deadline_changed": return { level: c.soon ? "urgent" : "notify", why: "A deadline." };
     case "new_grade": return { level: "notify", why: "A grade." };
     case "exam_posted": return { level: "notify", why: "Where and when an exam is." };
+    case "attendance_warning": return { level: /^Last/.test(c.title) ? "urgent" : "notify", why: "Missing more classes could bar you from the exam." };
     case "new_material": case "file_saved": case "slot_added": return { level: "digest", why: "Routine." };
     case "schedule_changed": return { level: "silent", why: "Said by the class changes." };
     case "new_mail": case "new_announcement": {
@@ -78,7 +79,7 @@ export function readLevels(json: unknown, n: number): Map<number, Rated & { same
 /** The kinds of news a person names in words ("stop telling me about new files"), for a mute made by text. */
 export const MUTE_KINDS: Record<string, ChangeKind[]> = {
   files: ["new_material"], announcements: ["new_announcement"], mail: ["new_mail"], grades: ["new_grade"],
-  deadlines: ["deadline_added", "deadline_changed"], timetable: ["slot_cancelled", "slot_moved", "slot_added", "room_changed"], exams: ["exam_posted"],
+  deadlines: ["deadline_added", "deadline_changed"], timetable: ["slot_cancelled", "slot_moved", "slot_added", "room_changed"], exams: ["exam_posted"], attendance: ["attendance_warning"],
 };
 /** What a mute covers, in words: "new files in Physics (with “lab”)". */
 export const muteText = (m: Mute, name: (id?: string) => string | undefined = () => undefined) => {

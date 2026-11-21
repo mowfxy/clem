@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head><title>View Student Attendance</title></head>
+<body>
+<!-- ClassAttendance_ViewStudentAttendance_001.aspx as other GUC student tools read it: the absence report and the course
+     dropdown on the page itself, one course's sessions after its postback. -->
+<form method="post" action="./ClassAttendance_ViewStudentAttendance_001.aspx" id="form1">
+  <input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="" />
+  <input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="" />
+  <input type="hidden" name="__LASTFOCUS" id="__LASTFOCUS" value="" />
+  <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="FAKEVIEWSTATE{{STATE}}" />
+  <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="ABCD1234" />
+  <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="FAKEVALIDATION" />
+  <input type="hidden" name="ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$H_AlertText" id="ContentPlaceHolderright_ContentPlaceHoldercontent_H_AlertText" value="" />
+  <h3>Absence Report</h3>
+  <table cellspacing="0" rules="all" border="1" id="DG_AbsenceReport" style="border-collapse:collapse;">
+    <tr><td>Settings Title</td><td>Code</td><td>Name</td><td>Absence Level</td></tr>
+    {{REPORT}}
+  </table>
+  <h3>Course Attendance</h3>
+  <select name="ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$DDL_Courses" onchange="javascript:setTimeout('__doPostBack(\'ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$DDL_Courses\',\'\')', 0)" id="ContentPlaceHolderright_ContentPlaceHoldercontent_DDL_Courses">
+    <option value="0">Choose a Course</option>
+    <option {{SEL701}}value="31701">CSEN701 - Embedded Systems</option>
+    <option {{SEL702}}value="31702">CSEN702 - Microprocessors</option>
+  </select>
+  {{SESSIONS}}
+</form>
+</body>
+</html>

@@ -98,7 +98,7 @@ export class WorkerAgent {
       run: async (tool) => {
         const s = await this.d.ws.state();
         const subjects = (s?.spaces || []).filter((x) => x.kind === "subject").map((x) => ({ id: x.id, name: x.name, description: x.description, examDate: x.examDate }));
-        return runThreadTool({ engine, owner: this.d.owner, subjects, vps, changed: () => {},
+        return runThreadTool({ engine, owner: this.d.owner, subjects, vps, now: this.clock(), changed: () => {},
           workspaceFile: async (name) => {
             const st = await this.d.ws.state(), f = st && this.fileNamed(st, name);
             if (!f || "error" in f) return f || null;

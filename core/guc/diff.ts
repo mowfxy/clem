@@ -7,7 +7,7 @@ import { ANNOUNCEMENT_VERSION, stableId } from "./parse.ts";
 import type { GucAnnouncement, GucEvent, GucSnapshot } from "./types.ts";
 
 /** What was read at least once, so its first read is a baseline. `mailIds`: hashes of every Inbox id seen. */
-export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string }; /** The deadline extractor's version, and the courses whose deadlines it read. */ deadlines?: { v: number; courses: string[]; /** Per course, the ids of the posts the deadline reader has read. */ read?: Record<string, string[]>; /** Per course, the model's failed tries on the same unread texts (`texts`: their ids' hash). */ fails?: Record<string, { texts: string; n: number; at?: number }> }; /** The announcement reader's version (ANNOUNCEMENT_VERSION), and the courses whose page it has read. */ announcements?: { v: number; courses: string[] }; /** Hashes of the mail ids the person opened in the hub (last 500): read, whatever Exchange says. */ mailRead?: string[]; /** Course pages the last sync couldn't read: read again on the next pulse, whatever their pace. */ retry?: string[]; /** Seating plans and schedules read as files: material ids read (last 500), and failed tries of the rest. */ files?: { read: string[]; tries: Record<string, number> } };
+export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; attendance?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string }; /** The deadline extractor's version, and the courses whose deadlines it read. */ deadlines?: { v: number; courses: string[]; /** Per course, the ids of the posts the deadline reader has read. */ read?: Record<string, string[]>; /** Per course, the model's failed tries on the same unread texts (`texts`: their ids' hash). */ fails?: Record<string, { texts: string; n: number; at?: number }> }; /** The announcement reader's version (ANNOUNCEMENT_VERSION), and the courses whose page it has read. */ announcements?: { v: number; courses: string[] }; /** Hashes of the mail ids the person opened in the hub (last 500): read, whatever Exchange says. */ mailRead?: string[]; /** Course pages the last sync couldn't read: read again on the next pulse, whatever their pace. */ retry?: string[]; /** Seating plans and schedules read as files: material ids read (last 500), and failed tries of the rest. */ files?: { read: string[]; tries: Record<string, number> } };
 const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 /** A post's lines, compared without case or spacing. */
@@ -124,6 +124,18 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, 
       if (was === now) continue;
       const courseKey = e.code ? next.courses.filter((c) => sameCode(c.code, e.code)).sort((a, b) => b.seasonId - a.seasonId)[0]?.key : undefined;
       events.push({ kind: "exam_posted", key: `exam:${e.id}:${stableId(now)}`, ...(courseKey ? { courseKey } : {}), title: `${was ? "Exam seat changed" : "Exam seat posted"}: ${e.code || e.course}`, detail: `${e.type} · ${[e.day, e.date].filter(Boolean).join(" ")} ${e.start}${e.end ? "–" + e.end : ""} · ${e.hall}${e.seat ? ", seat " + e.seat : ""}` });
+    }
+  }
+  // Attendance: a course whose GUC warning went up (a first warning, a second, the last). Never on the first read with
+  // no warning, and never for a warning going down.
+  if (seen.attendance) {
+    const was = new Map((prev.attendance || []).map((a) => [a.code || a.course, a.warning]));
+    for (const a of next.attendance || []) {
+      const before = was.get(a.code || a.course) || 0;
+      if (a.warning <= before) continue;
+      const courseKey = a.code ? next.courses.filter((c) => sameCode(c.code, a.code)).sort((x, y) => y.seasonId - x.seasonId)[0]?.key : undefined;
+      const missed = a.total ? ` · absent ${a.absent} of ${a.total} sessions` : "";
+      events.push({ kind: "attendance_warning", key: `att:${stableId(a.code || a.course)}:${a.warning}`, ...(courseKey ? { courseKey } : {}), title: `${a.warning >= 3 ? "Last attendance warning" : "Attendance warning"}: ${a.code || a.course}`, detail: `${a.level || "Warning " + a.warning}${missed}` });
     }
   }
   if (seen.mailIds) {

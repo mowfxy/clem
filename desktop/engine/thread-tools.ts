@@ -27,6 +27,8 @@ export type ThreadVps = {
 export type ThreadToolCtx = {
   engine: Engine;
   owner: string;
+  /** The time "today" and "the next 14 days" are read from (the worker's clock); the real time when left out. */
+  now?: number;
   /** The person's subjects (names, exam dates): the engine knows only their ids. */
   subjects: ToolSubject[];
   changed?: () => void;
@@ -47,7 +49,7 @@ export async function runThreadTool(ctx: ThreadToolCtx, tool: Record<string, any
   if (!telegramAllows(action)) return NOT_ON_TELEGRAM;
   const { engine, owner, subjects } = ctx;
   if (clemAction(action)) return engine.organizer.tool(tool, {}).catch((e: Error) => ({ error: e.message }));
-  if (gucAction(action)) return runGucTool({ engine, owner, subjects, changed: ctx.changed }, tool);
+  if (gucAction(action)) return runGucTool({ engine, owner, subjects, now: ctx.now, changed: ctx.changed }, tool);
   if (action === "telegram.sendFile") return sendFileTool(ctx, tool);
   if (isVpsAction(action)) {
     if (!ctx.vps) return { error: "No VPS is connected. The person can add one in Clem on their PC: Settings → Connectors → VPS." };

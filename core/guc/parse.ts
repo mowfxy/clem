@@ -2,9 +2,9 @@
 // a#download, the course description box) follows AhmedAshrafAZ/cms-downloader (MIT, see THIRD-PARTY-NOTICES.md);
 // the schedule and transcript tables follow the GroupSchedule.aspx / Transcript_001.aspx layouts other student tools read.
 import * as cheerio from "cheerio";
-import { normCode, withCode } from "./codes.ts";
+import { normCode, sameCode, withCode } from "./codes.ts";
 import { PERIOD_TIMES } from "./hub.ts";
-import type { GucAnnouncement, GucCourse, GucCoursePage, GucCoursework, GucExam, GucGrade, GucMaterial, GucMidterm, GucSlot, GucWeek } from "./types.ts";
+import type { GucAnnouncement, GucAttendance, GucCourse, GucCoursePage, GucCoursework, GucExam, GucGrade, GucMaterial, GucMidterm, GucSlot, GucWeek } from "./types.ts";
 
 const P = "ContentPlaceHolderright_ContentPlaceHoldercontent_";
 export const CMS = "https://cms.guc.edu.eg";
@@ -404,6 +404,7 @@ export function transcriptChallenge(html: string, url: string) {
 export const portalUrls = {
   grades: PORTAL + "/Grade/CheckGrade_01.aspx",
   exams: PORTAL + "/Exam/ViewExamSeat_01.aspx",
+  attendance: PORTAL + "/Attendance/ClassAttendance_ViewStudentAttendance_001.aspx",
 };
 
 /** Some portal pages first answer with a short page whose script calls `sTo('<token>')`; the real page is the same path
@@ -486,4 +487,63 @@ export function parseExamSeats(html: string): GucExam[] {
     return out;
   }
   return [];
+}
+
+// ---------- Student portal: attendance (as UniLink's gucApiProxy and GUC-scrapper read it) ----------
+/** A table by the end of its id (GUC prints some unprefixed, "DG_AbsenceReport", some with the content prefix). */
+const byId = ($: cheerio.CheerioAPI, id: string) => $(`[id='${id}'], [id$='_${id}']`).first();
+
+/** GUC's warning words as a number: 0 none, 1 and 2 warnings, 3 the last (over a quarter missed: barred from the
+ *  exam, "FA"). "Level 2", "Second warning", "3rd" and "FA" all read. */
+export function warningLevel(text: string) {
+  const t = oneLine(text).toLowerCase();
+  if (!t || /^(-+|none|no( warning)?s?|n\/a|0|level\s*0)$/.test(t)) return 0;
+  if (/\bfa\b|\bdrop|\bbarr|\bfail|\bdeprived|\bthird\b|\b3(rd)?\b/.test(t)) return 3;
+  if (/\bsecond\b|\b2(nd)?\b/.test(t)) return 2;
+  if (/\bfirst\b|\b1(st)?\b|warn/.test(t)) return 1;
+  return 0;
+}
+
+/** The attendance page's absence report: one row per course with a warning ("settings", code, name, level). */
+export function parseAbsenceReport(html: string) {
+  const $ = cheerio.load(html), out: { code: string; name: string; level: string; warning: number }[] = [];
+  const table = byId($, "DG_AbsenceReport");
+  table.find("tr").slice(1).each((_, r) => {
+    const tds = $(r).children("td").toArray().map((c) => oneLine($(c).text()));
+    if (tds.length < 4) return;
+    const [, code, name, level] = tds;
+    if (!code && !name) return;
+    out.push({ code: normCode(code) || code, name, level, warning: warningLevel(level) });
+  });
+  return out;
+}
+
+/** The attendance page's course dropdown, whose postback shows one course's sessions. Undefined: not this page. */
+export function attendanceOptions(html: string) {
+  const $ = cheerio.load(html), select = byId($, "DDL_Courses");
+  if (!select.length) return undefined;
+  const options = select.find("option").toArray().map((o) => ({ value: ($(o).attr("value") || "").trim(), name: oneLine($(o).text()) }))
+    .filter((o) => o.value && o.value !== "0" && !/^(choose|select)\b|^-+$/i.test(o.name));
+  return { field: select.attr("name") || "", options };
+}
+
+/** One course's sessions after the postback (#, Attended/Absent, the session), merged with its absence-report row. */
+export function parseCourseAttendance(html: string, course: { name: string; value: string }, report: ReturnType<typeof parseAbsenceReport> = []): GucAttendance {
+  const $ = cheerio.load(html), sessions: GucAttendance["sessions"] = [];
+  byId($, "DG_StudentCourseAttendance").find("tr").slice(1).each((_, r) => {
+    const tds = $(r).children("td").toArray().map((c) => oneLine($(c).text()));
+    if (tds.length < 3 || !(tds[1] || tds[2])) return;
+    const word = tds[1].toLowerCase();
+    sessions.push({ status: /excus|exempt|medical/.test(word) ? "excused" : /absent|^a$/.test(word) ? "absent" : "attended", session: tds[2] });
+  });
+  const code = normCode(course.name) || "";
+  const row = report.find((x) => (code && sameCode(x.code, code)) || (x.name && course.name.toLowerCase().includes(x.name.toLowerCase())));
+  const absent = sessions.filter((x) => x.status === "absent").length;
+  return { id: stableId("att|" + course.value + "|" + course.name), course: withCode(course.name), code, level: row?.level || "", warning: row?.warning || 0, sessions, absent, total: sessions.length };
+}
+
+/** Report rows whose course has no dropdown entry (or whose postback failed) still count: kept with no sessions. */
+export function reportOnly(report: ReturnType<typeof parseAbsenceReport>, have: GucAttendance[]): GucAttendance[] {
+  return report.filter((r) => !have.some((a) => (a.code && sameCode(a.code, r.code)) || a.course.toLowerCase().includes(r.name.toLowerCase())))
+    .map((r) => ({ id: stableId("att|report|" + r.code + "|" + r.name), course: withCode([r.code, r.name].filter(Boolean).join(" ")), code: r.code, level: r.level, warning: r.warning, sessions: [], absent: 0, total: 0 }));
 }

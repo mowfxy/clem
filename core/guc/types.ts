@@ -17,6 +17,9 @@ export type GucMidterm = { id: string; course: string; code: string; grade: stri
 export type GucCoursework = { id: string; course: string; code: string; entries: { name: string; elements: { name: string; grade: string; professor: string }[] }[] };
 /** An exam seat from ViewExamSeat_01.aspx. */
 export type GucExam = { id: string; course: string; code: string; day: string; date: string; start: string; end: string; hall: string; seat: string; type: string };
+/** One course's attendance from ClassAttendance_ViewStudentAttendance_001.aspx: GUC's warning (`level` as written,
+ *  `warning` 0 none, 1–2 warnings, 3 the last one: barred from the exam) and each session it has marked. */
+export type GucAttendance = { id: string; course: string; code: string; level: string; warning: number; sessions: { status: "attended" | "absent" | "excused"; session: string }[]; absent: number; total: number };
 /** A GUC Inbox message, read-only (Exchange Web Services). `id` is a hash of the EWS ItemId, never the id itself. */
 export type GucMail = { id: string; from: string; subject: string; received: string; preview: string; attachments: boolean; read: boolean; /** Who it was written to, as GUC shows it (names joined by ";", empty for a hidden list); absent on messages kept before this was read. */ to?: string; /** Its body was read once (an empty preview is then an empty message). */ previewed?: boolean; /** Only for a mail about one of the student's courses: up to 2,000 characters of its body, for that course's deadline reader (the Mail tab shows `preview`). */ text?: string };
 
@@ -32,9 +35,10 @@ export type GucSnapshot = {
   coursework?: GucCoursework[];
   exams?: GucExam[];
   mail?: GucMail[];
+  attendance?: GucAttendance[];
 };
 
-export type GucEventKind = "new_grade" | "new_announcement" | "new_material" | "deadline_added" | "deadline_changed" | "schedule_changed" | "new_course" | "exam_posted" | "new_mail";
+export type GucEventKind = "new_grade" | "new_announcement" | "new_material" | "deadline_added" | "deadline_changed" | "schedule_changed" | "new_course" | "exam_posted" | "new_mail" | "attendance_warning";
 /** `key` is unique per real change, so an event is never stored or notified twice. */
 export type GucEvent = { kind: GucEventKind; key: string; courseKey?: string; title: string; detail: string };
 
@@ -52,6 +56,6 @@ export type GucStatus = {
   /** GUC stopped accepting the password: its checks are paused until a new one is entered (core/guc/password.ts). */
   passwordNeeded?: boolean;
 };
-export type GucProgress = { phase: "login" | "courses" | "schedule" | "grades" | "exams" | "mail" | "course" | "saved" | "deadlines" | "done"; done: number; total: number; label: string };
+export type GucProgress = { phase: "login" | "courses" | "schedule" | "grades" | "exams" | "attendance" | "mail" | "course" | "saved" | "deadlines" | "done"; done: number; total: number; label: string };
 
-export const emptySnapshot = (): GucSnapshot => ({ courses: [], announcements: [], materials: [], slots: [], grades: [], deadlines: [], midterms: [], coursework: [], exams: [], mail: [] });
+export const emptySnapshot = (): GucSnapshot => ({ courses: [], announcements: [], materials: [], slots: [], grades: [], deadlines: [], midterms: [], coursework: [], exams: [], mail: [], attendance: [] });

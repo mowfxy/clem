@@ -309,3 +309,25 @@ html:root[data-theme=light] :is(.guc-new li,.guc-link-pick :is(li,footer))>butto
   .guc-exam-when{grid-column:1/-1;display:flex;gap:8px;align-items:baseline}
   .guc-work ul{padding-left:8px}
 }
+
+/* Attendance (a subject's Attendance tab, and folded per course on the hub's Grades tab). GUC's warning is the one
+   loud thing: ember for a warning, solid ember for the last one. */
+.guc-count.is-warn{background:color-mix(in srgb,var(--ember) 26%,transparent)}
+.guc-att-head{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;min-height:var(--row);padding:4px 8px;border-radius:9px;font-size:var(--text-s);color:var(--ink);width:100%}
+.guc-work>summary>.guc-att-head{padding:0}
+.guc-work>summary:has(.guc-att-head){grid-template-columns:1fr}
+.guc-att-head>span:first-child{display:flex;gap:10px;min-width:0}
+.guc-att-head>span:first-child b{flex:none;font-weight:600;min-width:72px}
+.guc-att-head small{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.guc-att-level{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:600;color:var(--muted);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.warn-1 .guc-att-level,.warn-2 .guc-att-level{color:var(--ink);background:color-mix(in srgb,var(--ember) 18%,transparent)}
+.warn-3 .guc-att-level{color:#fff;background:var(--ember)}
+.guc-att-sessions{list-style:none;margin:2px 0 8px;padding:0 8px 0 90px;display:grid;gap:0}
+.guc-att-sessions li{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:5px 0;border-top:1px solid color-mix(in srgb,var(--ink) 7%,transparent);font-size:var(--text-s);color:var(--muted)}
+.guc-att-sessions li:first-child{border-top:0}
+.guc-att-sessions li>span{min-width:0;overflow-wrap:anywhere}
+.guc-att-sessions li b{flex:none;font-weight:500;font-size:12px}
+.guc-att-sessions li.is-absent{color:var(--ink)}
+.guc-att-sessions li.is-absent b{color:var(--ember);font-weight:600}
+.guc-att-none{margin:4px 8px 8px 98px;color:var(--muted);font-size:var(--text-s)}
+@media (max-width:640px){.guc-att-sessions{padding-left:8px}.guc-att-none{margin-left:8px}}

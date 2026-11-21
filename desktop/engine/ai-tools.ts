@@ -1,7 +1,7 @@
 // The AI's GUC tools, run for one owner (docs/GUC-VPS-ENGINE.md → AI tools): each kinetra "guc.*" request becomes
 // owner-scoped engine reads, and the result is compact text with #/app/guc links to cite. The engine is per owner;
 // a request is refused when the engine is not the signed-in owner's.
-import { announcementsText, correctionsText, deadlinesText, deadlineWindow, fileTextPage, findItem, GUC_GUIDE, gradesText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
+import { announcementsText, correctionsText, deadlinesText, deadlineWindow, fileTextPage, findItem, GUC_GUIDE, gradesText, attendanceText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
 import { applyCorrections, fingerprint, matches, ruleSentence, staleRule, type Correction, type RecordTarget, type Rule } from "../../core/guc/corrections.ts";
 import { mailTextId } from "../../core/guc/deadline-ai.ts";
 import { cairoInstant, whenText } from "../../core/guc/deadlines.ts";
@@ -78,6 +78,7 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
         return searchText(hits, a.query, course || undefined);
       }
       case "guc.grades": return gradesText(await e.grades(), course || undefined);
+      case "guc.attendance": return attendanceText((await e.term()).attendance, course || undefined);
       case "guc.read": return readFile(ctx, a.file, a.from, course || undefined);
       case "guc.mail": {
         // The AI reading a message for the person never marks it read; only their own open in the hub does.

@@ -102,6 +102,10 @@ export function plainText(c: Change, x: SayContext): string {
       const e = /^Exam seat (posted|changed):\s*(.*)$/i.exec(c.title);
       return e ? `Your ${e[2]} exam seat ${e[1].toLowerCase() === "posted" ? "is out" : "changed"}: ${end(c.detail)}` : end(`${c.title}: ${c.detail}`);
     }
+    case "attendance_warning": {
+      const last = /^Last/.test(c.title), code = c.title.replace(/^[^:]*:\s*/, "");
+      return `${last ? "Last attendance warning" : "Attendance warning"} in ${code}: ${end(c.detail)}${last ? " One more absence may bar you from the exam." : ""}`;
+    }
     case "slot_moved": { const at = /·\s*(\S.*)$/.exec(c.detail)?.[1]; return end(`${c.title}${at ? " in " + at : ""}`); }
     case "slot_added": return end(`${c.title}${c.detail ? " in " + c.detail : ""}`);
     case "room_changed": case "slot_cancelled": return end(c.title);

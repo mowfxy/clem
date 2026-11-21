@@ -72,6 +72,20 @@ export const checkGrade = (o: { mid701?: string; quiz701?: string } = {}): FakeP
   return fixture("checkgrade").replace("{{STATE}}", chosen || "").replace("{{MID701}}", o.mid701 ?? "").replace("{{COURSEWORK}}", work);
 };
 export const examSeats = (hall = "C7.301") => fixture("exam-seats").replace("{{HALL}}", hall);
+/** ClassAttendance_ViewStudentAttendance_001.aspx: `level701` is CSEN 701's row in the absence report (none: no row),
+ *  `absent701` how many of its 6 sessions were missed. A course's sessions show only after its dropdown's own postback
+ *  (__EVENTTARGET naming it), as on GUC. */
+export const attendance = (o: { level701?: string; absent701?: number } = {}): FakePage => (r) => {
+  const field = "ctl00$ctl00$ContentPlaceHolderright$ContentPlaceHoldercontent$DDL_Courses";
+  const chosen = r.form?.__EVENTTARGET === field ? r.form[field] : undefined;
+  const absent = o.absent701 ?? 1;
+  const rows = chosen === "31701" ? Array.from({ length: 6 }, (_, i) => `<tr><td>${i + 1}</td><td>${i < absent ? "Absent" : "Attended"}</td><td>CSEN701 - Lecture - Week ${i + 1}</td></tr>`)
+    : chosen === "31702" ? [`<tr><td>1</td><td>Attended</td><td>CSEN702 - Tutorial T14 - Week 1</td></tr>`] : [];
+  const sessions = rows.length ? `<table cellspacing="0" rules="all" border="1" id="DG_StudentCourseAttendance"><tr><td>#</td><td>Attendance</td><td>Session Description</td></tr>${rows.join("")}</table>` : "";
+  const report = o.level701 ? `<tr><td>Winter 2026</td><td>CSEN701</td><td>Embedded Systems</td><td>${o.level701}</td></tr>` : "";
+  return fixture("attendance").replace("{{STATE}}", chosen || "").replace("{{REPORT}}", report).replace("{{SESSIONS}}", sessions)
+    .replace("{{SEL701}}", chosen === "31701" ? 'selected="selected" ' : "").replace("{{SEL702}}", chosen === "31702" ? 'selected="selected" ' : "");
+};
 
 /** A fake Exchange: FindItem lists `inbox` (oldest first), GetItem answers bodies, UpdateItem marks a message read (and
  *  is logged in `o.updates`; `o.refuse` answers it with an error, as a server that won't take the change); any other
@@ -111,5 +125,6 @@ export const site = (): Record<string, FakePage> => ({
   [urls.course(1203, 64)]: fixture("cms-course").replaceAll("900", "700"),
   [portalUrls.grades]: checkGrade(),
   [portalUrls.exams]: examSeats(),
+  [portalUrls.attendance]: attendance(),
   [EWS_URL]: fakeEws([{ id: "AAMk1", subject: "Welcome back", from: "Student Affairs", at: "2026-09-01T08:00:00Z", body: "Classes start Saturday." }]),
 });
