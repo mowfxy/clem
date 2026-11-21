@@ -175,14 +175,18 @@ test("while the worker is rebuilt after an update it isn't called broken, nor re
   } finally { await d.close(); }
 });
 
-test("the VPS gets Claude, not Gemini, once Google refused Gemini CLI there", async () => {
+test("the VPS gets the AI this PC uses: Gemini stays Gemini (Google's Antigravity agent), never swapped for Claude", async () => {
   const d = await desk({ clock: () => 1, link: () => new Server2() });
   try {
-    const m = d.m as unknown as { serverCli(c?: string): string | undefined; workerAiError?: string };
-    assert.equal(m.serverCli("gemini"), "gemini");
-    m.workerAiError = "Google no longer lets Gemini CLI use your Gemini plan on a server. Set up Claude or ChatGPT on your VPS instead.";
-    assert.equal(m.serverCli("gemini"), "claude");
+    const m = d.m as unknown as { serverCli(c?: string): string | undefined; workerUses(c: string): boolean; workerAiError?: string; workerModel: string; workerClis: string[] };
+    m.workerAiError = "Gemini on your VPS couldn't answer.";
+    assert.equal(m.serverCli("antigravity"), "antigravity");
     assert.equal(m.serverCli("codex"), "codex");
+    // A worker answering with Claude Code is not using the person's Gemini, so it gets set up.
+    m.workerModel = "cli"; m.workerClis = ["claude"];
+    assert.equal(m.workerUses("antigravity"), false);
+    m.workerClis = ["antigravity", "claude"];
+    assert.equal(m.workerUses("antigravity"), true);
   } finally { await d.close(); }
 });
 

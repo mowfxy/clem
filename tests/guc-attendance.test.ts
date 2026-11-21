@@ -4,7 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { attendanceOptions, parseAbsenceReport, parseCourseAttendance, portalUrls, reportOnly, warningLevel } from "../core/guc/parse.ts";
 import { importance } from "../core/proactivity/attention.ts";
-import { attendanceText } from "../core/guc/ai-tools.ts";
+import { attendanceNow, attendanceText } from "../core/guc/ai-tools.ts";
+import { attendanceName } from "../core/guc/hub.ts";
+import { renderNow, withGuc } from "../core/main-thread/context.ts";
 import { Engine } from "../desktop/engine/index.ts";
 import { attendance, fakeGuc, host, noWait, site } from "./guc-fake.ts";
 
@@ -47,8 +49,39 @@ test("a warning is urgent only when it is the last one, and the AI reads attenda
   assert.equal(importance({ key: "k", kind: "attendance_warning", title: "Attendance warning: CSEN 701", detail: "Level 1" }).level, "notify");
   assert.equal(importance({ key: "k", kind: "attendance_warning", title: "Last attendance warning: CSEN 701", detail: "Level 3" }).level, "urgent");
   const text = attendanceText([{ id: "a", course: "CSEN 701 - Embedded Systems", code: "CSEN 701", level: "Level 2", warning: 2, absent: 2, total: 6, sessions: [{ status: "absent", session: "Week 1" }, { status: "attended", session: "Week 2" }] }]);
-  assert.match(text, /CSEN 701 - Embedded Systems: Level 2 · absent 2 of 6 sessions/);
+  assert.match(text, /CSEN 701 Embedded Systems: Level 2 · absent 2 of 6 sessions/);
   assert.match(text, /absent: Week 1$/m);
+});
+
+test("a course's name without the portal's season and code", () => {
+  assert.equal(attendanceName({ course: "Winter 2026 - CPS 402 - Communication & Presentation Skills (A2)", code: "CPS 402" }), "Communication & Presentation Skills (A2)");
+  assert.equal(attendanceName({ course: "Winter 2026 - PHYSP 301 - Physics III (P)", code: "PHYSP 301" }), "Physics III (P)");
+  assert.equal(attendanceName({ course: "CSEN 701 - Embedded Systems", code: "CSEN 701" }), "Embedded Systems");
+  assert.equal(attendanceName({ course: "Embedded Systems" }), "Embedded Systems");
+});
+
+test("the AI always has attendance warnings in front of it (the Now card), worst first", () => {
+  const a = (code: string, warning: number, absent: number, total: number, level = "") => ({ id: code, code, course: `Winter 2026 - ${code} - X`, level, warning, absent, total, sessions: [] });
+  const lines = attendanceNow([a("DE 303", 0, 2, 15), a("CSEN 301", 1, 4, 15, "1"), a("MATH 301", 2, 5, 16, "2"), a("ELCT 301", 3, 6, 16)]);
+  assert.deepEqual(lines, ["ELCT 301: last warning (one more absence can bar the exam), absent 6 of 16", "MATH 301: 2, absent 5 of 16", "CSEN 301: 1, absent 4 of 15"]);
+  const card = renderNow(withGuc({ today: "2026-11-21" }, { schedule: [], deadlines: [], unread: 0, attendance: lines }));
+  assert.match(card, /^Attendance warnings: ELCT 301: last warning/m);
+  assert.doesNotMatch(renderNow(withGuc({ today: "2026-11-21" }, { schedule: [], deadlines: [], unread: 0 })), /Attendance/);
+});
+
+test("warnings already on the portal when Clem first reads attendance are told once, on the next read", async () => {
+  const pages = site(), guc = fakeGuc(pages), h = host({ reader: true });
+  pages[portalUrls.attendance] = attendance({ level701: "Level 2", absent701: 3 });
+  const engine = await Engine.open("owner-att-told", h, { http: guc.http, sleep: noWait, memory: true, jobs: false });
+  try {
+    await engine.connect("student.name", "secret");
+    const warned = () => engine.db.query<{ title: string; detail: string }>("select title, detail from guc_events where kind = 'attendance_warning'");
+    await engine.sync();
+    assert.deepEqual((await warned()).map((e) => e.title), ["Attendance warning: CSEN 701"]);
+    assert.match((await engine.now()).attendance?.[0] || "", /^CSEN 701: Level 2, absent 3 of 6$/);
+    await engine.sync();
+    assert.equal((await warned()).length, 1, "told once");
+  } finally { await engine.close(); }
 });
 
 test("sync reads attendance once per course, keeps it in the snapshot, and says so only when a warning goes up", async () => {

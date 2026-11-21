@@ -268,6 +268,8 @@ export async function syncGuc(o: { db: Db; owner: string; client: GucClient; ini
   seen.announcements = { v: ANNOUNCEMENT_VERSION, courses: [...annRead] };
   next.deadlines = prev.data.deadlines;
   const eventList = [...diffSnapshots(prev.data, next, prev.seen, now.getTime(), { username: client.username }), ...newCourses(prev.data, next, linked)];
+  // Told above once attendance was read before (the first read only sets what there is); from now on, only rises.
+  if (prev.seen.attendance && (next.attendance || []).length) seen.attendanceTold = true;
   const stats: GucSyncStats = { requests: client.requests - before, skipped, changed, events: eventList.length, ms: Date.now() - started, ...(missed.length ? { missed } : {}) };
   await db.tx(async (t) => {
     // A message opened in the hub while this sync ran is read too (markMailOpened wrote it to the latest snapshot).

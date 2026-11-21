@@ -16,6 +16,8 @@ export type NowCard = {
   schedule?: { time: string; title: string; where?: string }[];
   deadlines?: { title: string; due: string; space?: string }[];
   unread?: number;
+  /** GUC's attendance warnings, one line per course (core/guc/ai-tools.ts attendanceNow). */
+  attendance?: string[];
   tasks?: { title: string; space: string; due?: string; overdue?: boolean }[];
   nextExam?: { space: string; date: string };
   quietHours?: string;
@@ -27,10 +29,10 @@ export interface NowProvider { now(): NowCard | Promise<NowCard> }
 
 /** The local card with GUC's part (core/guc/ai-tools.ts gucNow): today's classes, its deadlines before the plans' (7 days,
  *  at most 10 in all) and the unread count. */
-export function withGuc(card: NowCard, guc: Pick<NowCard, 'schedule' | 'deadlines' | 'unread'> | null | undefined): NowCard {
+export function withGuc(card: NowCard, guc: Pick<NowCard, 'schedule' | 'deadlines' | 'unread' | 'attendance'> | null | undefined): NowCard {
   if (!guc) return card;
   const deadlines = [...(guc.deadlines || []), ...(card.deadlines || [])].slice(0, 10);
-  return { ...card, ...(guc.schedule?.length ? { schedule: guc.schedule } : {}), ...(deadlines.length ? { deadlines } : {}), ...(guc.unread ? { unread: guc.unread } : {}) };
+  return { ...card, ...(guc.schedule?.length ? { schedule: guc.schedule } : {}), ...(deadlines.length ? { deadlines } : {}), ...(guc.unread ? { unread: guc.unread } : {}), ...(guc.attendance?.length ? { attendance: guc.attendance } : {}) };
 }
 
 type LocalSpace = { id: string; name: string; kind: 'subject' | 'project'; examDate?: string };
@@ -59,6 +61,7 @@ export function renderNow(card: NowCard) {
   if (card.schedule?.length) lines.push('Schedule: ' + card.schedule.map((s) => `${s.time} ${s.title}${s.where ? ' (' + s.where + ')' : ''}`).join('; '));
   if (card.deadlines?.length) lines.push('Deadlines (7 days): ' + card.deadlines.map((d) => `${d.title} ${d.due}${d.space ? ' · ' + d.space : ''}`).join('; '));
   if (card.unread) lines.push(`Unread: ${card.unread}`);
+  if (card.attendance?.length) lines.push('Attendance warnings: ' + card.attendance.join('; '));
   if (card.tasks?.length) lines.push('Open tasks: ' + card.tasks.map((t) => `${t.overdue ? '[overdue] ' : ''}${t.title}${t.due ? ' ' + t.due : ''} · ${t.space}`).join('; '));
   if (card.nextExam) lines.push(`Next exam: ${card.nextExam.space} on ${card.nextExam.date}`);
   if (card.quietHours) lines.push(`Quiet hours: ${card.quietHours}`);

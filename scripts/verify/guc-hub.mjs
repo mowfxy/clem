@@ -178,6 +178,11 @@ try {
       await timeTab("Grades", ".guc-grade");
       check(await page.locator(".guc-sem.is-latest h3", { hasText: "Spring 2026" }).count() === 1, `${theme}: the newest semester is highlighted`);
       await shot("grades");
+      // Attendance: its own tab, each course by its name (not the portal's "Winter 2026 - CODE - Name").
+      await timeTab("Attendance", ".guc-att-head");
+      check(await page.locator(".guc-att-head").count() >= 1, `${theme}: Attendance has its own tab`);
+      check(!(await page.locator(".guc-att-head").first().textContent()).includes(" - - "), `${theme}: attendance names read cleanly`);
+      await shot("attendance");
       // Coming up: exam seats and what was read from posts, in one list grouped by when.
       await timeTab("Coming up", ".guc-deadline");
       check(await page.locator(".guc-when").first().textContent().then((t) => /^(in |today|tomorrow|\w{3} at|\w{3} \d{1,2} \w{3}$)/i.test(t)), `${theme}: Coming up reads as relative times`);

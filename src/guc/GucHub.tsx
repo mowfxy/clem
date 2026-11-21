@@ -2,7 +2,7 @@
 // database. Every tab draws its cached copy on the first frame and refreshes behind it (src/guc/useGuc.ts).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { dueGroup, hubPath, markText, relativeDue, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMail, type HubTerm, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
+import { attendanceName, dueGroup, hubPath, markText, relativeDue, weekGrid, weekLabel, weekStart, addDays, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMail, type HubTerm, type HubMaterial, type HubMaterials, type HubOverview, type HubRoute, type HubSchedule, type HubTab, type Page } from "../../core/guc/hub";
 import type { GucProgress } from "../../core/guc/types";
 import { sameCode } from "../../core/guc/codes";
 import { matchSubject } from "../../core/guc/match";
@@ -22,7 +22,7 @@ import "./guc.css";
 
 // Exams and deadlines are one tab, "Coming up" (route id `deadlines`, so #/app/guc/deadlines/<id> links still work; the
 // old `exams` route opens it too).
-const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["deadlines", "Coming up"], ["mail", "Mail"]];
+const TABS: [HubTab, string][] = [["schedule", "Schedule"], ["announcements", "Announcements"], ["cms", "CMS"], ["grades", "Grades"], ["attendance", "Attendance"], ["deadlines", "Coming up"], ["mail", "Mail"]];
 /** What each part of GUC is called when a sync couldn't read it. */
 const PART_NAMES: Record<string, string> = { courses: "your course list", schedule: "your schedule", grades: "this term's grades", exams: "exam seats", transcript: "your transcript", mail: "your GUC mail" };
 const clean = (e: unknown) => String((e as Error)?.message || e || "").replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, "");
@@ -107,14 +107,15 @@ export function GucHub({ route, go, onOpenFile, onConnect, onToast, actions, sub
         onClick={() => go(hubPath(id))}
         onPointerEnter={() => prefetchTab(id)} onFocus={() => prefetchTab(id)}
         onKeyDown={(e) => { const to = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i - 1 + TABS.length) % TABS.length : -1; if (to < 0) return; e.preventDefault(); go(hubPath(TABS[to][0])); requestAnimationFrame(() => tabBar.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[to]?.focus()); }}>
-        {label}{!!counts[id] && <span className="guc-count">{counts[id]}</span>}
+        {label}{!!counts[id] && <span className="guc-count">{counts[id]}</span>}{id === "attendance" && <AttendanceBadge />}
       </button>)}
     </nav>
     <section className="guc-panel" role="tabpanel" aria-label={TABS.find(([id]) => id === route.tab)?.[1]} key={route.tab}>
       {route.tab === "schedule" ? <Schedule week={route.id} go={go} onConnect={onConnect} />
         : route.tab === "announcements" ? <Announcements focus={route.id} onConnect={onConnect} />
         : route.tab === "cms" ? <Cms course={route.id} material={route.sub} go={go} onOpenFile={onOpenFile} onConnect={onConnect} onToast={onToast} actions={actions} subjects={subjects} />
-        : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Attendance quiet onConnect={onConnect} /><Grades onConnect={onConnect} /></>
+        : route.tab === "grades" ? <><ThisTerm onConnect={onConnect} /><Grades onConnect={onConnect} /></>
+        : route.tab === "attendance" ? <Attendance onConnect={onConnect} />
         : route.tab === "exams" ? <Deadlines onConnect={onConnect} />
         : route.tab === "mail" ? <Mail onConnect={onConnect} />
         : <Deadlines focus={route.id} onConnect={onConnect} />}
@@ -128,6 +129,7 @@ function prefetchTab(tab: HubTab) {
   else if (tab === "announcements") gucPrefetch({ action: "gucAnnouncements" });
   else if (tab === "cms") gucPrefetch({ action: "gucCourses" });
   else if (tab === "grades") { gucPrefetch({ action: "gucGrades" }); gucPrefetch({ action: "gucTerm" }); }
+  else if (tab === "attendance") gucPrefetch({ action: "gucTerm" });
   else if (tab === "exams") gucPrefetch({ action: "gucDeadlines" });
   else if (tab === "mail") gucPrefetch({ action: "gucMail" });
   else gucPrefetch({ action: "gucDeadlines" });
@@ -396,21 +398,29 @@ export function ThisTerm({ onConnect, code }: { onConnect: () => void; code?: st
 }
 
 /** This term's attendance from the portal. `code`: one course (a subject's Attendance tab: its sessions shown open);
- *  without it every course, folded (the hub's Grades tab). `quiet`: nothing at all until GUC has recorded some. */
-export function Attendance({ onConnect, code, quiet }: { onConnect: () => void; code?: string; quiet?: boolean }) {
+ *  without it every course, folded (the hub's own Attendance tab). */
+export function Attendance({ onConnect, code }: { onConnect: () => void; code?: string }) {
   const term = useGuc<HubTerm>({ action: "gucTerm" });
-  if (!term.data) return quiet ? null : term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : <Skeleton rows={3} />;
+  if (!term.data) return term.error ? <Problem message={term.error} onRetry={() => void term.reload()} onConnect={onConnect} /> : <Skeleton rows={3} />;
   const list = (term.data.attendance || []).filter((a) => !code || sameCode(a.code || a.course, code));
-  if (!list.length) return quiet ? null : <EmptyState scene="calendar" line={!term.data.attendanceRead ? "Clem reads your attendance from the GUC portal. It shows here after the next check." : `GUC hasn’t recorded any attendance${code ? " for " + code : ""} yet.`} />;
+  if (!list.length) return <EmptyState scene="calendar" line={!term.data.attendanceRead ? "Clem reads your attendance from the GUC portal. It shows here after the next check." : `GUC hasn’t recorded any attendance${code ? " for " + code : ""} yet.`} />;
   return <section className="guc-sem is-latest guc-att" aria-label="Attendance">
-    {!code && <h3>Attendance<span className="guc-tag">Live</span></h3>}
+    {!code && <h3>This term<span className="guc-tag">Live</span></h3>}
     {list.map((a) => code ? <div key={a.id}><AttendanceHead a={a} /><AttendanceSessions a={a} /></div>
       : <details key={a.id} className="guc-work"><summary><AttendanceHead a={a} /></summary><AttendanceSessions a={a} /></details>)}
   </section>;
 }
 const WARNING_NAMES = ["No warning", "Warning 1", "Warning 2", "Last warning"];
+/** The hub's Attendance tab: how many courses GUC has warned about ("!" once one is on its last warning). */
+function AttendanceBadge() {
+  const term = useGuc<HubTerm>({ action: "gucTerm" });
+  const warned = (term.data?.attendance || []).filter((a) => a.warning > 0);
+  if (!warned.length) return null;
+  const last = warned.some((a) => a.warning >= 3);
+  return <span className="guc-count is-warn" aria-label={`${warned.length} attendance warning${warned.length > 1 ? "s" : ""}`}>{last ? "!" : warned.length}</span>;
+}
 function AttendanceHead({ a }: { a: HubTerm["attendance"][number] }) {
-  const name = a.course.replace(a.code, "").replace(/^\s*[-–:]\s*/, "").trim();
+  const name = attendanceName(a);
   return <div className={`guc-att-head warn-${Math.min(3, a.warning)}`}>
     <span><b>{a.code || name}</b>{a.code && name}</span>
     <span className="guc-att-level" title={a.level || undefined}>{a.warning ? (a.level || WARNING_NAMES[Math.min(3, a.warning)]) : "No warning"}</span>

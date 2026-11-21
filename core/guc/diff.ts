@@ -7,7 +7,7 @@ import { ANNOUNCEMENT_VERSION, stableId } from "./parse.ts";
 import type { GucAnnouncement, GucEvent, GucSnapshot } from "./types.ts";
 
 /** What was read at least once, so its first read is a baseline. `mailIds`: hashes of every Inbox id seen. */
-export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; attendance?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string }; /** The deadline extractor's version, and the courses whose deadlines it read. */ deadlines?: { v: number; courses: string[]; /** Per course, the ids of the posts the deadline reader has read. */ read?: Record<string, string[]>; /** Per course, the model's failed tries on the same unread texts (`texts`: their ids' hash). */ fails?: Record<string, { texts: string; n: number; at?: number }> }; /** The announcement reader's version (ANNOUNCEMENT_VERSION), and the courses whose page it has read. */ announcements?: { v: number; courses: string[] }; /** Hashes of the mail ids the person opened in the hub (last 500): read, whatever Exchange says. */ mailRead?: string[]; /** Course pages the last sync couldn't read: read again on the next pulse, whatever their pace. */ retry?: string[]; /** Seating plans and schedules read as files: material ids read (last 500), and failed tries of the rest. */ files?: { read: string[]; tries: Record<string, number> } };
+export type Seen = { courses: string[]; grades: boolean; schedule: boolean; portal?: boolean; exams?: boolean; attendance?: boolean; /** Attendance warnings already on the portal have been told once (they used to be a silent first read). */ attendanceTold?: boolean; mailIds?: string[]; /** When each part was last read (ms), for the pulse. */ lastRead?: Record<string, number>; /** The transcript's study years: when each was last read, and the oldest one there is. */ transcript?: { at: Record<string, number>; end?: string }; /** The deadline extractor's version, and the courses whose deadlines it read. */ deadlines?: { v: number; courses: string[]; /** Per course, the ids of the posts the deadline reader has read. */ read?: Record<string, string[]>; /** Per course, the model's failed tries on the same unread texts (`texts`: their ids' hash). */ fails?: Record<string, { texts: string; n: number; at?: number }> }; /** The announcement reader's version (ANNOUNCEMENT_VERSION), and the courses whose page it has read. */ announcements?: { v: number; courses: string[] }; /** Hashes of the mail ids the person opened in the hub (last 500): read, whatever Exchange says. */ mailRead?: string[]; /** Course pages the last sync couldn't read: read again on the next pulse, whatever their pace. */ retry?: string[]; /** Seating plans and schedules read as files: material ids read (last 500), and failed tries of the rest. */ files?: { read: string[]; tries: Record<string, number> } };
 const short = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 /** A post's lines, compared without case or spacing. */
@@ -128,8 +128,10 @@ export function diffSnapshots(prev: GucSnapshot, next: GucSnapshot, seen: Seen, 
   }
   // Attendance: a course whose GUC warning went up (a first warning, a second, the last). Never on the first read with
   // no warning, and never for a warning going down.
+  // A warning going up is news. So is one that was already there when Clem first read attendance (told on the next read,
+  // or on the first since it learned to say so): GUC warning a course is never kept quiet. Each level is told once (its key).
   if (seen.attendance) {
-    const was = new Map((prev.attendance || []).map((a) => [a.code || a.course, a.warning]));
+    const was = new Map(seen.attendanceTold ? (prev.attendance || []).map((a) => [a.code || a.course, a.warning]) : []);
     for (const a of next.attendance || []) {
       const before = was.get(a.code || a.course) || 0;
       if (a.warning <= before) continue;

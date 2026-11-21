@@ -12,13 +12,12 @@ import { generateKey, publicOf } from "./keys.ts";
 import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
 import { installDocker, installWorker, reviveWorker, sendSecret, stopWorker, testServer, WORKER_PORT } from "./install.ts";
 import { Migrator } from "./migrate.ts";
-import { claudeSignIn, cliSignedIn, codexSignIn, geminiSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
+import { antigravitySignIn, claudeSignIn, cliSignedIn, codexSignIn, installCli, restartWorker, type ServerCli } from "./cli.ts";
 import { StorageRouter, type LocalBlobs } from "./router.ts";
 import { VpsStore, vpsRoot } from "./store.ts";
 import { WorkerClient } from "./rpc.ts";
 import { VpsTools } from "./tools.ts";
 import { DiskLimit, sshDisk } from "./limit.ts";
-import { geminiRefused } from "./headless.ts";
 
 /** Everything kept in the Vault under vps-<owner>: the connection, its key or password, and the worker's secrets. */
 export type VpsVault = {
@@ -261,7 +260,7 @@ export class VpsManager {
     // …then the same AI as this PC, installed and signed in on the server (one sign-in window, once). Never one the
     // person doesn't use: with no AI signed in on this PC, Settings offers the choice instead.
     const v = await this.vault(), cli = await this.d.preferredCli?.().catch(() => undefined);
-    if (!v.modelKey && this.workerModel !== "cli" && cli) await this.connectCli(cli).catch((e) => this.log("[vps] ai: " + (e as Error).message));
+    if (!v.modelKey && cli && !this.workerUses(cli)) await this.connectCli(cli).catch((e) => this.log("[vps] ai: " + (e as Error).message));
     return this.status();
   }
   /** Uploads this app's worker bundle with the worker's key and secrets, and starts it (its database is kept). */
@@ -348,7 +347,7 @@ export class VpsManager {
         if (cli === "codex") { const c = await codexSignIn(l, kind, owner); step({ cli, step: "waiting", url: c.url, code: c.code }); done = c.done; }
         else {
           if (!this.d.openSignIn) throw Error("Sign-in windows need the Clem desktop app.");
-          const c = await (cli === "gemini" ? geminiSignIn : claudeSignIn)(l, kind, owner, this.d.openSignIn);
+          const c = await (cli === "antigravity" ? antigravitySignIn : claudeSignIn)(l, kind, owner, this.d.openSignIn);
           this.pasteCode = c.paste; step({ cli, step: "waiting", url: c.url }); done = c.done;
         }
         const ok = await done; this.pasteCode = undefined;
@@ -363,13 +362,14 @@ export class VpsManager {
     })().catch((e) => { this.pasteCode = undefined; step({ cli, step: "failed", error: (e as Error).message }); });
     return this.status();
   }
-  /** The CLI for the VPS when none was named: the one this PC uses, except Gemini once Google refused it there (its
-   *  free plan no longer works from Gemini CLI): then Claude, with a sign-in of its own on the server. */
-  private serverCli(preferred?: ServerCli): ServerCli | undefined {
-    return preferred === "gemini" && this.workerAiError && geminiRefused(this.workerAiError) || preferred === "gemini" && this.geminiOut ? "claude" : preferred;
-  }
-  /** The worker said Google refuses its Gemini CLI (kept after the error clears, so "Try again" never picks it again). */
-  private geminiOut = false;
+  /** The AI for the VPS when none was named: the one this PC uses (Gemini is the same Antigravity agent as here). */
+  private serverCli(preferred?: ServerCli): ServerCli | undefined { return preferred; }
+  /** Whether the worker answers with this AI already (its health lists the ones signed in there). */
+  private workerUses(cli: ServerCli) { return this.workerModel === "cli" && this.workerClis.includes(cli); }
+  /** The AIs the worker can answer with, the first one answering (its health's `cli`). */
+  private workerClis: string[] = [];
+  /** Set up once per run of the app, on its own: the person's AI on a worker that isn't using it yet. */
+  private aiChecked = false;
   /** A code the person copied from Claude's page, if the window didn't hand it over by itself. */
   pasteCliCode(code: string) { if (!this.pasteCode) throw Error("No sign-in is waiting for a code."); this.pasteCode(code); return { ok: true }; }
 
@@ -409,7 +409,7 @@ export class VpsManager {
       this.workerRunner = lease.holder === "worker";
       this.workerModel = (health.model as WorkerView["model"]) || "none";
       this.workerAiError = typeof health.aiError === "string" && health.aiError ? health.aiError.slice(0, 200) : undefined;
-      if (this.workerAiError && geminiRefused(this.workerAiError)) this.geminiOut = true;
+      this.workerClis = Array.isArray(health.cli) ? (health.cli as unknown[]).map(String) : [];
       this.workerError = undefined; this.failures = 0; this.retryAt = 0; this.workerDown = 0;
       // What the worker couldn't keep on the VPS past the limit, waiting for this PC (shown with the storage).
       if (Array.isArray(health.waiting)) void this.router().then((r) => { r.waiting = (health.waiting as unknown[]).map(String).slice(0, 5); }).catch(() => {});
@@ -425,6 +425,12 @@ export class VpsManager {
       if (Number(health.pendingSends) > 0 && this.d.sendToTelegram) void this.sendPending(c).catch((e) => this.log("[vps] telegram: " + (e as Error).message));
       // A worker with another protocol than this desktop's is brought up to date (it keeps its database).
       if (health.version !== WORKER_PROTOCOL) void this.refreshWorker(true);
+      // An up-to-date worker that doesn't answer with the AI this PC uses (a Gemini person whose VPS was given Claude
+      // Code, or none) gets it, once per run: installed quietly, then Google's (or the provider's) one sign-in window.
+      else if (!this.aiChecked && !this.signIn && !(await this.vault()).modelKey) {
+        this.aiChecked = true;
+        void this.d.preferredCli?.().then((cli) => { if (cli && !this.workerUses(cli)) return this.connectCli(cli); }).catch((e) => this.log("[vps] ai: " + (e as Error).message));
+      }
       // The worker changed the workspace (Telegram, a sweep, a routine) since this PC last pulled: the window pulls.
       const head = health.ws as { id: string; seq: number } | null | undefined;
       if (head && (head.seq > this.pulled || head.id !== this.wsHead?.id)) { this.wsHead = head; this.d.changed?.("workspace"); }

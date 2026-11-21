@@ -6,7 +6,7 @@ import {extname, join, relative, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {AcpClosed, AcpConnection, AcpError} from './acp.ts';
 import {endTreeNow} from './agent-sweep.ts';
-import type {AntigravityEngine} from './antigravity-engine.ts';
+import {ANTIGRAVITY_URL_MARKER, ANTIGRAVITY_URL_PRINTED, googleSignInUrl, type AntigravityEngine} from './antigravity-engine.ts';
 import {inlinePictures, keepingAlive, kinetraMcp, NATIVE_NOTE, SERVER_NAME, type NativeEndpoint} from './kinetra-mcp.ts';
 import {SessionLost, Transient, UsageLimit} from './kinetra-turn.ts';
 import {describeTool, StepCounter} from './tool-status.ts';
@@ -192,16 +192,8 @@ const PROCESS_IDLE = 55 * 60_000;
 const PROCESS_SESSIONS = 40;
 
 class SignedOut extends Error {}
-/** The agent's two ways of handing out its Google sign-in page: through BROWSER (Clem's helper, below), or printed. */
-const URL_MARKER = '__CLEM_ANTIGRAVITY_URL__', URL_PRINTED = 'Open the following link to authenticate the ACP server: ';
-/** Google's sign-in page, as the agent builds it, with a loopback return address on this PC. */
-export function googleSignInUrl(text: string) {
-  try {
-    const url = new URL(text.trim());
-    const back = url.searchParams.get('redirect_uri') || '';
-    return url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth' && !url.username && !url.password && /^http:\/\/127\.0\.0\.1:\d{4,5}\/$/.test(back) ? url.href : null;
-  } catch { return null; }
-}
+const URL_MARKER = ANTIGRAVITY_URL_MARKER, URL_PRINTED = ANTIGRAVITY_URL_PRINTED;
+export {googleSignInUrl};
 const signedOut = /authentication required|not authenticated|logged out|sign in again|unauthenticated|invalid_grant|onboarding failed/i;
 function friendly(detail: string) {
   if (signedOut.test(detail)) return 'Sign in to Gemini again in Settings → Models.';

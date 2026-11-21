@@ -566,8 +566,8 @@ export class Engine {
   async now(t = this.clock()): Promise<GucNow> {
     const c = cairo(t), key = `${this.version}:${c.ymd}:${c.time.slice(0, 2)}`;
     if (this.nowCache?.key === key) return this.nowCache.value;
-    const [slots, deadlines, counts] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, t), read.counts(this.db, this.owner)]);
-    const value = gucNow({ slots, deadlines, unread: counts.unread }, t);
+    const [slots, deadlines, counts, term] = await Promise.all([read.schedule(this.db, this.owner, c.ymd).then((s) => s.slots), read.deadlines(this.db, this.owner, t), read.counts(this.db, this.owner), read.term(this.db, this.owner).catch(() => null)]);
+    const value = gucNow({ slots, deadlines, unread: counts.unread, attendance: term?.attendance }, t);
     this.nowCache = { key, value };
     return value;
   }
