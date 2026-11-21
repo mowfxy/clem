@@ -396,7 +396,7 @@ void app.whenReady().then(async () => {
    *  keeps the person signed in to claude.ai next time; other schemes (claude://) are never followed. */
   const signInDenied=new Set(["media","geolocation","notifications","display-capture","midi","midiSysex","idle-detection","clipboard-read","openExternal","window-management","fileSystem"]);
   const claudeSignInPage=(url:string,landed?:(target:string)=>void)=>{
-    const page=new BrowserWindow({width:520,height:760,title:"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#1f1f1f",icon:join(__dirname,"../desktop/icon.ico"),
+    const page=new BrowserWindow({width:520,height:760,title:/^https:\/\/accounts\.google\.com\//.test(url)?"Sign in to Google · Clem":"Sign in to Claude · Clem",parent:window,autoHideMenuBar:true,backgroundColor:"#1f1f1f",icon:join(__dirname,"../desktop/icon.ico"),
       webPreferences:{partition:"persist:claude-signin",contextIsolation:true,nodeIntegration:false,sandbox:true}});
     // A plain Chrome identity: Google refuses sign-in to pages it thinks are embedded in an app.
     page.webContents.setUserAgent(page.webContents.getUserAgent().replace(/\s(?:Electron|Clem)\/\S+/g,""));
@@ -1323,14 +1323,14 @@ void app.whenReady().then(async () => {
         openSignIn: claudeSignInPage,
         // The AI the person actually uses here: the main thread's model, else their latest chat's, else one signed in.
         preferredCli: async () => {
-          const signedIn = { claude: async () => !!(await (await claudeFor(owner)).status().catch(() => null))?.connected, codex: async () => !!(await codex.status().catch(() => false)), gemini: async () => !!(await (await antigravityFor(owner)).status().catch(() => null))?.connected };
+          const signedIn = { claude: async () => !!(await (await claudeFor(owner)).status().catch(() => null))?.connected, codex: async () => !!(await codex.status().catch(() => false)), antigravity: async () => !!(await (await antigravityFor(owner)).status().catch(() => null))?.connected };
           const s = await disk.readState(owner).catch(() => null) as { organizer?: { model?: string }; chats?: { model?: string; updated?: number }[] } | null;
           const latest = [...(s?.chats || [])].filter((c) => c.model).sort((a, b) => (b.updated || 0) - (a.updated || 0))[0]?.model;
           for (const m of [s?.organizer?.model, latest]) {
-            const cli = !m ? undefined : m.startsWith(ANTIGRAVITY_PREFIX) ? "gemini" as const : m.startsWith("claude:") ? "claude" as const : m.startsWith(GROK_PREFIX) ? undefined : "codex" as const;
+            const cli = !m ? undefined : m.startsWith(ANTIGRAVITY_PREFIX) ? "antigravity" as const : m.startsWith("claude:") ? "claude" as const : m.startsWith(GROK_PREFIX) ? undefined : "codex" as const;
             if (cli && await signedIn[cli]()) return cli;
           }
-          for (const cli of ["gemini", "claude", "codex"] as const) if (await signedIn[cli]()) return cli;
+          for (const cli of ["antigravity", "claude", "codex"] as const) if (await signedIn[cli]()) return cli;
           return undefined;
         },
         changed: (what) => { void m!.mode().then((mode) => vpsModes.set(owner, mode)); vpsEvent(what); },

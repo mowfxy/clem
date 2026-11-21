@@ -6,7 +6,7 @@ import { TELEGRAM_GUIDE } from "../telegram/guide.ts";
 import { z } from "zod";
 import { settingsUpdateCard } from "./cards.ts";
 import { codeKey, normCode } from "./codes.ts";
-import { addDays, cairo, endsAt, hubPath, relativeDue, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterials } from "./hub.ts";
+import { addDays, attendanceName, cairo, endsAt, hubPath, relativeDue, type HubAnnouncement, type HubCourse, type HubDeadline, type HubGrade, type HubHit, type HubMaterials } from "./hub.ts";
 import { matchCourse } from "./match.ts";
 import type { SubjectLink } from "./settings.ts";
 import type { GucAttendance, GucSlot } from "./types.ts";
@@ -232,9 +232,9 @@ export function gradesText(list: HubGrade[], course?: Resolved) {
 export function attendanceText(list: GucAttendance[], course?: Resolved) {
   const mine = course ? list.filter((a) => codeKey(a.code || a.course) === codeKey(course.code)) : list;
   if (!mine.length) return `No attendance${course ? " for " + label(course) : ""} on the portal yet.`;
-  return `Attendance this term ${link("grades")}:\n` + mine.map((a) => {
+  return `Attendance this term ${link("attendance")}:\n` + mine.map((a) => {
     const missed = a.sessions.filter((x) => x.status === "absent").map((x) => x.session).slice(0, 8);
-    return `- ${a.course}: ${a.warning ? (a.level || "warning " + a.warning) + (a.warning >= 3 ? " (last warning)" : "") : "no warning"}${a.total ? ` · absent ${a.absent} of ${a.total} sessions` : ""}${missed.length ? "\n  absent: " + missed.join("; ") : ""}`;
+    return `- ${a.code ? a.code + " " : ""}${attendanceName(a)}: ${a.warning ? (a.level || "warning " + a.warning) + (a.warning >= 3 ? " (last warning)" : "") : "no warning"}${a.total ? ` · absent ${a.absent} of ${a.total} sessions` : ""}${missed.length ? "\n  absent: " + missed.join("; ") : ""}`;
   }).join("\n");
 }
 
@@ -271,15 +271,22 @@ export function fileTextPage(t: FileText, from = 1, max = READ_CHARS) {
 }
 
 // ---------- The main thread's Now card ----------
-export type GucNow = { schedule: { time: string; title: string; where?: string }[]; deadlines: { title: string; due: string; space?: string }[]; unread: number };
-/** Today's classes, deadlines in the next 7 days and unread announcements, from the engine's rows. */
-export function gucNow(d: { slots: GucSlot[]; deadlines: HubDeadline[]; unread: number }, now: number): GucNow {
+export type GucNow = { schedule: { time: string; title: string; where?: string }[]; deadlines: { title: string; due: string; space?: string }[]; unread: number; attendance?: string[] };
+/** Each course GUC has warned about attendance, as one short line ("MATH 301: Warning 2, absent 5 of 16"), worst first:
+ *  always in front of the AI, so it keeps track without being asked. */
+export function attendanceNow(list: GucAttendance[]): string[] {
+  return list.filter((a) => a.warning > 0).sort((x, y) => y.warning - x.warning)
+    .map((a) => `${a.code || attendanceName(a)}: ${a.warning >= 3 ? "last warning (one more absence can bar the exam)" : a.level || "warning " + a.warning}${a.total ? `, absent ${a.absent} of ${a.total}` : ""}`);
+}
+/** Today's classes, deadlines in the next 7 days, unread announcements and attendance warnings, from the engine's rows. */
+export function gucNow(d: { slots: GucSlot[]; deadlines: HubDeadline[]; unread: number; attendance?: GucAttendance[] }, now: number): GucNow {
   const today = cairo(now), name = DAYS[today.weekday];
   return {
     schedule: d.slots.filter((s) => s.day.toLowerCase() === name).sort((a, b) => a.period - b.period).map((s) => ({ time: s.start, title: `${s.code} ${s.type}`.trim(), ...(s.location ? { where: s.location } : {}) })),
     deadlines: d.deadlines.filter((x) => Date.parse(x.due) >= now && Date.parse(x.due) <= now + 7 * 864e5).sort((a, b) => Date.parse(a.due) - Date.parse(b.due)).slice(0, 8)
       .map((x) => ({ title: clip(x.title + (x.place ? " · " + x.place : ""), 80), due: x.timeKnown === false ? relativeDue(x.due, now).date.replace(/, \d{2}:\d{2}$/, "") : relativeDue(x.due, now).date, ...(x.code ? { space: x.code } : {}) })),
     unread: d.unread,
+    ...(d.attendance && attendanceNow(d.attendance).length ? { attendance: attendanceNow(d.attendance) } : {}),
   };
 }
 

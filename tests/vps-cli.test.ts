@@ -1,24 +1,27 @@
-// Claude Code / Codex installed and signed in on the VPS by Clem (desktop/engine/vps/cli.ts), on a fake server.
+// Claude Code, Codex and Gemini (Google's Antigravity agent) installed and signed in on the VPS by Clem (desktop/engine/vps/cli.ts), on a fake server.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeCode, claudeSignIn, cliSignedIn, codexSignIn, geminiCode, geminiSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
-import { GEMINI_REFUSED, aiReason, cliComplete, geminiEnv, geminiRefused, ownCliEnv, watchedComplete } from "../desktop/engine/vps/headless.ts";
+import { agyLanding, antigravitySignIn, claudeCode, claudeSignIn, cliSignedIn, codexSignIn, inWorker, installCli } from "../desktop/engine/vps/cli.ts";
+import { aiReason, cliComplete, ownCliEnv, watchedComplete } from "../desktop/engine/vps/headless.ts";
 import type { LiveCommand } from "../desktop/engine/vps/link.ts";
 import { FakeVps } from "./vps-fake.ts";
 
 /** A server whose interactive commands print `lines` and end with `exit` once `wait` is typed (or at once). */
 class Server extends FakeVps {
-  typed: string[] = []; lines: string[] = []; wait?: RegExp; ptys: boolean[] = []; status = "";
+  typed: string[] = []; lines: string[] = []; wait?: RegExp; ptys: boolean[] = []; status = ""; listeners: ((s: string) => void)[] = [];
+  /** A line printed later by the running interactive command. */
+  say(line: string) { for (const f of this.listeners) f(line); }
   override async exec(cmd: string, o: { cap?: number } = {}) {
-    if (/auth status|login status|oauth_creds/.test(cmd)) { this.commands.push(cmd); return { code: this.status ? 0 : 1, stdout: this.status, stderr: "" }; }
+    if (/auth status|login status|agy status/.test(cmd)) { this.commands.push(cmd); return { code: this.status ? 0 : 1, stdout: this.status, stderr: "" }; }
+    if (/agy install/.test(cmd)) { this.commands.push(cmd); return { code: 0, stdout: "installed 1.5.2\n", stderr: "" }; }
     return super.exec(cmd, o);
   }
   async interactive(cmd: string, o: { pty?: boolean } = {}): Promise<LiveCommand> {
     this.commands.push(cmd); this.ptys.push(!!o.pty);
-    const listeners: ((s: string) => void)[] = [];
+    const listeners = this.listeners = [] as ((s: string) => void)[];
     let end!: (n: number) => void; const done = new Promise<number>((r) => { end = r; });
     setTimeout(() => { for (const l of this.lines) for (const f of listeners) f(l); if (!this.wait) end(0); }, 5);
     return { onData: (f) => listeners.push(f), write: (t) => { this.typed.push(t); if (this.wait?.test(t)) end(0); }, done, close: () => end(-1) };
@@ -28,9 +31,10 @@ class Server extends FakeVps {
 test("commands run inside the worker's container with Clem's own CLI folders, or beside it with systemd", () => {
   const d = inWorker("docker", "u1", "claude --version");
   assert.match(d, /^cd ~\/clem\/u1\/worker && docker compose exec -T worker sh -c '/);
-  assert.match(d, /D=\/data; export HOME="\$D\/home" CLAUDE_CONFIG_DIR="\$D\/claude" CODEX_HOME="\$D\/codex"/);
+  assert.match(d, /D=\/data; W=\/app\/index.cjs; export HOME="\$D\/home" CLAUDE_CONFIG_DIR="\$D\/claude" CODEX_HOME="\$D\/codex"/);
   assert.match(inWorker("docker", "u1", "x", { tty: true }), /docker compose exec worker sh/);
-  assert.match(inWorker("systemd", "u1", "x"), /^cd ~\/clem\/u1\/worker && D="\$PWD\/state" sh -c '/);
+  assert.match(inWorker("systemd", "u1", "x"), /^cd ~\/clem\/u1\/worker && D="\$PWD\/state" W="\$PWD\/index.cjs" sh -c '/);
+  assert.match(d, /D=\/data; W=\/app\/index.cjs;/, "the worker's own program, for Gemini's agent");
 });
 
 test("install uses the official npm package once, and sign-in status reads each CLI's own answer", async () => {
@@ -100,42 +104,65 @@ test("the worker prefers the CLI Clem installed, with its own sign-in folders", 
   } finally { await rm(data, { recursive: true, force: true }); }
 });
 
-test("Gemini installs from Google's package and signs in through a window here: the page's code goes to the server", async () => {
+test("Gemini is Google's Antigravity agent on the server: installed by the worker, signed in through Google's page here", async () => {
   const s = new Server();
-  await installCli(s, "docker", "u1", "gemini");
-  assert.match(s.commands.at(-1)!, /@google\/gemini-cli@latest/);
-  assert.equal(geminiCode("https://codeassist.google.com/authcode?code=4%2F0Abc&state=x"), "4/0Abc");
-  assert.equal(geminiCode("https://evil.example/authcode?code=a"), null);
-  assert.equal(geminiCode("https://accounts.google.com/o/oauth2/v2/auth?code=a"), null);
-  // The link wraps across the terminal's lines; Clem joins it.
-  s.lines = ["Please visit the following URL to authorize the application:\n\nhttps://accounts.google.com/o/oauth2/v2/auth?redirect_uri=x&\nstate=abc\n\n", "Enter the authorization code: "];
-  s.wait = /CODE123/;
-  let landed!: (url: string) => void, closed = false;
-  const c = await geminiSignIn(s, "docker", "u1", (_url, l) => { landed = l; return () => { closed = true; }; });
-  assert.equal(c.url, "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=x&state=abc");
-  assert.ok(s.commands.some((x) => /NO_BROWSER=true gemini/.test(x)));
-  assert.ok(s.commands.some((x) => /oauth-personal/.test(x)), "Sign in with Google is chosen up front");
-  landed("https://codeassist.google.com/authcode?code=CODE123&state=abc");
-  assert.deepEqual(s.typed, ["CODE123\r"]);
-  assert.equal(await c.done, false); // the fake server never saved a sign-in
+  await installCli(s, "docker", "u1", "antigravity");
+  assert.match(s.commands.at(-1)!, /CLEM_DATA="\$D" node "\$W" agy install/);
+  assert.doesNotMatch(s.commands.join("\n"), /gemini-cli|npm install/, "never Gemini CLI");
+  s.status = "signed-in\n";
+  assert.equal(await cliSignedIn(s, "docker", "u1", "antigravity"), true);
+  s.status = "";
+  assert.equal(await cliSignedIn(s, "docker", "u1", "antigravity"), false);
+
+  assert.equal(agyLanding("http://127.0.0.1:41234/?state=s&code=4%2F0Abc&scope=x"), "http://127.0.0.1:41234/?state=s&code=4%2F0Abc&scope=x");
+  assert.equal(agyLanding("http://127.0.0.1:41234/?state=s"), null);
+  assert.equal(agyLanding("https://evil.example/?state=s&code=a"), null);
+  assert.equal(agyLanding("http://localhost.evil.example:41234/?state=s&code=a"), null);
+
+  const page = "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=http%3A%2F%2F127.0.0.1%3A41234%2F&state=s";
+  s.lines = ["CLEM_AGY_SIGNIN " + page + "\n"]; s.wait = /never/;
+  let landed!: (url: string) => void, opened = "", closed = false;
+  const c = await antigravitySignIn(s, "docker", "u1", (url, l) => { opened = url; landed = l; return () => { closed = true; }; });
+  assert.equal(c.url, page);
+  assert.equal(opened, page);
+  assert.ok(s.commands.some((x) => /node "\$W" agy login/.test(x)));
+  landed("http://127.0.0.1:41234/?state=s&code=C0DE");
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(s.commands.some((x) => /agy fetch .*http:\/\/127\.0\.0\.1:41234\/\?state=s&code=C0DE/.test(x)), "the page's return address goes to the agent on the server");
+  s.say("CLEM_AGY_DONE ok\n");
+  assert.equal(await c.done, true);
   assert.equal(closed, true);
 });
 
-test("the worker answers with Gemini when that is the CLI Clem signed in on the server", async () => {
+test("Gemini signed in already: no page opens", async () => {
+  const s = new Server();
+  s.lines = ["CLEM_AGY_DONE ok\n"];
+  let opened = false;
+  const c = await antigravitySignIn(s, "docker", "u1", () => { opened = true; return () => {}; });
+  assert.equal(c.url, "");
+  assert.equal(await c.done, true);
+  assert.equal(opened, false);
+});
+
+test("the worker answers with Gemini's agent first when Clem set it up on the server, then any signed-in CLI", async () => {
   const data = await mkdtemp(join(tmpdir(), "clem-cli-"));
   try {
     await mkdir(join(data, "cli", "node_modules", ".bin"), { recursive: true });
-    await writeFile(join(data, "cli", "node_modules", ".bin", "gemini"), "");
-    const seen: string[] = [];
-    const probe = async (cmd: string) => { seen.push(cmd); return true; };
-    assert.equal((await cliComplete({ data, probe }))?.name, "gemini");
-    assert.equal(seen[0], "gemini", "Clem's own sign-in comes before a CLI on the server's PATH");
+    await writeFile(join(data, "cli", "node_modules", ".bin", "claude"), "");
+    const agy = { installed: () => true, signedIn: async () => true, complete: async () => "from gemini" };
+    const c = await cliComplete({ data, probe: async () => true, signedIn: async () => true, agy });
+    assert.equal(c?.name, "antigravity");
+    assert.deepEqual(c?.names, ["antigravity", "claude", "codex"]);
+    assert.equal(await c!.complete({ system: "s", user: "u" }), "from gemini");
+    // Installed but signed out: the next one answers.
+    const out = await cliComplete({ data, probe: async () => true, signedIn: async () => true, agy: { ...agy, signedIn: async () => false } });
+    assert.deepEqual(out?.names, ["claude", "codex"]);
   } finally { await rm(data, { recursive: true, force: true }); }
 });
 
 test("a failing AI is told in one short line, whichever CLI it is", () => {
-  const gemini = "Error authenticating: FatalAuthenticationError: Manual authorization is required but the current session is non-interactive.\n    at initOauthClient (file:///x.js:1:1)\n{\n  exitCode: 41\n}";
-  assert.match(aiReason(gemini), /^Error authenticating: .*Manual authorization is required/);
+  const failed = "Error authenticating: FatalAuthenticationError: Manual authorization is required but the current session is non-interactive.\n    at initOauthClient (file:///x.js:1:1)\n{\n  exitCode: 41\n}";
+  assert.match(aiReason(failed), /^Error authenticating: .*Manual authorization is required/);
   assert.equal(aiReason("Invalid API key · Fix external API key"), "Invalid API key · Fix external API key");
   assert.match(aiReason("ERROR: Reconnecting... 1/5\nERROR: unexpected status 401 Unauthorized"), /^ERROR/);
   assert.equal(aiReason(""), "it failed without saying why");
@@ -153,26 +180,17 @@ test("the worker keeps its AI's last failure until an answer works again (shown 
   assert.equal(w.error(), undefined);
 });
 
-test("Gemini runs headless in the worker's folder: trusted, no browser (else it stops with exit 55 on every answer)", () => {
-  const env = geminiEnv({ HOME: "/data/home", PATH: "/bin" });
-  assert.equal(env.GEMINI_CLI_TRUST_WORKSPACE, "true");
-  assert.equal(env.NO_BROWSER, "true");
-  assert.equal(env.HOME, "/data/home");
-});
-
-test("the worker answers only with a CLI that is signed in, and says plainly when Google refuses Gemini", async () => {
+test("the worker answers only with a CLI that is signed in", async () => {
   const data = await mkdtemp(join(tmpdir(), "clem-cli-"));
   try {
     await mkdir(join(data, "cli", "node_modules", ".bin"), { recursive: true });
-    for (const n of ["claude", "gemini"]) await writeFile(join(data, "cli", "node_modules", ".bin", n), "");
-    // Both installed; Claude Code was never signed in on the server (the real VPS, 2026-11-21): Gemini alone answers.
-    const c = await cliComplete({ data, probe: async () => true, signedIn: async (cmd) => cmd === "gemini" });
-    assert.equal(c?.name, "gemini");
-    assert.deepEqual(c?.names, ["gemini"]);
-    assert.equal(await cliComplete({ data, probe: async () => true, signedIn: async () => false }), undefined, "none signed in: no AI, so Settings offers the sign-in");
+    for (const n of ["claude", "codex"]) await writeFile(join(data, "cli", "node_modules", ".bin", n), "");
+    // Both installed; Claude Code was never signed in on the server (the real VPS, 2026-11-21): Codex alone answers.
+    const none = { installed: () => false, signedIn: async () => false, complete: async () => "" };
+    const c = await cliComplete({ data, probe: async () => true, signedIn: async (cmd) => cmd === "codex", agy: none });
+    assert.equal(c?.name, "codex");
+    assert.deepEqual(c?.names, ["codex"]);
+    assert.equal(await cliComplete({ data, probe: async () => true, signedIn: async () => false, agy: none }), undefined, "none signed in: no AI, so Settings offers the sign-in");
   } finally { await rm(data, { recursive: true, force: true }); }
-  const refused = "Error: {\n ineligibleTiers: [ { reasonCode: 'UNSUPPORTED_CLIENT', reasonMessage: 'This client is no longer supported for Gemini Code Assist for individuals.' } ]\n    at throwIneligibleOrProjectIdError (file:///x.js:1:1)";
-  assert.ok(geminiRefused(refused));
-  assert.equal(aiReason(refused), GEMINI_REFUSED);
   assert.equal(aiReason("Not logged in · Please run /login"), "Claude Code on your VPS is signed out.");
 });

@@ -1,11 +1,13 @@
 // The model on the VPS worker (docs/GUC-VPS-ENGINE.md "Model on the VPS"), in order: an API key the person typed for
 // the worker (Clem never reads keys from their CLIs), else a CLI Clem installed and signed in to on the VPS from Settings
-// (or one they put there themselves: `claude`, `codex` or `gemini`), else none: sweeps run on rules alone and Telegram stays with the desktop.
+// (Claude Code, Codex, or Gemini through Google's own Antigravity agent, ./antigravity.ts; or a `claude` or `codex` they put
+// there themselves), else none: sweeps run on rules alone and Telegram stays with the desktop.
 // The agent that answers with it is desktop/engine/vps/agent.ts (the window's loop, actions and workspace).
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
+import { agySignedIn, antigravityComplete, installedAgy } from "./antigravity.ts";
 
 export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
 export type ModelKey = { provider: "anthropic"; key: string; model?: string };
@@ -27,7 +29,7 @@ const run = (cmd: string, args: string[], input: string, timeout = 180_000, env:
   const t = setTimeout(() => { p.kill(); reject(Error("The model took too long.")); }, timeout);
   p.stdout.on("data", (b) => { out += b; }); p.stderr.on("data", (b) => { err += b; });
   p.on("error", (e) => { clearTimeout(t); reject(e); });
-  // A CLI says why it failed on stderr or, like Claude Code and Gemini in print mode, on stdout: either is kept, so
+  // A CLI says why it failed on stderr or, like Claude Code in print mode, on stdout: either is kept, so
   // Settings shows the real reason ("Invalid API key", "quota exceeded") instead of "failed".
   p.on("close", (code) => { clearTimeout(t); code === 0 ? resolve(out.trim()) : reject(Error(failure(cmd, code, err, out))); });
   p.stdin.end(input);
@@ -42,13 +44,8 @@ export function failure(cmd: string, code: number | null, err: string, out: stri
 export function ownCliEnv(data: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return { ...base, HOME: join(data, "home"), CLAUDE_CONFIG_DIR: join(data, "claude"), CODEX_HOME: join(data, "codex"), PATH: join(data, "cli", "node_modules", ".bin") + delimiter + (base.PATH || "") };
 }
-/** Google refusing Gemini CLI for the person's plan (free Gemini Code Assist for individuals, since November 2026):
- *  signing in again can't fix it, so Clem sets up Claude or ChatGPT on the VPS instead. */
-export const geminiRefused = (message: string) => /UNSUPPORTED_CLIENT|no longer supported for Gemini Code Assist|^Google no longer lets Gemini CLI/i.test(String(message || ""));
-export const GEMINI_REFUSED = "Google no longer lets Gemini CLI use your Gemini plan on a server. Set up Claude or ChatGPT on your VPS instead.";
 /** A model failure as one short line for Settings: the CLI's last meaningful line (stack frames and colour codes left out). */
 export function aiReason(message: string): string {
-  if (geminiRefused(message)) return GEMINI_REFUSED;
   if (/^\s*Not logged in\b/im.test(String(message || ""))) return "Claude Code on your VPS is signed out.";
   const lines = String(message || "").replace(/\x1b\[[0-9;]*m/g, "").split("\n").map((l) => l.trim()).filter((l) => l && !/^at\s|^\{$|^\}$|^exitCode:/.test(l));
   return (lines.find((l) => /error|not |can't|cannot|required|denied|expired|invalid|limit|log ?in|sign/i.test(l)) || lines[0] || "it failed without saying why").slice(0, 180);
@@ -64,11 +61,10 @@ export function watchedComplete(base: Complete, log?: (m: string) => void): { co
     error: () => last,
   };
 }
-/** How the worker runs Gemini headless: no browser, and its working folder trusted (see cliComplete). */
-export const geminiEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({ ...env, NO_BROWSER: "true", GEMINI_CLI_TRUST_WORKSPACE: "true" });
-/** A CLI that answers one prompt on stdin: Claude Code (`claude -p`), Codex (`codex exec -`) or Gemini (`gemini -p`). The one Clem
- *  installed under `data` (and signed in to from Settings) first, else one the person put on the server's PATH. */
-export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; signedIn?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean> } = {}): Promise<{ name: string; names: string[]; complete: Complete } | undefined> {
+/** A CLI that answers one prompt on stdin: Claude Code (`claude -p`) or Codex (`codex exec -`), and Gemini through the
+ *  Antigravity agent Clem installed (./antigravity.ts). The ones Clem installed under `data` (and signed in to from
+ *  Settings) first, else one the person put on the server's PATH. */
+export async function cliComplete(o: { data?: string; probe?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; signedIn?: (cmd: string, env: NodeJS.ProcessEnv) => Promise<boolean>; /** Tests: Gemini's agent. */ agy?: { installed: () => boolean; signedIn: () => Promise<boolean>; complete: Complete } } = {}): Promise<{ name: string; names: string[]; complete: Complete } | undefined> {
   const probe = o.probe || ((cmd: string, env: NodeJS.ProcessEnv) => run(cmd, ["--version"], "", 10_000, env).then(() => true, () => false));
   // Installed is not enough: a CLI that isn't signed in answers every prompt with "Not logged in", after which the
   // next one is tried, so each step pays for it and Settings shows a reason that isn't the real one.
@@ -76,18 +72,17 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
   const own = o.data ? ownCliEnv(o.data) : undefined;
   const has = (cmd: string) => (own ? existsSync(join(o.data!, "cli", "node_modules", ".bin", cmd)) : false);
   // The one Clem signed in on this server comes first (only that one has a sign-in under `data`), then one on PATH.
-  const order = (["claude", "codex", "gemini"] as const).slice().sort((a, b) => Number(has(b)) - Number(has(a)));
+  const order = (["claude", "codex"] as const).slice().sort((a, b) => Number(has(b)) - Number(has(a)));
   const found: { name: string; complete: Complete }[] = [];
+  // Gemini: Google's Antigravity agent Clem installed and signed in on this server. Set up only when it is the person's
+  // AI (Settings), so it comes first.
+  const agy = o.agy || (o.data ? { installed: () => !!installedAgy(o.data!), signedIn: () => agySignedIn(o.data!), complete: antigravityComplete(o.data) } : undefined);
+  if (agy?.installed() && await agy.signedIn().catch(() => false)) found.push({ name: "antigravity", complete: agy.complete });
   for (const name of order) {
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env)) || !(await signedIn(name, env).catch(() => false))) continue;
-    // Gemini CLI: the prompt comes on stdin (it reads stdin, then the -p text); answers in plain text, no tools asked.
-    // Headless, it refuses to run in a folder no one trusted (exit 55, "not running in a trusted directory"), and the
-    // worker's folder never is: trusting it by the environment works on every version (older ones ignore it; the
-    // --skip-trust flag would fail on them).
-    if (name === "gemini") found.push({ name, complete: ({ system, user }) => run("gemini", ["--output-format", "text", "-p", "Answer the request above."], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, geminiEnv(env)) });
     // A long system prompt (the agent's guides) goes on stdin with the message: one argument may not pass 128 KB on Linux.
-    else if (name === "claude") found.push({ name, complete: ({ system, user }) => Buffer.byteLength(system) > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) });
+    if (name === "claude") found.push({ name, complete: ({ system, user }) => Buffer.byteLength(system) > 60_000 ? run("claude", ["-p", "--output-format", "text"], `<instructions>\n${system}\n</instructions>\n\n${user}`, STEP_MS, env) : run("claude", ["-p", "--output-format", "text", "--append-system-prompt", system], user, STEP_MS, env) });
     else found.push({ name, complete: ({ system, user }) => run("codex", ["exec", "--skip-git-repo-check", "-"], system + "\n\n" + user, STEP_MS, env) });
   }
   if (!found.length) return undefined;
@@ -104,8 +99,8 @@ export async function cliComplete(o: { data?: string; probe?: (cmd: string, env:
     throw reason;
   } };
 }
-/** Whether a CLI on this server holds a sign-in it can answer with: Claude Code and Codex say so themselves; Gemini
- *  keeps Google's sign-in in ~/.gemini/oauth_creds.json. An API key in the environment counts too. */
+/** Whether a CLI on this server holds a sign-in it can answer with: Claude Code and Codex say so themselves. An API key in
+ *  the environment counts too. */
 export async function cliSignedInHere(name: string, env: NodeJS.ProcessEnv): Promise<boolean> {
   if (name === "claude") {
     if (env.ANTHROPIC_API_KEY || env.CLAUDE_CODE_OAUTH_TOKEN) return true;
@@ -117,6 +112,5 @@ export async function cliSignedInHere(name: string, env: NodeJS.ProcessEnv): Pro
     const out = await run("codex", ["login", "status"], "", 20_000, env).then((o) => o, (e: Error) => "not logged in " + e.message);
     return /logged in/i.test(out) && !/not logged in/i.test(out);
   }
-  if (name === "gemini") return !!(env.GEMINI_API_KEY || env.GOOGLE_API_KEY) || existsSync(join(env.HOME || "", ".gemini", "oauth_creds.json"));
   return true;
 }

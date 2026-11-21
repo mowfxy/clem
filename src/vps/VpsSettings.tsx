@@ -180,7 +180,7 @@ function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: (
  *  the one sign-in, and a retry. */
 function ServerAi({ w }: { w: VpsStatus["worker"] }) {
   const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false), [sent, setSent] = useState(false);
-  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : s?.cli === "gemini" ? "Gemini" : "Claude";
+  const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : s?.cli === "antigravity" ? "Gemini" : "Claude";
   // Clem picks the AI this PC uses (Gemini, Claude or ChatGPT): a retry never repeats one the person doesn't use.
   // Gemini refused by Google, or Claude signed out on the server: Claude is what gets signed in there.
   const claude = !!w.aiError && /^Google no longer|signed out/.test(w.aiError);

@@ -117,7 +117,7 @@ export function relativeDue(due: string | number, now: number): { label: string;
 }
 
 // ---------- Routes: #/app/guc/<tab>/<id>/<sub> ----------
-export const HUB_TABS = ["schedule", "announcements", "cms", "grades", "exams", "deadlines", "mail"] as const;
+export const HUB_TABS = ["schedule", "announcements", "cms", "grades", "attendance", "exams", "deadlines", "mail"] as const;
 export type HubTab = (typeof HUB_TABS)[number];
 export type HubRoute = { tab: HubTab; id?: string; sub?: string };
 export function parseHubRoute(route: string): HubRoute | null {
@@ -191,4 +191,13 @@ export function dueGroup(due: string | number, now: number): "Today" | "Tomorrow
   const start = weekStart(now);
   if (d < addDays(start, 7)) return "This week";
   return d < addDays(start, 14) ? "Next week" : "Later";
+}
+
+/** An attendance course's own name: the portal writes "Winter 2026 - CPS 402 - Communication & Presentation Skills (A2)";
+ *  the season and the code are said elsewhere, so only the name is kept. */
+export function attendanceName(a: { course: string; code?: string }) {
+  const code = (a.code || "").replace(/\s+/g, "").toLowerCase();
+  const parts = a.course.split(/\s+[-–]\s+/).map((p) => p.trim()).filter(Boolean)
+    .filter((p) => !/^(winter|spring|summer|fall|autumn)\s+\d{4}$/i.test(p) && (!code || p.replace(/\s+/g, "").toLowerCase() !== code));
+  return parts.join(" - ") || a.course;
 }

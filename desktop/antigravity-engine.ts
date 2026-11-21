@@ -15,6 +15,16 @@ import {newer} from './engines.ts';
 export const ANTIGRAVITY_REGISTRY = 'https://raw.githubusercontent.com/agentclientprotocol/registry/main/antigravity-acp/agent.json';
 const PLATFORMS: Record<string, {key: string; file: string}> = {x64: {key: 'windows-x86_64', file: 'x86_64'}, arm64: {key: 'windows-aarch64', file: 'arm64'}};
 export const ANTIGRAVITY_FILES = {server: 'agy_acp_server.exe', harness: 'localharness_external.exe'};
+/** The agent's two ways of handing out its Google sign-in page: through BROWSER (Clem's helper), or printed. */
+export const ANTIGRAVITY_URL_MARKER = '__CLEM_ANTIGRAVITY_URL__', ANTIGRAVITY_URL_PRINTED = 'Open the following link to authenticate the ACP server: ';
+/** Google's sign-in page, as the agent builds it, with a loopback return address on the machine it runs on. */
+export function googleSignInUrl(text: string) {
+  try {
+    const url = new URL(text.trim());
+    const back = url.searchParams.get('redirect_uri') || '';
+    return url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth' && !url.username && !url.password && /^http:\/\/127\.0\.0\.1:\d{4,5}\/$/.test(back) ? url.href : null;
+  } catch { return null; }
+}
 /** The largest download accepted (Google's Windows archive is about 130 MB). */
 const MAX_ARCHIVE = 1_000_000_000;
 

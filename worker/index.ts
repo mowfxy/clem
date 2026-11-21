@@ -25,6 +25,7 @@ import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
 import { WORKER_PROTOCOL } from "../core/vps/types.ts";
 import { StudyReminders } from "../desktop/study-reminders.ts";
+import { agyCommand } from "../desktop/engine/vps/antigravity.ts";
 
 /** The endpoint and behaviour this bundle has (core/vps/types.ts WORKER_PROTOCOL): a desktop expecting another refreshes it. */
 export const WORKER_VERSION = WORKER_PROTOCOL;
@@ -234,8 +235,11 @@ export function cairoWall(t: number) {
   return new Date(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute));
 }
 
-// Run directly (node index.cjs), not when imported by a test.
-if (typeof require !== "undefined" && require.main === module) {
+// Run directly (node index.cjs), not when imported by a test. `node index.cjs agy …`: the desktop setting up Gemini
+// (Google's Antigravity agent) in this worker's data folder over SSH (desktop/engine/vps/antigravity.ts).
+if (typeof require !== "undefined" && require.main === module && process.argv[2] === "agy") {
+  agyCommand(process.argv.slice(3), process.env.CLEM_DATA || join(process.cwd(), "state")).then((code) => process.exit(code), (e) => { console.log("CLEM_AGY_DONE failed " + String((e as Error)?.message || e).replace(/\s+/g, " ").slice(0, 300)); process.exit(1); });
+} else if (typeof require !== "undefined" && require.main === module) {
   startWorker().then(({ stop }) => {
     for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => void stop().finally(() => process.exit(0)));
   }, (e) => { console.error("[worker] could not start:", (e as Error).message); process.exit(1); });
