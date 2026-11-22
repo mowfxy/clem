@@ -6,7 +6,7 @@ import {extname, join, relative, resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {AcpClosed, AcpConnection, AcpError} from './acp.ts';
 import {endTreeNow} from './agent-sweep.ts';
-import {ANTIGRAVITY_URL_MARKER, ANTIGRAVITY_URL_PRINTED, googleSignInUrl, type AntigravityEngine} from './antigravity-engine.ts';
+import {ANTIGRAVITY_URL_MARKER, ANTIGRAVITY_URL_PRINTED, googleSignInUrl, replyProblem, type AntigravityEngine} from './antigravity-engine.ts';
 import {inlinePictures, keepingAlive, kinetraMcp, NATIVE_NOTE, SERVER_NAME, type NativeEndpoint} from './kinetra-mcp.ts';
 import {SessionLost, Transient, UsageLimit} from './kinetra-turn.ts';
 import {describeTool, StepCounter} from './tool-status.ts';
@@ -119,30 +119,6 @@ export function antigravityUsage(quotas: AntigravityQuota[]): UsageSnapshot | un
   return {rateLimits: {primary: shape(windows[0]), ...(windows[1] ? {secondary: shape(windows[1])} : {})}};
 }
 
-/**
- * What a turn that ended with this text means. The agent reports a failed turn as a message of its own, not as an
- * error: an exhausted plan ("Usage Limit Reached"), a model error ("Agent execution error: …") and a connection it could
- * not get back ("Agent connection was lost …").
- */
-export function replyProblem(text: string): {kind: 'limit' | 'error' | 'transient' | 'signed-out'; message: string; resetsAt?: number} | null {
-  const t = text.trim();
-  if (/^Usage Limit Reached\b/.test(t)) {
-    const delay = t.match(/(?:in|after)\s+((?:\d+\s+(?:day|hour|minute|second)s?(?:,?\s*(?:and\s+)?)?)+)/i)?.[1];
-    let seconds = 0;
-    for (const [, n, unit] of (delay || '').matchAll(/(\d+)\s+(day|hour|minute|second)/gi)) seconds += Number(n) * ({day: 86400, hour: 3600, minute: 60, second: 1} as Record<string, number>)[unit.toLowerCase()];
-    return {kind: 'limit', message: 'Your Google AI plan has no Gemini usage left right now. Try again later or pick another model.', ...(seconds ? {resetsAt: Date.now() + seconds * 1000} : {})};
-  }
-  if (/^Agent connection was lost\b/.test(t)) return {kind: 'transient', message: 'Gemini lost its connection to Google. Check your internet connection, then send your message again.'};
-  if (/^Agent execution error:/.test(t)) {
-    if (/RESOURCE_EXHAUSTED|QUOTA|rate limit|\b429\b/i.test(t)) return {kind: 'limit', message: 'Your Google AI plan has no Gemini usage left right now. Try again later or pick another model.'};
-    if (/UNAUTHENTICATED|\b401\b|invalid_grant|sign in|logged out/i.test(t)) return {kind: 'signed-out', message: 'Sign in to Gemini again in Settings → Models.'};
-    if (/UNAVAILABLE|\b50[234]\b|overloaded|DEADLINE_EXCEEDED|timed? ?out|connection/i.test(t)) return {kind: 'transient', message: 'Gemini is busy right now. Try again in a moment.'};
-    if (/SUBSCRIPTION_REQUIRED|not eligible|ineligible/i.test(t)) return {kind: 'error', message: 'Google says this account has no Gemini plan. Check your Google AI plan, or pick another model.'};
-    return {kind: 'error', message: 'Gemini could not complete this request. Check Gemini in Settings → Models.'};
-  }
-  return null;
-}
-
 /** What the model is thinking about, from its thought text so far: the heading of its latest thought, as Gemini writes them. */
 export function thoughtStatus(text: string) {
   const heading = [...text.matchAll(/\*\*([^*\n]{3,80})\*\*/g)].at(-1)?.[1]?.trim();
@@ -193,7 +169,7 @@ const PROCESS_SESSIONS = 40;
 
 class SignedOut extends Error {}
 const URL_MARKER = ANTIGRAVITY_URL_MARKER, URL_PRINTED = ANTIGRAVITY_URL_PRINTED;
-export {googleSignInUrl};
+export {googleSignInUrl, replyProblem};
 const signedOut = /authentication required|not authenticated|logged out|sign in again|unauthenticated|invalid_grant|onboarding failed/i;
 function friendly(detail: string) {
   if (signedOut.test(detail)) return 'Sign in to Gemini again in Settings → Models.';

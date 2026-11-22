@@ -7,16 +7,16 @@
 // This file runs inside the worker. The desktop drives it over SSH as `node index.cjs agy <install|login|status|fetch>`
 // (worker/index.ts), and the worker answers with `antigravityComplete`.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, sep } from "node:path";
 import { Readable } from "node:stream";
 import { rootCertificates } from "node:tls";
 import { pipeline } from "node:stream/promises";
 import { Unzip, UnzipInflate } from "fflate";
 import { AcpConnection } from "../../acp.ts";
-import { ANTIGRAVITY_REGISTRY, ANTIGRAVITY_URL_MARKER, ANTIGRAVITY_URL_PRINTED, googleSignInUrl } from "../../antigravity-engine.ts";
+import { ANTIGRAVITY_REGISTRY, ANTIGRAVITY_URL_MARKER, ANTIGRAVITY_URL_PRINTED, googleSignInUrl, replyProblem } from "../../antigravity-engine.ts";
 import type { Complete } from "./headless.ts";
 
 const PLATFORMS: Record<string, { key: string; file: string }> = { x64: { key: "linux-x86_64", file: "x86_64" }, arm64: { key: "linux-aarch64", file: "arm64" } };
@@ -114,18 +114,19 @@ export async function installAgy(data: string, o: { fetch?: typeof fetch; arch?:
   return installedAgy(data)!;
 }
 
-/** The agent's own folders, under the worker's data folder: its sign-in and settings (GEMINI_HOME), its temporary files. */
+/** The agent's own folders, under the worker's data folder: its sign-in and settings (GEMINI_HOME), its temporary files
+ *  (one folder per running agent, under tmpRoot: an agent never shares it, and one starting never wipes another's). */
 const homeOf = (data: string) => join(data, "antigravity");
-const tempOf = (data: string) => join(data, "tmp", "agy");
+const tmpRoot = (data: string) => join(data, "tmp", "agy");
 /** Only what the agent needs: an API key or Google Cloud setting in the environment would bypass the plan. Its sign-in
  *  page goes through BROWSER, Clem's helper, which prints it on stderr for Clem instead of opening anything. */
-export function agyEnv(data: string, base: NodeJS.ProcessEnv = process.env, harness?: string, certs?: string): NodeJS.ProcessEnv {
+export function agyEnv(data: string, base: NodeJS.ProcessEnv = process.env, harness?: string, certs?: string, temp = tmpRoot(data)): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of ["PATH", "LANG", "LC_ALL", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR"]) if (base[key]) env[key] = base[key];
   const helper = `process.stderr.write(${JSON.stringify(ANTIGRAVITY_URL_MARKER)}+JSON.stringify(process.argv[1])+"\\n",()=>process.exit(0))`;
   const quote = (s: string) => `'${s.replace(/'/g, `'"'"'`)}'`;
   return { ...env, ...(certs && !env.SSL_CERT_FILE ? { SSL_CERT_FILE: certs } : {}), HOME: join(data, "home"), GEMINI_HOME: homeOf(data), AGY_ACP_FORCE_FILE_STORAGE: "1", ...(harness ? { ANTIGRAVITY_HARNESS_PATH: harness } : {}), PYTHONUNBUFFERED: "1", NO_COLOR: "1",
-    BROWSER: [process.execPath, "-e", helper, "--", "%s"].map(quote).join(" "), TMPDIR: tempOf(data), TEMP: tempOf(data), TMP: tempOf(data) };
+    BROWSER: [process.execPath, "-e", helper, "--", "%s"].map(quote).join(" "), TMPDIR: temp, TEMP: temp, TMP: temp };
 }
 
 /** Where the agent finds the certificates it trusts for Google's servers. The worker's image (node:22-slim) has no
@@ -145,23 +146,68 @@ export async function caBundle(data: string, bundles = SYSTEM_BUNDLES): Promise<
 const reason = (e: unknown) => { const x = e as { message?: string; data?: { details?: unknown } }; const d = typeof x?.data?.details === "string" ? x.data.details : ""; return [x?.message || "", d].filter(Boolean).join(": "); };
 
 export class SignedOutAgy extends Error {}
-type Live = { acp: AcpConnection; child: ChildProcessWithoutNullStreams; sessions: number; text: Map<string, (t: string) => void>; idle?: ReturnType<typeof setTimeout> };
+type Live = { acp: AcpConnection; child: ChildProcessWithoutNullStreams; temp: string; sessions: string[]; text: Map<string, (t: string) => void>; at: number };
+
+// ---------- Processes ----------
+// Google's agent starts a helper (localharness, about 150 MB) for every conversation and keeps it until the agent itself
+// ends: there is no way to close one conversation. So each answer gets an agent of its own, ended with everything it
+// started once the answer is in (its own process group), and the next one is started then. Kept for the worker's whole
+// life, conversations piled up helpers until the server ran out of memory.
+const running = new Set<Live>();
+let exitHook = false;
+/** Ends the agent with its helpers (its process group), then removes its temporary folder and its conversations. */
+export async function stopAgy(live: Live, data: string) {
+  running.delete(live);
+  endGroup(live.child);
+  await new Promise<void>((resolve) => { if (live.child.exitCode !== null || live.child.signalCode !== null) return resolve(); const t = setTimeout(resolve, 5000); t.unref?.(); live.child.once("close", () => { clearTimeout(t); resolve(); }); });
+  await rm(live.temp, { recursive: true, force: true }).catch(() => {});
+  await forgetSessions(data, live.sessions).catch(() => {});
+}
+function endGroup(child: ChildProcessWithoutNullStreams) {
+  if (child.pid) try { process.kill(-child.pid, "SIGKILL"); } catch { /* not a group of its own (tests), or gone */ }
+  try { child.kill("SIGKILL"); } catch { /* gone */ }
+}
+/** The files Google's agent keeps for conversations Clem is done with (each answer is a conversation of its own). */
+async function forgetSessions(data: string, ids: string[]) {
+  if (!ids.length) return;
+  for (const folder of ["conversations", "brain"]) {
+    const base = join(homeOf(data), "antigravity-acp", folder);
+    for (const entry of await readdir(base).catch(() => [] as string[])) if (ids.some((id) => entry.includes(id))) await rm(join(base, entry), { recursive: true, force: true }).catch(() => {});
+  }
+}
+/** Temporary folders of agents that no longer run (a worker that was restarted, a command that was cut off). */
+async function sweepTemp(data: string) {
+  for (const name of await readdir(tmpRoot(data)).catch(() => [] as string[])) {
+    const dir = join(tmpRoot(data), name);
+    const pid = Number(await readFile(join(dir, "pid"), "utf8").catch(() => ""));
+    let alive = false;
+    if (pid > 0) try { process.kill(pid, 0); alive = true; } catch (e) { alive = (e as NodeJS.ErrnoException).code === "EPERM"; }
+    if (!alive) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 /** Starts the agent and signs it in: `login` gets Google's sign-in page when it asks for one, else that is "signed out". */
-export async function openAgy(data: string, login?: (url: string) => void, start = (cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string) => spawn(cmd, args, { cwd, env, stdio: "pipe" })): Promise<Live> {
+export async function openAgy(data: string, login?: (url: string) => void, start = (cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string) => spawn(cmd, args, { cwd, env, stdio: "pipe", detached: true })): Promise<Live> {
   const install = installedAgy(data);
   if (!install) throw new SignedOutAgy("Gemini isn't installed on your VPS.");
   const work = join(data, "work", "agy");
-  for (const d of [join(homeOf(data), "antigravity-acp"), work, join(data, "home")]) await mkdir(d, { recursive: true });
+  for (const d of [join(homeOf(data), "antigravity-acp"), work, join(data, "home"), tmpRoot(data)]) await mkdir(d, { recursive: true });
   // Only Google's own sign-in, chosen in its settings; never another app's hooks or MCP servers (this home is Clem's own).
   await writeFile(join(homeOf(data), "antigravity-acp", "settings.json"), JSON.stringify({ auth: { type: "oauth-personal" } }) + "\n");
-  await rm(tempOf(data), { recursive: true, force: true }).catch(() => {});
-  await mkdir(tempOf(data), { recursive: true });
+  await sweepTemp(data);
+  const temp = join(tmpRoot(data), randomBytes(6).toString("hex"));
+  await mkdir(temp, { recursive: true });
   // Google's harness ships beside the agent (as on Windows), which is told where it is.
   const harness = join(install.dir, "localharness_external");
-  const child = start(join(install.dir, install.cmd), install.args, agyEnv(data, process.env, existsSync(harness) ? harness : undefined, await caBundle(data)), work) as ChildProcessWithoutNullStreams;
+  let child: ChildProcessWithoutNullStreams;
+  try { child = start(join(install.dir, install.cmd), install.args, agyEnv(data, process.env, existsSync(harness) ? harness : undefined, await caBundle(data), temp), work) as ChildProcessWithoutNullStreams; }
+  catch (e) { await rm(temp, { recursive: true, force: true }).catch(() => {}); throw Error("Gemini on your VPS couldn't start: " + ((e as Error)?.message || "").slice(0, 200)); }
+  if (child.pid) await writeFile(join(temp, "pid"), String(child.pid)).catch(() => {});
   const acp = new AcpConnection(child);
-  const live: Live = { acp, child, sessions: 0, text: new Map() };
+  const live: Live = { acp, child, temp, sessions: [], text: new Map(), at: Date.now() };
+  running.add(live);
+  // Whatever happens to this process (a command that ends, a crash), the agents it started end with it.
+  if (!exitHook) { exitHook = true; process.once("exit", () => { for (const l of running) endGroup(l.child); }); }
   let failSignIn: (e: Error) => void = () => {}, shown = false, pending = "", tail = "";
   const signIn = new Promise<never>((_, reject) => { failSignIn = reject; });
   signIn.catch(() => {});
@@ -195,59 +241,99 @@ export async function openAgy(data: string, login?: (url: string) => void, start
     await Promise.race([acp.request("authenticate", { methodId: "oauth-personal" }, login ? 15 * 60_000 : 120_000), signIn]);
     return live;
   } catch (e) {
-    child.kill("SIGKILL");
+    await stopAgy(live, data);
     if (e instanceof SignedOutAgy) throw e;
     const m = reason(e);
-    if (/authentication required|not authenticated|unauthenticated|invalid_grant|sign in/i.test(m)) throw new SignedOutAgy("Gemini on your VPS is signed out. Set up the AI again in Settings.");
-    throw Error("Gemini on your VPS couldn't start: " + (m || tail.trim().split("\n").slice(-2).join(" ")).slice(0, 240));
+    if (/authentication required|not authenticated|unauthenticated|invalid_grant|sign in|onboarding failed/i.test(m)) throw new SignedOutAgy("Gemini on your VPS is signed out. Set up the AI again in Settings.");
+    throw Error("Gemini on your VPS couldn't start: " + (m || tail.trim().split("\n").slice(-2).join(" ") || "it stopped without saying why").slice(0, 240));
   }
 }
 
 /** Whether the agent on this server is installed and signed in (it starts, and asks for no sign-in page). */
-export async function agySignedIn(data: string) {
+export async function agySignedIn(data: string, start?: Parameters<typeof openAgy>[2]) {
   if (!installedAgy(data)) return false;
-  try { const live = await openAgy(data); live.child.kill("SIGKILL"); return true; } catch { return false; }
+  try { const live = await openAgy(data, undefined, start); await stopAgy(live, data); return true; } catch { return false; }
 }
 
-/** Idle this long, the agent is closed; it holds every session in memory, so it is also renewed after this many. */
-const IDLE_MS = 10 * 60_000, SESSIONS = 20, STEP_MS = 300_000;
-/** The worker's model through the agent: one session per request, its rules as the session's system prompt, no tools. */
-/** `keep` (the worker): started at once and kept open, not closed when idle; renewed at once after SESSIONS. */
-export function antigravityComplete(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean } = {}): Complete {
-  let live: Promise<Live> | null = null;
-  const ready = () => {
-    if (live) return live;
-    const opening = openAgy(data, undefined, o.start);
-    live = opening;
-    opening.then((l) => { l.child.on("close", () => { if (live === opening) live = null; }); }, () => { if (live === opening) live = null; });
-    return opening;
+/** One answer this long at most; a spare agent older than SPARE_AGE is replaced (it only ever waited, so nothing is lost). */
+const STEP_MS = 300_000, SPARE_AGE = 60 * 60_000;
+/** Answers at once at most (each is an agent and its helper); more wait their turn. */
+const AT_ONCE = 2;
+export type AgyModel = { complete: Complete; signedIn: () => Promise<boolean>; stop: () => Promise<void> };
+
+/** The worker's model through the agent: each answer is one conversation on an agent of its own (see "Processes"), its
+ *  rules as the conversation's system prompt, no tools. `keep` (the worker): one agent, started and signed in ahead,
+ *  always waits for the next answer, so an answer never waits for an agent to start. */
+export function antigravityModel(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean } = {}): AgyModel {
+  let spare: { live: Promise<Live>; at: number } | null = null, active = 0, stopped = false;
+  const queue: (() => void)[] = [];
+  const warm = () => {
+    if (stopped || spare) return spare?.live;
+    const live = openAgy(data, undefined, o.start);
+    const entry = { live, at: Date.now() };
+    spare = entry;
+    // One that ended while it waited (it crashed, or couldn't start) is started again for the next answer, not reused.
+    live.then((l) => l.child.once("close", () => { if (spare === entry) spare = null; }), () => { if (spare === entry) spare = null; });
+    return live;
   };
-  if (o.keep) ready().catch(() => {});
-  return async ({ system, user }) => {
-    const l = await ready();
-    clearTimeout(l.idle);
+  /** The spare agent for an answer (a new one when there is none, or it is too old), and the next spare started. */
+  const take = async (): Promise<Live> => {
+    if (spare && Date.now() - spare.at > SPARE_AGE) { const old = spare.live; spare = null; void old.then((l) => stopAgy(l, data), () => {}); }
+    const live = spare?.live || openAgy(data, undefined, o.start);
+    spare = null;
+    const l = await live;
+    if (l.acp.closed) { void stopAgy(l, data); return openAgy(data, undefined, o.start); }
+    return l;
+  };
+  const turn = async () => { if (active >= AT_ONCE) await new Promise<void>((r) => queue.push(r)); active++; };
+  const done = () => { active--; queue.shift()?.(); };
+  if (o.keep) warm()?.catch(() => {});
+  const complete: Complete = async ({ system, user }) => {
+    await turn();
+    let l: Live | undefined;
     try {
+      l = await take();
       const created = await l.acp.request("session/new", { cwd: join(data, "work", "agy"), mcpServers: [], _meta: { antigravity: { systemPrompt: { append: system }, enabledTools: [] } } }, 120_000);
       const session = String(created?.sessionId || "");
       if (!session) throw Error("Gemini on your VPS didn't open a conversation.");
-      l.sessions++;
+      l.sessions.push(session);
       let text = "";
       l.text.set(session, (t) => { text += t; });
-      try {
-        await l.acp.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: user }] }, STEP_MS);
-      } catch (e) {
+      try { await l.acp.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: user }] }, STEP_MS); }
+      catch (e) {
         l.acp.notify("session/cancel", { sessionId: session });
         const m = reason(e);
-        throw Error(/SUBSCRIPTION_REQUIRED/.test(m) ? "Google says this account has no Gemini plan." : m || "Gemini on your VPS couldn't answer.");
+        if (/authentication required|not authenticated|unauthenticated|invalid_grant/i.test(m)) throw new SignedOutAgy("Gemini on your VPS is signed out. Set up the AI again in Settings.");
+        throw Error(/SUBSCRIPTION_REQUIRED/.test(m) ? "Google says this account has no Gemini plan." : /timed out/.test(m) ? "Gemini on your VPS took too long to answer." : m || "Gemini on your VPS couldn't answer.");
       } finally { l.text.delete(session); }
+      // A turn that failed comes back as a message of its own ("Usage Limit Reached", "Agent execution error: …"): it is
+      // an error, never an answer handed on as if Gemini had said it.
+      const problem = replyProblem(text);
+      if (problem) throw problem.kind === "signed-out" ? new SignedOutAgy("Gemini on your VPS is signed out. Set up the AI again in Settings.") : Error(problem.message.replace(/ Try again later or pick another model\.| Check Gemini in Settings → Models\.| Check your Google AI plan, or pick another model\./, ""));
       if (!text.trim()) throw Error("Gemini on your VPS gave an empty answer.");
       return text.trim();
     } finally {
-      if (l.sessions >= SESSIONS) { live = null; l.child.kill("SIGTERM"); if (o.keep) ready().catch(() => {}); }
-      else if (!o.keep) l.idle = setTimeout(() => { if (live) { live = null; l.child.kill("SIGTERM"); } }, IDLE_MS);
-      l.idle?.unref?.();
+      // The answer's agent goes with its helper; the next one is started now, while Clem uses this answer.
+      if (l) await stopAgy(l, data);
+      done();
+      if (o.keep) warm()?.catch(() => {});
     }
   };
+  return {
+    complete,
+    // The agent kept for the next answer starts and signs in: that is the check, so no second agent starts for it.
+    signedIn: async () => {
+      if (!installedAgy(data)) return false;
+      const live = o.keep ? warm() : undefined;
+      if (live) return live.then(() => true, () => false);
+      return agySignedIn(data, o.start);
+    },
+    stop: async () => { stopped = true; const s = spare; spare = null; if (s) await s.live.then((l) => stopAgy(l, data), () => {}); },
+  };
+}
+/** The model alone (see antigravityModel). */
+export function antigravityComplete(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean } = {}): Complete {
+  return antigravityModel(data, o).complete;
 }
 
 /** `node index.cjs agy <command>` inside the worker, for the desktop over SSH. Prints one result line; exits. */
@@ -265,7 +351,7 @@ export async function agyCommand(args: string[], data: string, print = (line: st
     // Signed in already: nothing to show. Otherwise the page is printed and this waits until Google's page returns.
     try {
       const live = await openAgy(data, (url) => print(AGY_SIGNIN + url));
-      live.child.kill("SIGTERM");
+      await stopAgy(live, data);
       print(AGY_DONE + "ok");
       return 0;
     } catch (e) { print(AGY_DONE + "failed " + ((e as Error)?.message || "").slice(0, 300)); return 1; }

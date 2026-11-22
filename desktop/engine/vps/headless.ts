@@ -9,7 +9,7 @@ import { AppServer } from "../../app-server.ts";
 import { streamTurn } from "../../codex-stream.ts";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { agySignedIn, antigravityComplete, installedAgy } from "./antigravity.ts";
+import { antigravityModel, installedAgy } from "./antigravity.ts";
 
 export type Complete = (r: { system: string; user: string; model?: string }) => Promise<string>;
 export type ModelKey = { provider: "anthropic"; key: string; model?: string };
@@ -185,9 +185,12 @@ export async function cliComplete(o: { data?: string; /** The worker: keep Claud
   const order = (["claude", "codex"] as const).slice().sort((a, b) => Number(has(b)) - Number(has(a)));
   const found: { name: string; complete: Complete }[] = [];
   // Gemini: Google's Antigravity agent Clem installed and signed in on this server. Set up only when it is the person's
-  // AI (Settings), so it comes first.
-  const agy = o.agy || (o.data ? { installed: () => !!installedAgy(o.data!), signedIn: () => agySignedIn(o.data!), complete: antigravityComplete(o.data, { keep: o.warm }) } : undefined);
+  // AI (Settings), so it comes first. Only when it is installed is an agent started: the one kept for the next answer
+  // (o.warm) is what checks its sign-in, so the worker never runs two at once (each holds a few hundred MB).
+  const model = !o.agy && o.data && installedAgy(o.data) ? antigravityModel(o.data, { keep: o.warm }) : undefined;
+  const agy = o.agy || (model ? { installed: () => true, signedIn: model.signedIn, complete: model.complete } : undefined);
   if (agy?.installed() && await agy.signedIn().catch(() => false)) found.push({ name: "antigravity", complete: agy.complete });
+  else void model?.stop();
   for (const name of order) {
     const env = has(name) ? own! : process.env;
     if (!(await probe(name, env)) || !(await signedIn(name, env).catch(() => false))) continue;
