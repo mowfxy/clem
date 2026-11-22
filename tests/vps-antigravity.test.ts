@@ -123,7 +123,7 @@ test("the worker keeps one signed-in agent ready: it is the sign-in check, an an
   const data = await fakeInstall(), seen: string[][] = [];
   const ended = (i: number) => running[i].exitCode !== null || running[i].signalCode !== null;
   try {
-    const model = antigravityModel(data, { start: fake("ok", seen), keep: true });
+    const model = antigravityModel(data, { start: fake("ok", seen), keep: true, free: () => 0 });
     assert.equal(await model.signedIn(), true);
     assert.equal(seen.length, 1, "the check is the agent kept for the next answer, not a second one");
     assert.match(await model.complete({ system: "s", user: "u" }), /^Hello from/);
@@ -143,6 +143,23 @@ test("the worker keeps one signed-in agent ready: it is the sign-in check, an an
     assert.equal(await out.signedIn(), false);
     for (let i = 0; i < 100 && !ended(3); i++) await new Promise((r) => setTimeout(r, 20));
     assert.ok(ended(3));
+  } finally { await cleanup(data); }
+});
+
+test("with memory to spare, the next agent gets ready while an answer runs, so a reply's next step doesn't wait", async () => {
+  const data = await fakeInstall(), seen: string[][] = [];
+  try {
+    const model = antigravityModel(data, { start: fake("ok", seen), keep: true, free: () => 8 * 1024 ** 3 });
+    assert.equal(await model.signedIn(), true);
+    let during = 0;
+    const answering = model.complete({ system: "s", user: "u" });
+    for (let i = 0; i < 100 && seen.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+    during = seen.length;
+    await answering;
+    assert.equal(during, 2, "the next agent started while the answer ran");
+    await model.complete({ system: "s", user: "u" });
+    assert.ok(seen.length <= 4, "never more than one waiting");
+    await model.stop();
   } finally { await cleanup(data); }
 });
 

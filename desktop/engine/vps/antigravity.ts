@@ -10,6 +10,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { freemem } from "node:os";
 import { dirname, join, normalize, sep } from "node:path";
 import { Readable } from "node:stream";
 import { rootCertificates } from "node:tls";
@@ -259,12 +260,16 @@ export async function agySignedIn(data: string, start?: Parameters<typeof openAg
 const STEP_MS = 300_000, SPARE_AGE = 60 * 60_000;
 /** Answers at once at most (each is an agent and its helper); more wait their turn. */
 const AT_ONCE = 2;
+/** Free memory above which the next agent starts while an answer runs (one agent and its helper take about 550 MB), so
+ *  the next step of a reply doesn't wait for it; below it, the next one starts once the answer's agent has ended. */
+const ROOM_FOR_TWO = 1.5 * 1024 ** 3;
 export type AgyModel = { complete: Complete; signedIn: () => Promise<boolean>; stop: () => Promise<void> };
 
 /** The worker's model through the agent: each answer is one conversation on an agent of its own (see "Processes"), its
  *  rules as the conversation's system prompt, no tools. `keep` (the worker): one agent, started and signed in ahead,
  *  always waits for the next answer, so an answer never waits for an agent to start. */
-export function antigravityModel(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean } = {}): AgyModel {
+export function antigravityModel(data: string, o: { start?: Parameters<typeof openAgy>[2]; keep?: boolean; /** Tests: free memory. */ free?: () => number } = {}): AgyModel {
+  const free = o.free || freemem;
   let spare: { live: Promise<Live>; at: number } | null = null, active = 0, stopped = false;
   const queue: (() => void)[] = [];
   const warm = () => {
@@ -293,6 +298,8 @@ export function antigravityModel(data: string, o: { start?: Parameters<typeof op
     let l: Live | undefined;
     try {
       l = await take();
+      // Room for two: the next agent gets ready while this one answers.
+      if (o.keep && free() > ROOM_FOR_TWO) warm()?.catch(() => {});
       const created = await l.acp.request("session/new", { cwd: join(data, "work", "agy"), mcpServers: [], _meta: { antigravity: { systemPrompt: { append: system }, enabledTools: [] } } }, 120_000);
       const session = String(created?.sessionId || "");
       if (!session) throw Error("Gemini on your VPS didn't open a conversation.");
