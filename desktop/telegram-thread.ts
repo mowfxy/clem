@@ -78,10 +78,12 @@ export async function telegramTurn<W extends ThreadState>(d: ThreadDeps<W>, raw:
     }
     return r;
   };
-  // A turn that fails is tried once more; a second failure is told in one plain sentence.
+  // A turn that fails is tried once more; a second failure is told in one plain sentence. Both share one deadline,
+  // inside the relay's ten minutes (desktop/engine/telegram.ts ANSWER_MS): a retry with a deadline of its own ran on
+  // for many minutes after Telegram had been told it was taking too long, its answer only in the main thread.
   let answer: string | undefined;
-  for (let attempt = 1; attempt <= 2 && answer === undefined; attempt++) {
-    const deadline = clock() + (d.deadline ?? 9 * 60_000);
+  const deadline = clock() + (d.deadline ?? 9 * 60_000);
+  for (let attempt = 1; attempt <= 2 && answer === undefined && clock() < deadline; attempt++) {
     try {
       answer = await runKinetraTurn<unknown>(prompt, "", (input) => d.complete({ system, user: input }), tool, () => clock() > deadline, { limit: 600_000 });
     } catch (e) {

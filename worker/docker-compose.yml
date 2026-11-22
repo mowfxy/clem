@@ -6,6 +6,8 @@ services:
     # The VPS user's own uid, so the worker reads its key (mode 600) and writes state/ and ../files as that user.
     user: "${CLEM_UID:-10001}:${CLEM_GID:-10001}"
     restart: unless-stopped
+    # A small init as PID 1 reaps processes that ended (Gemini's agent and its helpers), which Node as PID 1 doesn't.
+    init: true
     env_file: .env
     environment:
       DATABASE_URL: postgres://clem:${POSTGRES_PASSWORD}@db:5432/clem

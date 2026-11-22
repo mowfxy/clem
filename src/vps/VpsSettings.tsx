@@ -156,7 +156,7 @@ function VpsConnected({ status, refresh, step }: { status: VpsStatus; refresh: (
         : busy === "worker-off" ? <Status spin>Turning off…</Status>
         : w.updating ? <Status spin>Updating Clem on your VPS… this takes a few minutes</Status>
         : w.error ? <Status warn>{w.error}</Status>
-        : w.enabled && w.runner === "worker" && w.aiError ? <Status warn>{/^Google no longer|signed out/.test(w.aiError) ? w.aiError : `The AI on your VPS can't answer: ${w.aiError}`}</Status>
+        : w.enabled && w.runner === "worker" && w.aiError ? <Status warn>{/signed out/.test(w.aiError) ? w.aiError : `The AI on your VPS can't answer: ${w.aiError}`}</Status>
         : w.enabled ?<Status>{w.runner === "worker" ? `Running on your VPS · ${ai} · ${ago(w.heartbeat)}` : w.runner === "desktop" ? "Running on this PC until your VPS answers" : "Checking…"}</Status>
         : <Status>GUC checks, reminders and your main thread on Telegram keep going while this PC is off.</Status>}
       <SettingRow title="Keep a copy of my files on the VPS" description={copies && s.vpsLimit ? `${bytes(s.vpsLimit.used)} of ${bytes(s.vpsLimit.max)} used on your VPS` : "This PC keeps them either way."}>
@@ -182,8 +182,9 @@ function ServerAi({ w }: { w: VpsStatus["worker"] }) {
   const [error, setError] = useState(""), [code, setCode] = useState(""), [copied, setCopied] = useState(false), [sent, setSent] = useState(false);
   const s = w.signIn, name = s?.cli === "codex" ? "ChatGPT" : s?.cli === "antigravity" ? "Gemini" : "Claude";
   // Clem picks the AI this PC uses (Gemini, Claude or ChatGPT): a retry never repeats one the person doesn't use.
-  // Gemini refused by Google, or Claude signed out on the server: Claude is what gets signed in there.
-  const claude = !!w.aiError && /^Google no longer|signed out/.test(w.aiError);
+  // Claude Code signed out on the server: Claude is what gets signed in there again. Gemini signed out there is set up
+  // again as Gemini (the AI this PC uses), never swapped for Claude.
+  const claude = !!w.aiError && /^Claude Code on your VPS is signed out/.test(w.aiError);
   const start = () => { setError(""); setSent(true); void desktop!.invoke({ action: "vpsCli", ...(claude ? { cli: "claude" as const } : {}) }).catch((e) => setError(message(e))).finally(() => setSent(false)); };
   const paste = () => { setError(""); void desktop!.invoke({ action: "vpsCliCode", code }).then(() => setCode(""), (e) => setError(message(e))); };
   // Signed in and answering: nothing to show. Signed in but failing (w.aiError): "Try again" signs it in once more.

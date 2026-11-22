@@ -5,11 +5,11 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zipSync } from "fflate";
-import { agyCommand, agyEnv, antigravityComplete, caBundle, installAgy, installedAgy, linuxRelease, openAgy, SignedOutAgy } from "../desktop/engine/vps/antigravity.ts";
+import { agyCommand, agyEnv, antigravityComplete, antigravityModel, caBundle, installAgy, installedAgy, linuxRelease, openAgy, SignedOutAgy } from "../desktop/engine/vps/antigravity.ts";
 import { ANTIGRAVITY_REGISTRY } from "../desktop/antigravity-engine.ts";
 
 const fixture = join(import.meta.dirname, "fixtures", "fake-antigravity.mjs");
@@ -110,9 +110,64 @@ test("the worker answers through the agent: the rules as its system prompt, the 
     const out = await complete({ system: "You are Clem.", user: "What's due tomorrow?" });
     assert.ok(out.length > 0);
     assert.deepEqual(seen[0], ["--uid="], "the registry's arguments");
-    // A second answer reuses the running agent.
+    // Each answer is an agent of its own, ended with its helper once the answer is in (the agent can't close a
+    // conversation, and every conversation keeps a helper of about 150 MB).
+    assert.equal(running[0].exitCode !== null || running[0].signalCode !== null, true, "the answer's agent ended");
     await complete({ system: "You are Clem.", user: "And Friday?" });
-    assert.equal(seen.length, 1);
+    assert.equal(seen.length, 2);
+    assert.deepEqual(await readdir(join(data, "tmp", "agy")), [], "each agent's temporary folder goes with it");
+  } finally { await cleanup(data); }
+});
+
+test("the worker keeps one signed-in agent ready: it is the sign-in check, an answer takes it and the next one starts", async () => {
+  const data = await fakeInstall(), seen: string[][] = [];
+  const ended = (i: number) => running[i].exitCode !== null || running[i].signalCode !== null;
+  try {
+    const model = antigravityModel(data, { start: fake("ok", seen), keep: true, free: () => 0 });
+    assert.equal(await model.signedIn(), true);
+    assert.equal(seen.length, 1, "the check is the agent kept for the next answer, not a second one");
+    assert.match(await model.complete({ system: "s", user: "u" }), /^Hello from/);
+    for (let i = 0; i < 100 && seen.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(seen.length, 2, "the next agent started once the answer was in");
+    assert.ok(ended(0), "the answer's agent ended");
+    for (let i = 0; i < 100 && ended(1); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(!ended(1), "the next one waits");
+    await model.complete({ system: "s", user: "u" });
+    for (let i = 0; i < 100 && seen.length < 3; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.equal(seen.length, 3);
+    await model.stop();
+    for (let i = 0; i < 100 && !ended(2); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(ended(2), "stopped, nothing keeps running");
+    // Signed out: the check says so and no agent is left waiting.
+    const out = antigravityModel(data, { start: fake("signed-out"), keep: true });
+    assert.equal(await out.signedIn(), false);
+    for (let i = 0; i < 100 && !ended(3); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(ended(3));
+  } finally { await cleanup(data); }
+});
+
+test("with memory to spare, the next agent gets ready while an answer runs, so a reply's next step doesn't wait", async () => {
+  const data = await fakeInstall(), seen: string[][] = [];
+  try {
+    const model = antigravityModel(data, { start: fake("ok", seen), keep: true, free: () => 8 * 1024 ** 3 });
+    assert.equal(await model.signedIn(), true);
+    let during = 0;
+    const answering = model.complete({ system: "s", user: "u" });
+    for (let i = 0; i < 100 && seen.length < 2; i++) await new Promise((r) => setTimeout(r, 20));
+    during = seen.length;
+    await answering;
+    assert.equal(during, 2, "the next agent started while the answer ran");
+    await model.complete({ system: "s", user: "u" });
+    assert.ok(seen.length <= 4, "never more than one waiting");
+    await model.stop();
+  } finally { await cleanup(data); }
+});
+
+test("a turn Google ends with a message of its own (no usage left) is an error, never an answer", async () => {
+  const data = await fakeInstall();
+  try {
+    const complete = antigravityComplete(data, { start: fake("limit") });
+    await assert.rejects(complete({ system: "s", user: "u" }), /^Error: Your Google AI plan has no Gemini usage left right now\.$/);
   } finally { await cleanup(data); }
 });
 
