@@ -116,6 +116,14 @@ export function relativeDue(due: string | number, now: number): { label: string;
   return { label: `in ${days} days`, date, tone };
 }
 
+/** An answer without the app routes a model wrote bare ("[#/app/guc/deadlines/…]", "(#/app/…)", "#/app/…") instead of as a
+ *  link on its words: they mean nothing to a reader, so they go with the space before them ("on Thursday [#/app/…]." reads
+ *  "on Thursday."). Proper links ([words](#/app/…)) and code are kept as they are. */
+export function withoutBareRoutes(text: string) {
+  return text.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, i) => i % 2 ? part
+    : part.replace(/\s*(?:\[\s*#\/app\/[^\]\s]{0,300}\s*\](?!\()|(?<!\])\(\s*#\/app\/[^)\s]{0,300}\s*\)|(?<![\w/(])#\/app\/[^\s)\]]{0,300})/g, "")).join("");
+}
+
 // ---------- Routes: #/app/guc/<tab>/<id>/<sub> ----------
 export const HUB_TABS = ["schedule", "announcements", "cms", "grades", "attendance", "exams", "deadlines", "mail"] as const;
 export type HubTab = (typeof HUB_TABS)[number];

@@ -17,6 +17,11 @@ import { account, call, fakeTelegram, hook, msg, tap, workerEnv } from "./telegr
 // ---------- Rendering ----------
 test("render: Markdown answers become escaped Telegram HTML, split under 4096 characters", () => {
   assert.equal(esc("a < b & c > d"), "a &lt; b &amp; c &gt; d");
+  // Bare app routes (Gemini cites them so) never reach Telegram, and the sentence keeps its full stop.
+  assert.equal(markdownHtml("Your Electric Circuits Quiz 2 covers **Lectures 1 to 7** [#/app/guc/deadlines/a6c506b9daded706]."), "Your Electric Circuits Quiz 2 covers <b>Lectures 1 to 7</b>.");
+  assert.equal(markdownHtml("On Thursday in Hall H17 (#/app/guc/deadlines/a6c5), see #/app/guc/schedule too."), "On Thursday in Hall H17, see too.");
+  assert.equal(plainMessage("Quiz 2 is Thursday [#/app/guc/deadlines/a6c5].").html, "Quiz 2 is Thursday.");
+  assert.equal(markdownHtml("[Quiz 2](#/app/guc/deadlines/a6c5) is `#/app/x`"), "Quiz 2 is <code>#/app/x</code>", "proper links keep their words, code is untouched");
   assert.equal(markdownHtml("**Due** `x<y` and *soon* — [CMS](https://cms.guc.edu.eg/a?b=1&c=2) or [here](#/app/guc)"), '<b>Due</b> <code>x&lt;y</code> and <i>soon</i> — <a href="https://cms.guc.edu.eg/a?b=1&amp;c=2">CMS</a> or here');
   assert.equal(markdownHtml("## Plan\n- one\n- <script>"), "<b>Plan</b>\n• one\n• &lt;script&gt;");
   assert.equal(markdownHtml("```\nif (a < b) {}\n```"), "<pre>if (a &lt; b) {}</pre>");
