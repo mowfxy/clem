@@ -3,7 +3,7 @@
 // buttons of the flows they belong to (GUC settings, a new lecture, the password). A button's tap is stored by the engine under a short token (desktop/engine/
 // telegram.ts), so Telegram carries only "b:<token>" and the tap comes back through the inbox to the same appliers.
 import { cardsIn, readCard, type ClemCard } from "../guc/cards.ts";
-import { hubPath } from "../guc/hub.ts";
+import { hubPath, withoutBareRoutes } from "../guc/hub.ts";
 import { PASSWORD_NOTICE, PASSWORD_ROUTE } from "../guc/password.ts";
 import { TG_TEXT_LIMIT } from "./pairing.ts";
 
@@ -47,6 +47,7 @@ function inline(s: string) {
 }
 /** One block of Markdown (no clem-cards) as Telegram HTML: headings bold, lists with bullets, code fences as <pre>. */
 export function markdownHtml(md: string) {
+  md = withoutBareRoutes(md);
   const out: string[] = [];
   for (const [i, piece] of md.split(/```[^\n]*\n([\s\S]*?)```/).entries()) {
     if (i % 2) { out.push(`<pre>${esc(piece.replace(/\n$/, ""))}</pre>`); continue; }
@@ -161,6 +162,6 @@ export function replyMessages(content: string, c: RenderContext = {}): TgMessage
 /** A single card from its JSON body (what the notifier hands over). */
 export const cardJson = (body: string, c: RenderContext = {}) => { const card = readCard(body); return card ? cardMessage(card, c) : null; };
 /** Something Clem says by itself: plain text, no title, no buttons (core/proactivity/sweep.ts sweepMessages). */
-export const plainMessage = (text: string): TgMessage => ({ html: esc(cut(text.trim(), CHUNK)), buttons: [] });
+export const plainMessage = (text: string): TgMessage => ({ html: esc(cut(withoutBareRoutes(text).trim(), CHUNK)), buttons: [] });
 /** A notification without a card: its title and body. */
 export const noticeMessage = (title: string, body: string, buttons: Button[][] = []): TgMessage => ({ html: `<b>${esc(cut(title, 200))}</b>${body ? "\n" + esc(cut(body, 1500)) : ""}`, buttons });

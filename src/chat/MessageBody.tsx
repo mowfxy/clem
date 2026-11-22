@@ -14,6 +14,7 @@ import 'katex/contrib/copy-tex';
 import './math-selection';
 import { mathMacros, normalizeMath } from '../../core/math-markdown';
 import { linkCitations, readCitation, type Citation } from '../../core/citations';
+import { withoutBareRoutes } from '../../core/guc/hub';
 import { parseVisual } from '../../core/visual-spec';
 import { parseModelJson } from '../../core/model-json';
 import { KinetraFigure, MemoryNote } from './KinetraFigure';
@@ -38,7 +39,8 @@ function Drafting({ art = false, children }: { art?: boolean; children: ReactNod
 
 /** Every maths dialect becomes remark-math's $$…$$ (see core/math-markdown), then citations become links. */
 export function prepareMarkdown(text: string) {
-  return linkCitations(normalizeMath(text));
+  // An app route a model wrote bare ("[#/app/guc/deadlines/…]") instead of as a link on its words: not shown.
+  return linkCitations(normalizeMath(withoutBareRoutes(text)));
 }
 
 export type BodyHandlers = CardHandlers & {
