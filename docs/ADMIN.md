@@ -35,6 +35,10 @@ Every mutation writes to `desktop_audit_log`. Owner accounts cannot be suspended
 
 People open cases from the app (Settings → Help & support) or the website. Staff replies appear in the person's app as a notice above the account button and in the support inbox; internal notes are never sent to the person. A reply from the person reopens a pending or resolved case. Replies are delivered in the app, not by email — use “Email instead” on a case when an email is needed.
 
+## Telegram early access
+
+`#/clem/telegram` lists who signed up for Telegram in Clem. Admins let people in or remove them (`GET /admin/telegram`, `POST /admin/telegram/:id/approve|remove`, table `telegram_access` in `cloudflare/telegram-schema.sql`); support staff can only read. Removing someone also disconnects their Telegram. The list refreshes every 30 seconds while open.
+
 ## Setup (one time)
 
 1. Apply the schema: `npm run db:admin` (runs `wrangler d1 execute clem-workspaces --remote --file cloudflare/admin-schema.sql`).

@@ -36,7 +36,6 @@
     "film:live-setup": "node scripts/film/capture.mjs --live-setup",
     "film:live": "node scripts/film/capture.mjs --live && node scripts/film/render.mjs --live",
     "ads": "node scripts/ads/build.mjs",
-    "telegram:access": "node scripts/telegram-access.mjs",
     "db:telegram": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/telegram-schema.sql",
     "db:email": "npx wrangler d1 execute clem-workspaces --remote --file cloudflare/email-schema.sql",
     "emails:announce": "node scripts/announce-release.mjs"

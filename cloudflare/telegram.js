@@ -99,7 +99,8 @@ export async function telegramWebhook(request, env, client) {
   return json({ ok: true });
 }
 
-async function unpair(env, userId) {
+/** Ends a pairing: the link, what waits and any code. Staff use it too (admin.js). */
+export async function unpair(env, userId) {
   const link = await linkOf(env, userId);
   await env.DB.prepare("DELETE FROM telegram_links WHERE user_id=?").bind(userId).run();
   await env.DB.prepare("DELETE FROM telegram_inbox WHERE user_id=?").bind(userId).run();

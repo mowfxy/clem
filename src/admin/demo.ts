@@ -16,12 +16,16 @@ const messages:Record<string,any[]>={'case-8e2d4c1a':[{id:'m1',author:'staff',au
 const audit=[['user.note',people[1].id,'Early tester'],['user.suspend',people[7].id,'Repeated spam in support · until 2026-09-27'],['case.reply',people[2].id,'case-8e2d4c1a'],['announcement.publish','a1','Clem 0.3 preview']].map(([action,target,detail],i)=>({id:'audit'+i,actor_email:'m@mohamedmowafy.com',action,target,detail,created_at:iso(i*5*3600000)}));
 const announcements=[{id:'a1',title:'Clem 0.3 preview',body:'Support inbox, faster usage checks and smoother popups.',tone:'success',link:null,starts_at:iso(day),ends_at:iso(-6*day),archived:0,created_at:iso(day)}];
 
+const telegram=[0,2,4].map((n,i)=>({id:people[n].id,email:people[n].email,username:people[n].username,display_name:people[n].display_name,requested_at:Date.now()-(i+1)*day,approved_at:i===2?Date.now()-day:null as number|null,paired:i===2}));
+
 export async function demoApi(path:string,body?:any):Promise<any>{
   await new Promise(r=>setTimeout(r,250));
   if(body!==undefined){
     if(path==='/admin/announcements')announcements.unshift({id:'a'+Date.now(),...body,starts_at:iso(0),ends_at:body.days?iso(-body.days*day):null,archived:0,created_at:iso(0)});
     const reply=/^\/admin\/cases\/(.+)\/reply$/.exec(path);
     if(reply)(messages[reply[1]]??=[]).push({id:'m'+Date.now(),author:body.internal?'note':'staff',author_name:'Clem support',body:body.body,created_at:iso(0)});
+    const tg=/^\/admin\/telegram\/(.+)\/(approve|remove)$/.exec(path);
+    if(tg){const i=telegram.findIndex(x=>x.id===tg[1]);if(tg[2]==='approve')telegram[i].approved_at=Date.now();else telegram.splice(i,1);}
     return {ok:true};
   }
   const url=new URL(path,'https://x');
@@ -46,6 +50,7 @@ export async function demoApi(path:string,body?:any):Promise<any>{
       links:[{kind:'codex',people:6},{kind:'claude',people:5}],sync:[{kind:'memory',people:6},{kind:'skills',people:4},{kind:'notes',people:3}]};
   }
   if(path==='/admin/announcements')return {announcements};
+  if(path==='/admin/telegram')return {people:telegram.map(x=>({...x}))};
   if(path==='/admin/team')return {team:[{id:people[5].id,email:'m@mohamedmowafy.com',role:'owner'},{id:people[6].id,email:'priya@college.edu',role:'support'}]};
   if(url.pathname==='/admin/audit')return {entries:audit};
   throw Error('Not in demo data');
