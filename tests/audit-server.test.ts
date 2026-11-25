@@ -54,5 +54,5 @@ test('the D1 schema, Telegram\'s tables and the old bot-token cleanup can be app
   }
   assert.deepEqual(db.prepare('SELECT kind FROM provider_links').all().map(r=>r.kind),['codex']);
   // The cleanup only removes the first Telegram's bot tokens; the Clem bot's tables stay.
-  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'").get()!.n,3);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'").get()!.n,4);
 });

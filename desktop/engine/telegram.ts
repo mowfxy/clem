@@ -15,7 +15,9 @@ import type { Db } from "./db.ts";
 import type { EngineHost, TelegramTurn } from "./host.ts";
 import type { Organizer } from "./organizer.ts";
 
-export type TelegramStatus = { configured: boolean; bot?: string; paired: { name: string; since: number; online?: boolean } | null };
+/** Telegram is in early access: not signed up, signed up, or let in. */
+export type TelegramAccess = "none" | "requested" | "approved";
+export type TelegramStatus = { configured: boolean; bot?: string; access?: TelegramAccess; paired: { name: string; since: number; online?: boolean } | null };
 export type InboxItem = { id: string; kind: "message" | "tap"; text?: string; data?: string; at: number };
 /** What the relay needs from the engine besides the organizer: a subject's check, a CMS file's bytes, names. */
 export type RelayEngine = {
@@ -25,6 +27,8 @@ export type RelayEngine = {
 /** How long a Telegram question may take before the person is told Clem couldn't answer. */
 export const ANSWER_MS = 10 * 60_000;
 const TYPING_MS = 4500, STATUS_MS = 60_000;
+/** How often someone not let in yet is looked up in the background: there is nothing to pull, so rarely. */
+const WAITING_MS = 15 * 60_000;
 const errorText = (e: unknown) => String((e as Error)?.message || e);
 
 export class TelegramRelay {
@@ -72,6 +76,8 @@ export class TelegramRelay {
   }
   /** A new code (the window shows it with its countdown). */
   async pair() { const r = await this.call<{ code: string; link: string; expires: number; bot: string }>("/telegram/pair", {}); this.cached = undefined; return r; }
+  /** Signs up for early access. */
+  async join() { await this.call("/telegram/join", {}); return this.status(true); }
   async unpair() { await this.call("/telegram/unpair", {}); this.remember({ ...(this.cached?.value || { configured: true }), paired: null }); return this.status(true); }
 
   // ---------- What Telegram is for, told once ----------
@@ -104,7 +110,8 @@ export class TelegramRelay {
         try {
           // The pairing as last read (within a minute): the inbox itself says when it is gone, so asking before every pull
           // only cost Clem's server another request.
-          if (!(await this.status()).paired) { await this.nap(60_000); continue; }
+          const s = await this.status();
+          if (!s.paired) { await this.nap(s.access && s.access !== "approved" ? WAITING_MS : 60_000); continue; }
           await this.pullOnce(50);
           backoff = 15_000;
         } catch (e) {

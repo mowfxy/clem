@@ -34,6 +34,12 @@ export function botFor(env, client) {
 
 const linkOfChat = (env, chatId) => env.DB.prepare("SELECT user_id,from_id,last_seen,offline_noted FROM telegram_links WHERE chat_id=?").bind(chatId).first();
 const linkOf = (env, userId) => env.DB.prepare("SELECT chat_id,from_id,name,created_at,last_seen FROM telegram_links WHERE user_id=?").bind(userId).first();
+/** Early access: "approved" (let in, or an owner), "requested" (signed up) or "none". Read for status and pairing only:
+ *  the inbox, which engines pull all day, needs the pairing and nothing more. */
+async function accessOf(env, userId) {
+  const row = await env.DB.prepare("SELECT (SELECT 1 FROM desktop_owner_grants WHERE user_id=?) AS owner, (SELECT approved_at FROM telegram_access WHERE user_id=?) AS approved, (SELECT requested_at FROM telegram_access WHERE user_id=?) AS requested").bind(userId, userId, userId).first();
+  return row?.owner || row?.approved ? "approved" : row?.requested ? "requested" : "none";
+}
 const nameOf = (from) => (from?.username ? "@" + from.username : [from?.first_name, from?.last_name].filter(Boolean).join(" ")).slice(0, 80);
 
 /** Keeps one thing a paired chat sent, once per Telegram update (a redelivered update changes nothing). */
@@ -119,7 +125,7 @@ export async function handleTelegram(request, env, user, path, o = {}) {
     const t = now();
     if (path === "/telegram" && request.method === "GET") {
       const link = await linkOf(env, user.id);
-      return json({ configured: true, bot: env.TELEGRAM_BOT_USERNAME, paired: link ? { name: link.name, since: link.created_at, online: t - link.last_seen < OFFLINE_AFTER } : null });
+      return json({ configured: true, bot: env.TELEGRAM_BOT_USERNAME, access: link ? "approved" : await accessOf(env, user.id), paired: link ? { name: link.name, since: link.created_at, online: t - link.last_seen < OFFLINE_AFTER } : null });
     }
     if (path === "/telegram/inbox" && request.method === "GET") {
       if (!(await linkOf(env, user.id))) return json({ paired: false, items: [] });
@@ -142,7 +148,14 @@ export async function handleTelegram(request, env, user, path, o = {}) {
       }
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    if (path === "/telegram/join") {
+      const access = await accessOf(env, user.id);
+      if (access === "none") await env.DB.prepare("INSERT OR IGNORE INTO telegram_access(user_id,requested_at) VALUES(?,?)").bind(user.id, t).run();
+      return json({ access: access === "none" ? "requested" : access });
+    }
     if (path === "/telegram/pair") {
+      const access = await accessOf(env, user.id);
+      if (access !== "approved") return json({ error: access === "requested" ? "You're on the list for Telegram early access. You can connect once you're let in." : "Telegram is in early access. Update Clem, then sign up in Settings → Channels → Telegram.", access }, 403);
       // Codes asked for this hour (a counter beside the other rate limits; the hourly cron clears old ones).
       const bucket = "tgcodes:" + user.id + ":" + Math.floor(t / 3600_000);
       const asked = (await env.DB.prepare("SELECT count FROM desktop_rate_limits WHERE key=?").bind(bucket).first())?.count || 0;

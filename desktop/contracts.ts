@@ -108,6 +108,7 @@ export const requestSchema = z.discriminatedUnion("action", [
   // Telegram main thread the window runs (src/telegram/thread.ts): its model, its engine actions, the step before the
   // model, and its answer. Telegram makes no files.
   z.object({ action: z.literal("tgStatus"), fresh: z.boolean().optional() }),
+  z.object({ action: z.literal("tgJoin") }),
   z.object({ action: z.literal("tgPair") }),
   z.object({ action: z.literal("tgUnpair") }),
   z.object({ action: z.literal("tgOffer") }),

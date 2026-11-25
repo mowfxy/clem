@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+// @ts-expect-error plain JavaScript script
+import { accessSql } from "../scripts/telegram-access.mjs";
 import { canIssue, codeHash, CODES_PER_HOUR, deepLink, keyboardOk, left, newCode, readCode, TG_FILE_LIMIT } from "../core/telegram/pairing.ts";
 // @ts-expect-error plain JavaScript worker module
 import { NOT_PAIRED, PAIRED, BAD_CODE, OFFLINE } from "../cloudflare/telegram.js";
@@ -182,4 +185,43 @@ test("limits: Cloudflare's rate-limit binding when present (no D1 write), the D1
   const broken = { ...env, RL_USER: { limit: async () => { throw Error("down"); } } };
   assert.equal(await limitFast(broken, "RL_USER", "user:b", 1), true, "binding failing: D1 counts instead");
   assert.equal(await limitFast(env, "RL_USER", "user:b", 1), false, "no binding: D1's count (2 > 1)");
+});
+
+test("worker: early access: signing up waits, being let in allows pairing, owners and paired people never wait", async () => {
+  const env = ENV(), tg = fakeTelegram(), db = env.DB.db;
+  assert.equal((await call(env, tg, "new1", "/telegram")).access, "none");
+  const refused = await call(env, tg, "new1", "/telegram/pair", {});
+  assert.equal(refused.code, undefined);
+  assert.equal(refused.access, "none");
+  assert.equal((await call(env, tg, "new1", "/telegram/join", {})).access, "requested");
+  assert.equal((await call(env, tg, "new1", "/telegram/join", {})).access, "requested", "once");
+  assert.equal((db.prepare("SELECT count(*) AS n FROM telegram_access WHERE user_id='new1'").get() as any).n, 1);
+  assert.match((await call(env, tg, "new1", "/telegram/pair", {})).error, /on the list/);
+  assert.equal((db.prepare("SELECT count(*) AS n FROM telegram_pairings").get() as any).n, 0);
+  db.prepare("UPDATE telegram_access SET approved_at=2 WHERE user_id='new1'").run();
+  assert.equal((await call(env, tg, "new1", "/telegram")).access, "approved");
+  assert.equal((await call(env, tg, "new1", "/telegram/join", {})).access, "approved");
+  assert.match((await call(env, tg, "new1", "/telegram/pair", {})).code, /^\d{6}$/);
+  db.prepare("INSERT INTO desktop_owner_grants VALUES('newowner','x')").run();
+  assert.match((await call(env, tg, "newowner", "/telegram/pair", {})).code, /^\d{6}$/);
+  // Paired before early access: kept by the schema, however often it is applied.
+  db.prepare("INSERT INTO telegram_links(user_id,chat_id,from_id,created_at) VALUES('new2',9,9,5)").run();
+  for (let i = 0; i < 2; i++) db.exec(fs.readFileSync(new URL("../cloudflare/telegram-schema.sql", import.meta.url), "utf8"));
+  await call(env, tg, "new2", "/telegram/unpair", {});
+  assert.match((await call(env, tg, "new2", "/telegram/pair", {})).code, /^\d{6}$/);
+});
+
+test("early-access script: approve and remove by email, list, and nothing unsafe reaches SQL", () => {
+  const { DB: { db } } = ENV();
+  db.exec("CREATE TABLE desktop_activity (user_id TEXT PRIMARY KEY, email TEXT)");
+  db.exec("INSERT INTO desktop_activity VALUES('new1','a@b.co')");
+  db.exec("INSERT INTO telegram_access(user_id,requested_at) VALUES('new1',1)");
+  assert.equal((db.prepare(accessSql("list")!).all() as any[]).find((r) => r.user_id === "new1").email, "a@b.co");
+  db.exec(accessSql("approve", "A@b.co")!);
+  assert.ok((db.prepare("SELECT approved_at AS a FROM telegram_access WHERE user_id='new1'").get() as any).a > 1);
+  db.exec("INSERT INTO telegram_links(user_id,chat_id,from_id,created_at) VALUES('new1',9,9,5)");
+  db.exec(accessSql("remove", "a@b.co")!);
+  for (const t of ["telegram_access", "telegram_links"]) assert.equal((db.prepare(`SELECT count(*) AS n FROM ${t} WHERE user_id='new1'`).get() as any).n, 0);
+  assert.equal(accessSql("approve", "x'); DROP TABLE telegram_links;--@b.co"), null);
+  assert.equal(accessSql("approve"), null);
 });

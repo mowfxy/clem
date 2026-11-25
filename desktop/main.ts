@@ -1726,6 +1726,7 @@ void app.whenReady().then(async () => {
     if (request.action.startsWith("tg")) {
       const engine = await engineFor(user.id), t = engine.telegram;
       if (request.action === "tgStatus") return t.status(request.fresh);
+      if (request.action === "tgJoin") return t.join();
       if (request.action === "tgPair") return t.pair();
       if (request.action === "tgUnpair") return t.unpair();
       if (request.action === "tgOffer") return engine.organizer.offerTelegram("asked");

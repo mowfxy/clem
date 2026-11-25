@@ -5,6 +5,10 @@ CREATE TABLE IF NOT EXISTS telegram_links (
  user_id TEXT PRIMARY KEY, chat_id INTEGER NOT NULL UNIQUE, from_id INTEGER NOT NULL, name TEXT NOT NULL DEFAULT '',
  created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL DEFAULT 0, offline_noted INTEGER NOT NULL DEFAULT 0
 );
+-- Early access: who signed up for Telegram, and who was let in (approved_at). Owners never need a row. Everyone paired
+-- before early access keeps it.
+CREATE TABLE IF NOT EXISTS telegram_access (user_id TEXT PRIMARY KEY, requested_at INTEGER NOT NULL, approved_at INTEGER);
+INSERT OR IGNORE INTO telegram_access(user_id,requested_at,approved_at) SELECT user_id,created_at,created_at FROM telegram_links;
 -- Pairing codes: 6 digits, kept only as an HMAC (hash), single use, 10 minutes.
 CREATE TABLE IF NOT EXISTS telegram_pairings (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS telegram_pairings_user ON telegram_pairings(user_id, created_at);
