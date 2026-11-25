@@ -89,7 +89,7 @@ export async function runGucTool(ctx: GucToolContext, request: Record<string, un
         const hits = await e.search(a.query);
         return searchText(hits, a.query, course || undefined);
       }
-      case "guc.grades": return gradesText(await e.grades(), course || undefined);
+      case "guc.grades": return gradesText(await e.grades(), course || undefined, await e.term());
       case "guc.attendance": return attendanceText((await e.term()).attendance, course || undefined);
       case "guc.read": return readFile(ctx, a.file, a.from, course || undefined);
       case "guc.mail": {

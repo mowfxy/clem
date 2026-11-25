@@ -52,6 +52,8 @@ test('chemistry superscripts and subscripts stay maths and never swallow the nex
   const { normalizeMath } = await import('../core/math-markdown.ts');
   assert.equal(normalizeMath('stop for lack of NAD$^+$. Fermentation regenerates NAD$^+$. Done.'), 'stop for lack of NAD$$^+$$. Fermentation regenerates NAD$$^+$$. Done.');
   assert.equal(normalizeMath('Water is H$_2$O.'), 'Water is H$$_2$$O.');
+  // A letter grade's sign is never left between dollars.
+  assert.equal(normalizeMath('| B$-$ | 70% |\n|---|---|\n| **B$+$** | 80% |\n| A$$-$$ | 90% |'), '| B- | 70% |\n|---|---|\n| **B+** | 80% |\n| A- | 90% |');
   assert.equal(normalizeMath('Prices $2 and $5 stay.'), 'Prices $2 and $5 stay.');
 });
 

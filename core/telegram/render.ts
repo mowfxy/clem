@@ -5,6 +5,7 @@
 import { cardsIn, readCard, type ClemCard } from "../guc/cards.ts";
 import { hubPath, withoutBareRoutes } from "../guc/hub.ts";
 import { PASSWORD_NOTICE, PASSWORD_ROUTE } from "../guc/password.ts";
+import { plainSigns } from "../math-markdown.ts";
 import { TG_TEXT_LIMIT } from "./pairing.ts";
 
 /** What a button does once tapped in Telegram. `open` shows the route or chat in Clem on the person's PC. */
@@ -34,7 +35,7 @@ function inline(s: string) {
   // Code spans first: nothing inside them is formatted.
   for (const [i, piece] of s.split(/(`[^`\n]+`)/).entries()) {
     if (i % 2) { parts.push(`<code>${esc(piece.slice(1, -1))}</code>`); continue; }
-    let t = esc(piece);
+    let t = esc(plainSigns(piece));
     t = t.replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{1,500})\)/g, (_m, text, url) => `<a href="${attr(url.replace(/&amp;/g, "&"))}">${text}</a>`);
     // Links inside Clem (#/app/…) mean nothing in Telegram: their text stays.
     t = t.replace(/\[([^\]\n]{1,200})\]\(#[^\s)]{0,300}\)/g, "$1");
@@ -57,7 +58,7 @@ export function markdownHtml(md: string) {
       const li = /^(\s*)[-*+]\s+(.*)$/.exec(line);
       if (li) return `${li[1]}• ${inline(li[2])}`;
       if (/^\s*([-*_])\1{2,}\s*$/.test(line)) return "";
-      if (/^\s*\|.*\|\s*$/.test(line)) return /^\s*\|[\s:|-]+\|\s*$/.test(line) ? "" : esc(line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).join(" · "));
+      if (/^\s*\|.*\|\s*$/.test(line)) return /^\s*\|[\s:|-]+\|\s*$/.test(line) ? "" : esc(plainSigns(line).trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()).join(" · "));
       return inline(line.replace(/^>\s?/, ""));
     }).join("\n"));
   }
