@@ -5,7 +5,7 @@
 import { left } from "../../core/telegram/pairing";
 import { Icon } from "../Icons";
 import { SettingRow, SettingsCard } from "../settings/SettingsParts";
-import { newCode, unpair, useTelegram } from "./telegram";
+import { join, newCode, unpair, useTelegram, type TgStatus } from "./telegram";
 import "./telegram.css";
 
 const spaced = (code: string) => code.slice(0, 3) + " " + code.slice(3);
@@ -21,16 +21,21 @@ function CodeBox({ code, now, bot }: { code: { code: string; link: string; expir
   </span>;
 }
 
+/** Where someone not let in yet stands in Telegram's early access. */
+const earlyOf = (s: TgStatus | null) => (s?.configured && !s.paired && s.access && s.access !== "approved" ? s.access : undefined);
+
 export function TelegramPairCard() {
   const t = useTelegram(), paired = t.status?.paired, code = !paired ? t.code : null, live = !!code && code.expires > t.now;
-  const title = !t.status ? "Telegram" : !t.status.configured ? "Telegram isn’t available yet" : paired ? `Connected as ${paired.name}` : live ? "Pair Telegram" : "Talk to Clem on Telegram";
-  const line = !t.status ? "Checking…" : !t.status.configured ? "Clem’s Telegram bot isn’t switched on yet. This card updates when it is." : paired ? `Since ${since(paired.since)}. Manage your day there; study questions and files stay in the app.` : live ? "Telegram opened on Clem’s bot. Tap Start there and you’re done." : "Manage your schedule, reminders and deadlines from Telegram, and get your updates there. Questions and files stay in the app.";
-  return <div className="edit-proposal clem-card guc-card tg-card" data-state={paired ? "paired" : live ? "code" : "unpaired"} aria-busy={!t.status}>
+  const early = earlyOf(t.status);
+  const title = !t.status ? "Telegram" : !t.status.configured ? "Telegram isn’t available yet" : paired ? `Connected as ${paired.name}` : early === "requested" ? "You’re on the list" : early ? "Telegram is in early access" : live ? "Pair Telegram" : "Talk to Clem on Telegram";
+  const line = !t.status ? "Checking…" : !t.status.configured ? "Clem’s Telegram bot isn’t switched on yet. This card updates when it is." : paired ? `Since ${since(paired.since)}. Manage your day there; study questions and files stay in the app.` : early === "requested" ? "This card lets you connect once you’re let in." : early ? "Sign up to manage your schedule, reminders and deadlines from Telegram." : live ? "Telegram opened on Clem’s bot. Tap Start there and you’re done." : "Manage your schedule, reminders and deadlines from Telegram, and get your updates there. Questions and files stay in the app.";
+  return <div className="edit-proposal clem-card guc-card tg-card" data-state={paired ? "paired" : early === "requested" ? "requested" : early ? "early" : live ? "code" : "unpaired"} aria-busy={!t.status}>
     <header><Icon name="send" size={16} /><div><strong>{title}</strong><small>{line}</small></div></header>
-    {code && <div className="guc-card-body"><CodeBox code={code} now={t.now} bot={t.status?.bot} /></div>}
+    {code && !early && <div className="guc-card-body"><CodeBox code={code} now={t.now} bot={t.status?.bot} /></div>}
     {t.error && <p className="edit-problem" role="alert">{t.error}</p>}
-    {t.status?.configured && <footer>
+    {t.status?.configured && early !== "requested" && <footer>
       {paired ? <button type="button" disabled={t.busy} onClick={() => void unpair()}>Unpair</button>
+        : early ? <button type="button" className="primary" disabled={t.busy} onClick={() => void join()}>Sign up</button>
         : live ? <><button type="button" disabled={t.busy} onClick={() => void newCode()}>New code</button><button type="button" className="primary" onClick={() => openLink(code!.link)}>Open Telegram again <Icon name="external" size={14} /></button></>
         : <button type="button" className="primary" disabled={t.busy} onClick={() => void newCode(true)}>Connect Telegram <Icon name="external" size={14} /></button>}
     </footer>}
@@ -42,6 +47,13 @@ export function TelegramSettings({ onPairInChat, onProactivity }: { onPairInChat
   const t = useTelegram(), paired = t.status?.paired, code = !paired ? t.code : null, live = !!code && code.expires > t.now;
   if (!t.status) return <SettingsCard title="Telegram"><div className="st-row" aria-busy="true"><div className="st-row-text"><span className="st-skel" /><span className="st-skel short" /></div></div></SettingsCard>;
   if (!t.status.configured) return <SettingsCard title="Telegram"><SettingRow title="Not available yet" description={t.error || "Clem’s Telegram bot isn’t switched on yet."} /></SettingsCard>;
+  const early = earlyOf(t.status);
+  if (early) return <SettingsCard title="Early access">
+    <SettingRow title={early === "requested" ? "You’re on the list" : "Telegram is in early access"} description={early === "requested" ? "You can connect Telegram here once you’re let in." : "Sign up to manage your day from Telegram and get your updates there."}>
+      {early === "none" && <button type="button" className="secondary" disabled={t.busy} onClick={() => void join()}>Sign up</button>}
+    </SettingRow>
+    {t.error && <SettingRow title="Something went wrong" description={t.error} />}
+  </SettingsCard>;
   return <>
     <SettingsCard title="Pairing" note={paired ? undefined : `Connect opens @${t.status.bot || "Clem’s bot"} in Telegram; tap Start and this chat is yours. Only that chat is answered.`}>
       {paired ? <SettingRow title={`Connected as ${paired.name}`} description={`Since ${since(paired.since)}${paired.online === false ? " · Clem on this PC answers when it’s open" : ""}`}>

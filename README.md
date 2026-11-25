@@ -137,7 +137,7 @@ How it all works: [GUC, VPS and Telegram engine](docs/GUC-VPS-ENGINE.md).
 
 ### Telegram
 
-Say "connect my Telegram" in the main thread, or use **Settings → Channels → Telegram → Pair in chat**. A card shows a link and a 6-digit code (good for 10 minutes); open the link or send the code to the Clem bot, and the card turns into **Connected as @you**. Then you can talk to Clem there, tap buttons on its cards, and ask for files ("send me lecture 3 slides"). Choose which updates go to Telegram in Settings → Proactivity. **Unpair** is on the card and in Settings.
+Telegram is in early access: sign up in **Settings → Channels → Telegram**, and connect once you're let in. Then say "connect my Telegram" in the main thread, or use **Settings → Channels → Telegram → Pair in chat**. A card shows a link and a 6-digit code (good for 10 minutes); open the link or send the code to the Clem bot, and the card turns into **Connected as @you**. Then you can talk to Clem there, tap buttons on its cards, and ask for files ("send me lecture 3 slides"). Choose which updates go to Telegram in Settings → Proactivity. **Unpair** is on the card and in Settings.
 
 Running your own copy? The bot's one-time setup is in [Deploying Telegram](docs/DESKTOP.md#deploying-telegram-owner).
 

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { desktop } from "../desktop/bridge";
 import { confirmDialog } from "../dialogs";
 
-export type TgStatus = { configured: boolean; bot?: string; paired: { name: string; since: number; online?: boolean } | null };
+export type TgStatus = { configured: boolean; access?: "none" | "requested" | "approved"; bot?: string; paired: { name: string; since: number; online?: boolean } | null };
 export type TgCode = { code: string; link: string; expires: number; bot: string };
 type Shared = { status: TgStatus | null; code: TgCode | null; error: string; busy: boolean };
 
@@ -31,6 +31,14 @@ function watch() {
     void refresh(true);
   }, 3000);
 }
+/** Signs up for Telegram's early access. */
+export async function join() {
+  if (shared.busy) return;
+  set({ busy: true, error: "" });
+  try { set({ status: await ask<TgStatus>({ action: "tgJoin" }) }); }
+  catch (e) { set({ error: clean(e) }); }
+  finally { set({ busy: false }); }
+}
 /** A fresh code; with `open`, Telegram opens on Clem's bot with it filled in, so pairing is one tap on Start. */
 export async function newCode(open = false) {
   if (shared.busy) return;
@@ -54,7 +62,8 @@ export function useTelegram() {
   useEffect(() => {
     const fn = () => tick((n) => n + 1);
     listeners.add(fn);
-    if (!shared.status) void refresh();
+    // Not connected: looked up again whenever it's shown (the engine keeps it a minute), so being let in shows.
+    if (!shared.status?.paired) void refresh();
     return () => { listeners.delete(fn); };
   }, []);
   const counting = !!shared.code && !shared.status?.paired;

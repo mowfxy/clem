@@ -4,6 +4,7 @@ import { ownerEligible, subscriptionActive } from "./account-policy.js";
 import { grantActive } from "./lib/account-state.js";
 import { HttpError, json, lemon, now, readJson, text } from "./lib/http.js";
 import { claimUsername } from "./lib/username.js";
+import { unpair } from "./telegram.js";
 
 const ROLE_RANK = { support: 1, admin: 2, owner: 3 };
 const PRICE_CENTS = 200;
@@ -514,6 +515,23 @@ export async function handleAdmin(request, env, user, path, authorization) {
     need(staff, "admin");
     await run(env, "UPDATE desktop_announcements SET archived=1 WHERE id=?", m[1]);
     await audit(env, staff, "announcement.archive", m[1]);
+    return json({ ok: true });
+  }
+
+  // Telegram's early access (telegram_access): who signed up, letting someone in, taking it away.
+  if (path === "/admin/telegram" && get) {
+    const people = await all(env, "SELECT t.user_id AS id,t.requested_at,t.approved_at,a.email,p.username,p.display_name,l.user_id IS NOT NULL AS paired FROM telegram_access t LEFT JOIN desktop_activity a ON a.user_id=t.user_id LEFT JOIN desktop_profiles p ON p.user_id=t.user_id LEFT JOIN telegram_links l ON l.user_id=t.user_id ORDER BY t.approved_at IS NOT NULL, CASE WHEN t.approved_at IS NULL THEN t.requested_at ELSE -t.approved_at END LIMIT 1000");
+    return json({ people: people.map((x) => ({ ...x, paired: !!x.paired })) });
+  }
+  if ((m = /^\/admin\/telegram\/([\w-]{3,64})\/(approve|remove)$/.exec(path)) && !get) {
+    need(staff, "admin");
+    if (!(await first(env, "SELECT 1 FROM telegram_access WHERE user_id=?", m[1]))) throw new HttpError(404, "That person is not on the Telegram list.");
+    if (m[2] === "approve") await run(env, "UPDATE telegram_access SET approved_at=COALESCE(approved_at,?) WHERE user_id=?", Date.now(), m[1]);
+    else {
+      await run(env, "DELETE FROM telegram_access WHERE user_id=?", m[1]);
+      await unpair(env, m[1]);
+    }
+    await audit(env, staff, "telegram." + m[2], m[1]);
     return json({ ok: true });
   }
 

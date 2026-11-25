@@ -23,6 +23,7 @@ try {
   for (const theme of ["dark", "light"]) {
     const main = { id: "main-fixture", kind: "main", title: "Clem", titled: true, renamed: true, pinned: true, spaceId: null, updated: Date.now() - 3600e3, messages: [{ id: "u0", role: "user", content: "Morning!", at: Date.now() - 3600e3 }] };
     const env = workerEnv(), tg = fakeTelegram();
+    env.DB.db.exec("DELETE FROM telegram_access"); // not signed up for early access yet
     const h = host();
     h.workspace = async () => ({ spaces: [], plans: [], chats: [main], files: [], studySets: [], automations: [] });
     h.account = account(env, tg, OWNER);
@@ -34,7 +35,7 @@ try {
       gucStatus: () => engine.status(), gucOverview: () => engine.overview(), gucNow: () => null, gucInbox: () => [], gucNewCourses: () => [], gucLinks: () => engine.links(), gucCourses: () => engine.courses(),
       proInbox: () => o.inbox(), proAck: (r) => o.ack(r), proStatus: (r) => o.statuses(r.keys), proSettings: (r) => (r.set ? o.setSettings(r.set) : o.settings()), proLog: () => o.log(0),
       proWatches: () => o.watches(), proMutes: () => o.mutesList(), proPoke: () => 60,
-      tgStatus: (r) => t.status(r.fresh), tgPair: () => t.pair(), tgUnpair: () => t.unpair(), tgOffer: () => o.offerTelegram("asked"),
+      tgStatus: (r) => t.status(r.fresh), tgPair: () => t.pair(), tgJoin: () => t.join(), tgUnpair: () => t.unpair(), tgOffer: () => o.offerTelegram("asked"),
     };
     const fx = await openFixture(browser, {
       port: 5243, viewport: { width: 1360, height: 900 },
@@ -51,6 +52,23 @@ try {
       await page.locator(".chat-view.main-thread").waitFor({ timeout: 4000 });
       const card = page.locator(".tg-card").last();
       await card.waitFor({ timeout: 6000 });
+      // Early access: sign up, wait, let in; the card and Settings follow.
+      check(await until(async () => (await card.getAttribute("data-state")) === "early") && await card.getByRole("button", { name: "Connect Telegram" }).count() === 0, `${theme}: not let in: the card offers Sign up only`);
+      await shot("card-early", ".tg-card");
+      await card.getByRole("button", { name: "Sign up" }).click();
+      check(await until(async () => (await card.getAttribute("data-state")) === "requested") && await card.getByRole("button").count() === 0, `${theme}: signed up: on the list, nothing to press`);
+      await shot("card-requested", ".tg-card");
+      await page.keyboard.press("Control+,");
+      await page.locator(".st-nav button", { hasText: "Telegram" }).click();
+      await page.locator(".st-dialog").getByText("You’re on the list").waitFor({ timeout: 4000 });
+      await shot("settings-requested", ".st-dialog");
+      env.DB.db.exec("UPDATE telegram_access SET approved_at=2");
+      await t.status(true);
+      await page.locator(".st-nav button", { hasText: "Proactivity" }).click();
+      await page.locator(".st-nav button", { hasText: "Telegram" }).click();
+      await page.locator(".st-dialog").getByText("Not connected").waitFor({ timeout: 4000 });
+      await page.keyboard.press("Escape");
+      await page.locator(".st-dialog").waitFor({ state: "detached" });
       check(await card.getAttribute("data-state") === "unpaired" && /Talk to Clem on Telegram/.test(await card.textContent()), `${theme}: the card offers Connect Telegram`);
       await card.scrollIntoViewIfNeeded();
       await shot("card-unpaired", ".tg-card");

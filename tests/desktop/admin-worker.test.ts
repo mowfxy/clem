@@ -7,7 +7,7 @@ import worker from "../../cloudflare/account-worker.js";
 
 function setup() {
   const database = new DatabaseSync(":memory:");
-  for (const file of ["account-schema.sql", "sync-schema.sql", "admin-schema.sql", "provider-links.sql"])
+  for (const file of ["account-schema.sql", "sync-schema.sql", "admin-schema.sql", "provider-links.sql", "telegram-schema.sql"])
     database.exec(readFileSync(new URL("../../cloudflare/" + file, import.meta.url), "utf8"));
   const DB = {
     async batch(statements: any[]) { for (const statement of statements) await statement.run(); },
@@ -345,4 +345,35 @@ test("accounts list every M4 Labs account from the directory, and staff without 
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("staff list Telegram sign-ups, let people in and remove them", async () => {
+  const { database, env } = setup(), original = globalThis.fetch;
+  const person = (id: string, email: string) => ({ id, email, email_confirmed_at: "2026-09-19" });
+  const owner = person("owner-id", "m@mohamedmowafy.com"), member = person("member-id", "member@example.com"), helper = person("helper-id", "helper@example.com");
+  let current: any = member;
+  globalThis.fetch = (async () => Response.json(current)) as any;
+  const call = (path: string, body?: unknown) => worker.fetch(new Request("https://account.example" + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer x.e30.y", "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }), env);
+  Object.assign(env, { TELEGRAM_BOT_TOKEN: "123:abc", TELEGRAM_WEBHOOK_SECRET: "s".repeat(40), TELEGRAM_BOT_USERNAME: "ClemBot" });
+  try {
+    await call("/entitlement");
+    assert.equal((await call("/admin/telegram")).status, 403);
+    assert.equal((await (await call("/telegram/join", {})).json()).access, "requested");
+    database.prepare("INSERT INTO desktop_admins(user_id,email,role,added_by,added_at) VALUES('helper-id','helper@example.com','support','x','x')").run();
+    current = helper;
+    const [row] = (await (await call("/admin/telegram")).json()).people;
+    assert.deepEqual([row.id, row.email, row.approved_at, row.paired], ["member-id", "member@example.com", null, false]);
+    assert.equal((await call("/admin/telegram/member-id/approve", {})).status, 403, "support only reads");
+    current = owner;
+    assert.equal((await call("/admin/telegram/nobody/approve", {})).status, 404);
+    assert.equal((await call("/admin/telegram/member-id/approve", {})).status, 200);
+    current = member;
+    assert.match((await (await call("/telegram/pair", {})).json()).code, /^\d{6}$/);
+    database.prepare("INSERT INTO telegram_links(user_id,chat_id,from_id,created_at) VALUES('member-id',9,9,5)").run();
+    current = owner;
+    assert.equal((await (await call("/admin/telegram")).json()).people[0].paired, true);
+    assert.equal((await call("/admin/telegram/member-id/remove", {})).status, 200);
+    for (const t of ["telegram_access", "telegram_links", "telegram_pairings"]) assert.equal((database.prepare(`SELECT count(*) AS n FROM ${t}`).get() as any).n, 0, t);
+    assert.deepEqual((await (await call("/admin/audit")).json()).entries.map((e: any) => e.action).sort(), ["telegram.approve", "telegram.remove"]);
+  } finally { globalThis.fetch = original; }
 });

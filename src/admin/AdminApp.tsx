@@ -9,6 +9,7 @@ import {Stats} from './Stats';
 import {Users} from './Users';
 import {Cases} from './Cases';
 import {Announcements} from './Announcements';
+import {Telegram} from './Telegram';
 import {Team} from './Team';
 import {Audit} from './Audit';
 import {Emails} from './Emails';
@@ -103,6 +104,7 @@ export default function AdminApp(){
       case 'accounts':return <Users go={go} selected={where.id} staff={s}/>;
       case 'cases':return <Cases go={go} selected={where.id}/>;
       case 'announcements':return <Announcements staff={s}/>;
+      case 'telegram':return <Telegram staff={s} go={go}/>;
       case 'emails':return s.role==='support'?<Overview go={go}/>:<Emails go={go} compose={where.id}/>;
       case 'team':return <Team staff={s}/>;
       case 'audit':return <Audit go={go}/>;

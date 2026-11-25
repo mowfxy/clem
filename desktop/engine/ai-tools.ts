@@ -214,7 +214,9 @@ export async function runTelegramTool(ctx: GucToolContext, request: Record<strin
   if (!t.available) return { error: "Telegram isn't available in this Clem." };
   try {
     if (request.action === "telegram.pair") {
-      const paired = (await t.status(true)).paired;
+      const { paired, access } = await t.status(true);
+      if (!paired && access === "requested") return `Telegram is in early access and they have signed up: they can connect once they're let in. Say so in one sentence:\n${PAIR_CARD}`;
+      if (!paired && access === "none") return `Telegram is in early access. Say so in one sentence and put this card in your reply: it lets them sign up.\n${PAIR_CARD}`;
       return paired ? `Telegram is already paired as ${paired.name}. Say so; the card lets them unpair:\n${PAIR_CARD}` : `Put this card in your reply: it shows the link and the code, and says Connected once they send it.\n${PAIR_CARD}`;
     }
     if (request.action !== "telegram.sendFile") return { error: "Unknown Telegram action." };

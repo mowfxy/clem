@@ -10,6 +10,8 @@ const root = new URL("../", import.meta.url);
 export function d1() {
   const db = new DatabaseSync(":memory:");
   for (const f of ["cloudflare/account-schema.sql", "cloudflare/provider-links.sql", "cloudflare/telegram-schema.sql"]) db.exec(fs.readFileSync(new URL(f, root), "utf8"));
+  // Let in to early access, unless the test is about it (ids starting "new").
+  for (const u of ["u1", "u2", "u3", "owner-1", "owner-2", "fixture-owner"]) db.prepare("INSERT INTO telegram_access(user_id,requested_at,approved_at) VALUES(?,1,1)").run(u);
   return {
     db,
     prepare(sql: string) {
