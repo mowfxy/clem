@@ -6,8 +6,6 @@
   // dark: the choice from Settings, or by default the system's (Windows') light or dark setting. Same rule as src/theme/theme.ts.
   var theme = "dark";
   try { var chosen = localStorage.getItem("clem-theme"); theme = chosen === "light" || chosen === "dark" ? chosen : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; } catch (e) {}
-  // The public website (clem.m4labs.xyz) is the app's night only: every page but sign-in, the checker and admin.
-  if (location.protocol !== "clem:" && location.hostname !== "admin.m4labs.xyz" && location.hostname !== "check.clem.m4labs.xyz" && !/^#\/?(login|desktop-signin|drive-connect|check|admin)/.test(location.hash)) theme = "dark";
   document.documentElement.dataset.theme = theme;
   if (location.protocol !== "clem:") return;
   var light = theme === "light", paper = light ? "#e9eff6" : "#05080f", ink = light ? "#0b0b0a" : "#F4F2EC";

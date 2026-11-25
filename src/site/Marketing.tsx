@@ -13,26 +13,24 @@ export function Marketing({ route }: { route: string }) {
 }
 
 function Features() {
-  usePageTitle('What Clem does', 'Nine things Clem does with your files and the AI plan you already have: learning, research, visuals, reports, analysis, slides, documents, folders and models.');
+  usePageTitle('What Clem does', 'What Clem does: an organizer that plans your day and reminds you, then learning, research, visuals, reports, analysis, slides, documents, folders and models, on the AI plan you already have.');
   return (
     <SitePage route="/features" className="cs-index">
       <header className="cs-page-head">
         <h1>What Clem does.</h1>
-        <p className="cs-lede">One window for the work you bring to an AI: a course, a research question, a report, a pile of PDFs. Nine ways in.</p>
+        <p className="cs-lede">Clem keeps the plan. You bring the course, the research question, the report, the pile of PDFs.</p>
       </header>
       <ol className="cs-list">
         {FEATURES.map((f, i) => (
           <li key={f.id} data-arrive style={{ '--i': i } as React.CSSProperties}>
             <a href={`#/features/${f.id}`}>
-              <span className="cs-list-n">{String(i + 1).padStart(2, '0')}</span>
-              <span className="cs-list-name">{f.name}</span>
-              <span className="cs-list-title">{f.title}</span>
+                            <span className="cs-list-name">{f.name}</span>
               <span className="cs-list-line">{f.line}</span>
             </a>
           </li>
         ))}
       </ol>
-      <Window shot="subjects" alt="Clem’s Subjects page listing Biology 101 and Calculus II with their exam dates." caption={<><b>Subjects.</b> Where most of the nine meet: each course with its files, chats, cards and plan.</>} />
+      <Window shot="subjects" alt="Clem’s Subjects page listing Biology 101, Calculus II, Chemistry 102 and Circuits." caption={<><b>Subjects.</b> Where most of it meets: each course with its files, chats, cards and plan.</>} />
     </SitePage>
   );
 }
@@ -74,14 +72,14 @@ function About() {
       </header>
       <section className="cs-prose-page">
         <h2>Why it exists</h2>
-        <p>Most people who study with an AI keep it in a browser tab, and their course in a dozen other places. Clem puts the course, its files and the AI in one window, and has the AI answer from your files instead of from memory.</p>
+        <p>Most people who study with an AI keep it in a browser tab, and their course in a dozen other places. Clem puts the course, its files and the AI in one window, has the AI answer from your files, and has it speak first about your day.</p>
         <p>It doesn't sell you another subscription. You connect the ChatGPT, Claude, Grok or Google AI plan you already pay for, and Clem works through that service's own official tool on your PC.</p>
         <h2>How it works</h2>
         <ol className="cs-steps">
           <li data-arrive style={{ '--i': 0 } as React.CSSProperties}><b>Your files</b><span>Kept in Documents\Clem as plain files. Linked folders are read where they are.</span></li>
           <li data-arrive style={{ '--i': 1 } as React.CSSProperties}><b>The app</b><span>A Windows app built with Electron, React and TypeScript.</span></li>
           <li data-arrive style={{ '--i': 2 } as React.CSSProperties}><b>Your AI</b><span>Codex, Claude Code, the Grok CLI or Antigravity, each working in a folder of your files with its tools kept inside it.</span></li>
-          <li data-arrive style={{ '--i': 3 } as React.CSSProperties}><b>The account service</b><span>Only sign-in, support and your encrypted AI connections. Your chats and files stay on your PC.</span></li>
+          <li data-arrive style={{ '--i': 3 } as React.CSSProperties}><b>The account service</b><span>Sign-in, support, your encrypted AI connections, and the Telegram relay if you use it. Your chats and files stay on your PC, or on your own server if you set one up.</span></li>
         </ol>
         <h2>Open source</h2>
         <p>Every line of Clem is on <a href="https://github.com/mowfxy/clem">GitHub</a> under the MIT License. Read it, build it yourself, or send a fix.</p>
@@ -96,7 +94,8 @@ function About() {
 const QUESTIONS: [string, React.ReactNode][] = [
   ['What does Clem cost?', <>Nothing. There is no plan, no trial and no card. You use the AI plan you already have, and Clem adds nothing to it.</>],
   ['Which AI plans work?', <>ChatGPT through Codex, Claude through Claude Code, Grok through the Grok CLI, and Google AI through Antigravity. Connect them in Settings, under Models.</>],
-  ['Where is my work kept?', <>On your PC, in Documents\Clem, as plain files. The account service only handles sign-in, support and your encrypted AI connections.</>],
+  ['Where is my work kept?', <>On your PC, in Documents\Clem, as plain files. If you point Clem at a server of your own, it can keep working there too.</>],
+  ['Can I use it from my phone?', <>On Telegram, in early access. Sign up in Settings, under Channels; you can connect once you’re let in.</>],
   ['Windows warned me about the installer.', <>The installer is not code-signed yet, so SmartScreen may ask whether you trust it. The download page lists its SHA-256 checksum, so you can check the file is ours.</>],
   ['Does it run on a Mac?', <>Not yet. Clem is for Windows 10 and 11, 64-bit.</>],
   ['Is it finished?', <>It is a preview. Most of it is used every day; some flows are still being checked.</>],

@@ -10,7 +10,8 @@ import { join, resolve } from "node:path";
 const out = process.argv[2] || "test-results/site-shots";
 await mkdir(out, { recursive: true });
 const userData = await mkdtemp(join(tmpdir(), "clem-site-"));
-const DAY = 864e5, now = Date.now(), day = (n) => new Date(now + n * DAY).toISOString().slice(0, 10);
+const DAY = 864e5, now = new Date().setHours(21, 24, 0, 0), morning = new Date().setHours(8, 12, 0, 0), day = (n) => new Date(now + n * DAY).toISOString().slice(0, 10);
+const date = (n) => new Date(now + n * DAY).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 let n = 0;
 const id = (p) => p + ++n;
 
@@ -53,9 +54,9 @@ for (let d = 170; d > 0; d--) {
 }
 
 const check = { checks: [{ label: "Mass gained", expr: "4.71 - 4.20", claimed: 0.51, unit: "g" }, { label: "Percentage gain", expr: "(4.71 - 4.20) / 4.20 * 100", claimed: 12.1, unit: "%" }] };
-const osmosis = { id: "c-osmosis", title: "Osmosis lab write-up", spaceId: "bio", titled: true, updated: now - 3600e3, model: "claude:sonnet", messages: [
-  { id: "o1", role: "user", at: now - 3700e3, content: "Why did the potato gain mass in pure water? Use my lab handout, and check the percentage." },
-  { id: "o2", role: "assistant", at: now - 3600e3, model: "claude:sonnet", content: [
+const osmosis = { id: "c-osmosis", title: "Osmosis lab write-up", spaceId: "bio", titled: true, updated: now - 160 * 60e3, model: "claude:sonnet", messages: [
+  { id: "o1", role: "user", at: now - 164 * 60e3, content: "Why did the potato gain mass in pure water? Use my lab handout, and check the percentage." },
+  { id: "o2", role: "assistant", at: now - 160 * 60e3, model: "claude:sonnet", content: [
     "The potato gained mass because of **osmosis**. Its cells hold more solute than pure water does, so water crosses the selectively permeable membrane into the cells until the pressure inside balances the pull [[Lab handout.pdf, p. 2]].",
     "The cylinder went from 4.20 g to 4.71 g, a gain of 12.1%. That matches the 8 to 15% range the handout expects for a 0 mol/L solution [[Lab handout.pdf, p. 3]].",
     "For your write-up, name the membrane, the direction of water and the concentration gradient in one sentence. The marking scheme gives a point for each [[Lab handout.pdf, p. 4]].",
@@ -69,17 +70,35 @@ const cable = { id: "c-cable", title: "Why a long cable rings", spaceId: "report
   { id: "r1", role: "user", at: now - 7300e3, content: "/visual why does my op-amp oscillate with a long cable?" },
   { id: "r2", role: "assistant", at: now - 7200e3, model: "gpt-5.5", content: "Cable capacitance loads the output and eats into the phase margin. Drag the length and watch the overshoot climb.\n\n```visual\n" + JSON.stringify(ringing) + "\n```" },
 ] };
-const ch4 = { id: "c-methane", title: "Why methane is a tetrahedron", spaceId: "chem", titled: true, updated: now - 1800e3, model: "claude:sonnet", messages: [
-  { id: "m1", role: "user", at: now - 1900e3, content: "/visual why is methane shaped like a tetrahedron?" },
-  { id: "m2", role: "assistant", at: now - 1800e3, model: "claude:sonnet", content: "The four bonding pairs around carbon push each other as far apart as they can, which puts the hydrogens at the corners of a tetrahedron, 109.5° apart. Turn it and look down any bond.\n\n```visual\n" + JSON.stringify(methane) + "\n```" },
+const ch4 = { id: "c-methane", title: "Why methane is a tetrahedron", spaceId: "chem", titled: true, updated: morning - DAY, model: "claude:sonnet", messages: [
+  { id: "m1", role: "user", at: morning - DAY, content: "/visual why is methane shaped like a tetrahedron?" },
+  { id: "m2", role: "assistant", at: morning - DAY, model: "claude:sonnet", content: "The four bonding pairs around carbon push each other as far apart as they can, which puts the hydrogens at the corners of a tetrahedron, 109.5° apart. Turn it and look down any bond.\n\n```visual\n" + JSON.stringify(methane) + "\n```" },
 ] };
+// The main thread as Clem writes it now: plain messages, no cards or buttons (a question about one course still leaves
+// the link to the chat it continued in). The light windows are the morning, the dark ones the evening of the same day.
+const at = (h, m = 0, plusDays = 0) => { const d = new Date(now + plusDays * DAY); d.setHours(h, m, 0, 0); return d; };
+const card = (c) => "```clem-card\n" + JSON.stringify(c) + "\n```";
+const said = (h, m, content) => ({ id: id("mt"), role: "assistant", at: +at(h, m), content });
+const asked = (h, m, content) => ({ id: id("mt"), role: "user", at: +at(h, m), content });
+const mainThread = { id: "main-sam", kind: "main", title: "Clem", titled: true, renamed: true, pinned: true, spaceId: null, updated: +at(8, 5), messages: [
+  said(7, 30, "Morning, Sam. Your osmosis write-up is due tomorrow, so I put it in your free slot at 10. Six Biology cards are due too; that’s about ten minutes."),
+  said(8, 2, "You didn’t get to the ratio test problems yesterday, so I moved them to 4 today and kept your evening free."),
+  said(8, 5, "Calculus is fifteen days after Biology. I left its revision light until then."),
+  asked(18, 2, "remind me to submit the lab report tomorrow at 9"),
+  said(18, 2, "Done. I’ll remind you tomorrow at 9:00."),
+  asked(18, 40, "why did my potato gain mass in pure water?"),
+  said(18, 40, "That’s your osmosis lab, so I’m answering in Biology 101, next to your handout.\n\n" + card({ type: "handoff", spaceId: "bio", spaceName: "Biology 101", spaceKind: "subject", chatId: "c-osmosis", title: "Why did the potato gain mass in pure water?", reason: "match" })),
+  said(20, 15, "The practice quiz on respiration is Saturday. Tomorrow is full, so tonight or Friday morning is best for it."),
+] };
+
 const seed = (title, spaceId, ago, question, answer) => ({ id: id("c"), title, spaceId, titled: true, updated: now - ago * DAY, messages: [{ id: id("m"), role: "user", content: question, at: now - ago * DAY }, { id: id("m"), role: "assistant", content: answer, at: now - ago * DAY }] });
 const workspace = {
   name: "Sam",
   spaces: [
-    { id: "bio", name: "Biology 101", kind: "subject", description: "Cells, genetics and evolution. Midterm on the 19th.", memory: "", sources: ["handout", "syllabus", "slides"], examDate: day(12) },
+    { id: "bio", name: "Biology 101", kind: "subject", description: `Cells, genetics and evolution. Midterm on ${date(12)}.`, memory: "", sources: ["handout", "syllabus", "slides"], examDate: day(12) },
     { id: "calc", name: "Calculus II", kind: "subject", description: "Series, integrals and polar coordinates.", memory: "", sources: [], examDate: day(27) },
     { id: "chem", name: "Chemistry 102", kind: "subject", description: "Bonding, shape and reactions.", memory: "", sources: [] },
+    { id: "circuits", name: "Circuits", kind: "subject", description: "Networks, theorems and first-order response.", memory: "", sources: [] },
     { id: "report", name: "Op-amp stability report", kind: "project", description: "Final-year lab report on cable loading.", memory: "", sources: [] },
   ],
   files: [
@@ -90,7 +109,7 @@ const workspace = {
     { id: "draft", name: "Stability report draft.docx", size: 240e3, type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", created: now - 2 * DAY, spaceId: "report" },
   ],
   chats: [
-    ch4, osmosis, cable,
+    mainThread, ch4, osmosis, cable,
     seed("Krebs cycle in plain words", "bio", 1, "Explain the Krebs cycle simply.", "The Krebs cycle runs inside mitochondria and strips energy from acetyl-CoA."),
     seed("Ratio test or root test?", "calc", 2, "When do I use the ratio test?", "Reach for it when factorials or exponentials appear."),
     seed("Phase margin against load", "report", 3, "How much margin is enough?", "Aim for about 60 degrees."),
@@ -100,7 +119,7 @@ const workspace = {
     { id: "set-cells", spaceId: "bio", kind: "flashcards", title: "Cell organelles", created: now - 8 * DAY, attempts: [], items: organelles, cards: cards(organelles, 6) },
     { id: "set-quiz", spaceId: "bio", kind: "quiz", title: "Membranes quiz", created: now - 5 * DAY, attempts: [{ at: now - 2 * DAY, correct: 8, total: 10 }], items: [{ question: "Water moves toward the side with…", answer: "more solute", choices: ["more solute", "less solute"], correct: 0 }] },
   ],
-  plans: [{ id: "plan-bio", spaceId: "bio", title: "Midterm plan", goal: "Ready for the midterm on the 19th", start: day(-6), created: now - 6 * DAY, updated: now - DAY, rev: 3, history: [], tasks: [
+  plans: [{ id: "plan-bio", spaceId: "bio", title: "Midterm plan", goal: `Ready for the midterm on ${date(12)}`, start: day(-6), created: now - 6 * DAY, updated: now - DAY, rev: 3, history: [], tasks: [
     { id: "t1", title: "Reread membranes and transport", due: day(-2), done: true, group: "This week" },
     { id: "t2", title: "Osmosis lab write-up", due: day(1), group: "This week" },
     { id: "t3", title: "Practice quiz on respiration", due: day(3), group: "This week" },
@@ -109,6 +128,9 @@ const workspace = {
   visuals: [{ id: "v0", chatId: "c-methane", title: methane.title, created: now - 1800e3, spec: methane }, { id: "v1", chatId: "c-cable", title: ringing.title, created: now - 2 * 3600e3, spec: ringing }],
   skills: [], automations: [], memory: "", quiet: false,
 };
+
+/** The workspace as it stands at `t`: later messages in the main thread aren't there yet. */
+const upTo = (t) => ({ ...workspace, chats: workspace.chats.map((c) => c.kind === "main" ? { ...c, messages: c.messages.filter((m) => m.at <= t) } : c) });
 
 // A real PDF for the citation to open: the lab handout the demo chat quotes.
 const printer = await chromium.launch(), sheet = await printer.newPage();
@@ -145,7 +167,7 @@ try {
     const status = { configured: true, user, setup: { step: 4, username: "sam", displayName: "Sam", memory: true }, entitlement: { active: true, reason: "" } };
     const models = [{ id: "gpt-5.5", name: "GPT-5.5", provider: "OpenAI", connected: true, context: 32000, specialties: [], tools: [], isDefault: true }, { id: "claude:sonnet", name: "Claude Sonnet", provider: "Anthropic", connected: true, context: 32000, specialties: [], tools: [] }];
     const account = (id, plan) => ({ id, connected: true, installed: true, email: "sam@example.com", plan });
-    let state = workspace;
+    globalThis.siteState = workspace;
     ipcMain.removeHandler("clem:request");
     ipcMain.handle("clem:request", (_event, r) => {
       if (r.action === "status") return status;
@@ -156,6 +178,15 @@ try {
       if (r.action === "models") return models;
       if (r.action === "memoryAll") return { enabled: true, records: [] };
       if (r.action === "folders" || r.action === "foldersAll" || r.action === "folderChanges") return [];
+      // The engine, as scripts/verify/fixture-engine.mjs answers it.
+      if (r.action === "proStatus") return Object.fromEntries((r.keys || []).map((k) => [k, /^change:/.test(k) ? "said" : "applied"]));
+      if (r.action === "proInbox") return { posts: [], apply: [] };
+      if (r.action === "proReminders") { const d = new Date(Date.now() + 864e5); d.setHours(9, 0, 0, 0); return [{ id: "r-lab", text: "Submit the lab report", at: +d, spaceId: "bio" }]; }
+      if (["proLog", "proWatches", "proMutes"].includes(r.action)) return [];
+      if (r.action === "gucStatus" || r.action === "gucOverview") return { connected: false, syncing: false, courses: 0, linked: 0, counts: { courses: 0, unread: 0, materials: 0, deadlines: 0, grades: 0 } };
+      if (["gucInbox", "gucNewCourses", "gucLinks", "gucCourses"].includes(r.action)) return [];
+      if (r.action === "tgStatus") return { configured: true, paired: { username: "sam" } };
+      if (r.action === "vpsStatus") return { connected: false, storage: { mode: "device", device: 0, vps: 0, cache: 0, cap: 2 * 1024 ** 3, pinned: 0, files: { device: 0, vps: 0 } }, worker: { enabled: false, installed: false, runner: "desktop", model: "none" }, passwordAllowed: false };
       return {};
     });
     protocol.unhandle("clem");
@@ -163,27 +194,36 @@ try {
       const url = new URL(request.url);
       if (url.pathname === "/api/auth/session") return Response.json({ user, database: false, auth: true, storage: false, drive: true, scheduler: false });
       if (url.pathname === "/api/models") return Response.json(models);
-      if (url.pathname === "/api/local/state") { if (request.method === "PUT") { state = await request.json(); return Response.json({ ok: true }); } return Response.json(state); }
+      if (url.pathname === "/api/local/state") { if (request.method === "PUT") { globalThis.siteState = await request.json(); return Response.json({ ok: true }); } return Response.json(globalThis.siteState); }
       if (url.pathname.endsWith("/files/handout")) return new Response(Buffer.from(handout, "base64"), { headers: { "Content-Type": "application/pdf" } });
       if (url.pathname.startsWith("/api/local/files/")) return new Response("Biology 101 covers cells, membranes, osmosis and genetics.");
       if (url.pathname.startsWith("/api/")) return Response.json({});
       return net.fetch(pathToFileURL(join(root, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname))).toString());
     });
     BrowserWindow.getAllWindows()[0].webContents.reload();
-  }, { workspace, handout: handout.toString("base64") });
+  }, { workspace: upTo(morning), handout: handout.toString("base64") });
   await page.locator(".greeting-row").waitFor({ timeout: 20000 }).catch((e) => log.push("workspace did not open: " + String(e.message).split("\n")[0]));
 
   const nav = (label) => page.locator(".sidebar .nav-item", { hasText: label }).click({ timeout: 4000 }).catch((e) => log.push(String(e.message).split("\n")[0]));
   const open = (title) => page.locator(".history-title", { hasText: title }).first().click({ timeout: 4000 }).catch((e) => log.push(String(e.message).split("\n")[0]));
   const tour = async (suffix) => {
-    await nav("New chat");
+    await nav("Home");
     await capture("home" + suffix);
+    await nav("Clem");
+    await page.locator(".chat-view.main-thread").waitFor({ timeout: 6000 }).catch(() => log.push("no main thread"));
+    for (let i = 0; i < 6; i++) { await page.locator(".workspace").evaluate((el) => { el.scrollTop = el.scrollHeight; }).catch(() => {}); await page.waitForTimeout(300); }
+    await page.getByRole("button", { name: /Jump to latest/ }).click({ timeout: 1500 }).catch(() => {});
+    await page.waitForTimeout(1200);
+    await capture("thread" + suffix);
+    await page.locator(".workspace").evaluate((el) => { el.scrollTop = 0; }).catch(() => {});
+    await page.waitForTimeout(900);
+    await capture("brief" + suffix);
     await open("Osmosis lab");
     await page.waitForTimeout(700);
     await page.getByText("Source check").first().click({ timeout: 3000 }).catch(() => log.push("no source check"));
     await capture("chat" + suffix);
-    await page.locator("main a, main button").filter({ hasText: /Lab handout/ }).first().click({ timeout: 3000 }).catch(() => log.push("no citation"));
-    await page.waitForTimeout(1500);
+    await page.locator("main a, main button").filter({ hasText: /Lab handout\.pdf.*p\. 3/ }).first().click({ timeout: 3000 }).catch(() => log.push("no citation"));
+    await page.waitForTimeout(3500);
     await capture("cited" + suffix);
     await page.keyboard.press("Escape");
     await open("Why a long cable");
@@ -210,14 +250,16 @@ try {
     await capture("models" + suffix);
     await page.keyboard.press("Escape");
   };
-  await page.evaluate(() => { localStorage.setItem("clem-theme", "dark"); location.reload(); });
-  await page.waitForTimeout(1200);
-  await page.locator(".greeting-row").waitFor({ timeout: 20000 }).catch(() => {});
-  await tour("-dark");
-  await page.evaluate(() => { localStorage.setItem("clem-theme", "light"); location.reload(); });
-  await page.waitForTimeout(1200);
-  await page.locator(".greeting-row").waitFor({ timeout: 20000 }).catch(() => {});
-  await tour("-light");
+  // Morning in the light theme (the thread holds only what Clem has said by then), then the evening in the dark one.
+  // Biology, Chemistry and the report are unfolded in the sidebar, so their chats show.
+  for (const [theme, clock, suffix] of [["light", morning, "-day"], ["dark", now, ""]]) {
+    await app.evaluate((_, w) => { globalThis.siteState = w; }, upTo(clock));
+    await page.clock.setFixedTime(clock);
+    await page.evaluate((theme) => { localStorage.setItem("clem-theme", theme); localStorage.setItem("clem-sidebar-open", JSON.stringify(["bio", "chem", "report"])); location.reload(); }, theme);
+    await page.waitForTimeout(1200);
+    await page.locator(".greeting-row").waitFor({ timeout: 20000 }).catch(() => log.push("no home " + theme));
+    await tour(suffix);
+  }
 } finally {
   console.log(log.length ? log.slice(0, 30).join("\n") : "no problems logged");
   await app.close().catch(() => {});
