@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { MARK_PATH } from '../../core/mark';
 import { Icon } from '../Icons';
+import { Horizon } from './Horizon';
 import './site.css';
 
-/** The public site's frame: the app's mark and lowercase serif wordmark, three links and the download, over the night. */
+/** The public site's frame: the app's mark and lowercase serif wordmark, three links and the download. */
 
 export type Release = { version: string; url: string; signed: boolean; sha256: string; size: number; released?: string };
 
@@ -54,14 +55,8 @@ export function DownloadButton({ label = 'Download for Windows', small = false }
 const NAV: [string, string][] = [['#/features', 'Features'], ['#/about', 'About'], ['#/support', 'Support']];
 
 function Top({ route }: { route: string }) {
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 8);
-    on(); window.addEventListener('scroll', on, { passive: true });
-    return () => window.removeEventListener('scroll', on);
-  }, []);
   return (
-    <header className={'cs-top' + (scrolled ? ' is-scrolled' : '')}>
+    <header className="cs-top">
       <a className="cs-brand" href="#/" aria-label="Clem, home"><Mark size={23} /><span className="cs-wordmark">clem</span></a>
       <nav aria-label="Site">
         {NAV.map(([href, label]) => <a key={href} href={href} className={'cs-nav' + (route.startsWith(href.slice(1)) ? ' is-here' : '')} aria-current={route.startsWith(href.slice(1)) ? 'page' : undefined}>{label}</a>)}
@@ -74,43 +69,62 @@ function Top({ route }: { route: string }) {
 function Foot() {
   return (
     <footer className="cs-foot">
-      <div className="cs-foot-mark"><Mark size={28} /><p>Clem is made by <a href="https://m4labs.xyz">M4 Labs</a>. Free, open source under the MIT License, and a preview.</p></div>
+      <p>Made by <a href="https://m4labs.xyz">M4 Labs</a></p>
       <nav aria-label="More">
-        <div><b>Clem</b><a href="#/features">Features</a><a href="#/download">Download</a><a href="https://github.com/mowfxy/clem-releases/releases">Releases</a></div>
-        <div><b>Help</b><a href="#/support">Support</a><a href="mailto:support@m4labs.xyz">support@m4labs.xyz</a><a href="https://github.com/mowfxy/clem/issues">Report a problem</a></div>
-        <div><b>M4 Labs</b><a href="#/about">About</a><a href="https://m4labs.xyz/privacy">Privacy</a><a href="https://m4labs.xyz/terms">Terms</a><a href="https://github.com/mowfxy/clem">Source code</a></div>
+        <a href="https://github.com/mowfxy/clem">Source</a>
+        <a href="https://github.com/mowfxy/clem-releases/releases">Releases</a>
+        <a href="https://github.com/mowfxy/clem/issues">Report a problem</a>
+        <a href="https://m4labs.xyz/privacy">Privacy</a>
+        <a href="https://m4labs.xyz/terms">Terms</a>
       </nav>
     </footer>
   );
 }
 
-/** Every public page sits in this frame. Dark only: the site is the app's night. */
+/** Like the app, the site follows the system's light or dark setting. */
+function useNight() {
+  const [night, setNight] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  useEffect(() => {
+    const query = matchMedia('(prefers-color-scheme: dark)'), on = () => setNight(query.matches);
+    query.addEventListener('change', on);
+    return () => query.removeEventListener('change', on);
+  }, []);
+  return night;
+}
+const Night = createContext(false);
+
+/** Every public page sits in this frame: the app's sky behind the top of the page, the app's theme over it. */
 export function SitePage({ route, children, className = '' }: { route: string; children: ReactNode; className?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null), night = useNight();
   useArrivals(ref, route);
   useEffect(() => {
-    const root = document.documentElement, before = root.dataset.theme;
-    root.dataset.theme = 'dark';
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#05080f');
-    return () => { if (before) root.dataset.theme = before; };
-  }, []);
+    document.documentElement.dataset.theme = night ? 'dark' : 'light';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', night ? '#05080f' : '#e9eff6');
+  }, [night]);
   return (
-    <div className={'cs ' + className} ref={ref}>
-      <a className="cs-skip" href="#cs-main" onClick={(e) => { e.preventDefault(); document.getElementById('cs-main')?.focus(); }}>Skip to content</a>
-      <Top route={route} />
-      <main id="cs-main" tabIndex={-1}>{children}</main>
-      <Foot />
-    </div>
+    <Night.Provider value={night}>
+      <div className={'cs ' + (night ? 'is-night ' : '') + className} ref={ref}>
+        <Horizon day={!night} />
+        <a className="cs-skip" href="#cs-main" onClick={(e) => { e.preventDefault(); document.getElementById('cs-main')?.focus(); }}>Skip to content</a>
+        <Top route={route} />
+        <main id="cs-main" tabIndex={-1}>{children}</main>
+        <Foot />
+      </div>
+    </Night.Provider>
   );
 }
 
-export type Shot = 'home' | 'chat' | 'cited' | 'visual' | 'ringing' | 'subjects' | 'subject' | 'flashcards' | 'plan' | 'visuals' | 'files' | 'models' | 'welcome';
+/** Each is captured in the light theme (`-day`) and the dark one (scripts/site/capture.mjs). */
+export type Shot = 'home' | 'thread' | 'chat' | 'cited' | 'visual' | 'ringing' | 'subjects' | 'subject' | 'flashcards' | 'plan' | 'files' | 'models';
 
 /** A real capture of the desktop app: always the whole window, never cropped. */
 export function Window({ shot, alt, caption, eager = false, className = '' }: { shot: Shot; alt: string; caption?: ReactNode; eager?: boolean; className?: string }) {
+  // On a phone the window keeps a readable size and slides; it starts on its content, not on the sidebar.
+  const file = `/shots/${shot}${useContext(Night) ? '' : '-day'}`, pane = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = pane.current; if (el && el.scrollWidth > el.clientWidth + 8) el.scrollLeft = (el.scrollWidth - el.clientWidth) * 0.66; }, [shot]);
   return (
     <figure className={'cs-window ' + className} data-arrive>
-      <img src={`/shots/${shot}-1440.webp`} srcSet={`/shots/${shot}-1440.webp 1440w, /shots/${shot}-2878.webp 2878w`} sizes="(min-width: 1200px) 1100px, 94vw" width={1440} height={SHOT_HEIGHT} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" />
+      <div className="cs-pane" ref={pane}><img src={`${file}-1440.webp`} srcSet={`${file}-1440.webp 1440w, ${file}-2878.webp 2878w`} sizes="(min-width: 1400px) 1320px, (min-width: 641px) 94vw, 780px" width={1440} height={SHOT_HEIGHT} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async" /></div>
       {caption && <figcaption>{caption}</figcaption>}
     </figure>
   );

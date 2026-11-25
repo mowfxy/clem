@@ -53,7 +53,7 @@ export function Download({ account, returning }: { account: boolean; returning: 
           <li data-arrive style={{ '--i': 2 } as React.CSSProperties}><b>Connect your AI</b><span>Clem finds what is already on your PC and connects it in one click.</span></li>
         </ol>
       </section>
-      <Window shot="welcome" alt="The first thing Clem shows: “Welcome to Clem. A calm place for your projects, study and documents.” on a sheet of glass over the sunrise, with Sign in with browser." caption={<><b>The first screen,</b> here in Windows’ light mode: one sheet of glass and the sunrise behind it.</>} />
+      <Window shot="home" alt="Clem’s home screen: a greeting, a message box, study activity, recent chats, the next exam and what is up next." />
       <p className="cs-small cs-older"><a href="https://github.com/mowfxy/clem-releases/releases">Release notes and earlier versions</a></p>
     </SitePage>
   );

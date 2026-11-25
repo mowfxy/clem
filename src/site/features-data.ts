@@ -1,6 +1,6 @@
 import type { Shot } from './shell';
 
-/** The nine feature pages. Their ids are the old public URLs (#/features/<id>) and must not change.
+/** The feature pages. Their ids are the old public URLs (#/features/<id>) and must not change.
  *  Every sentence is something the app does today (docs/FEATURES.md); nothing here is a plan. */
 export type Feature = {
   id: string; name: string; title: string; line: string; body: string[]; points: [string, string][];
@@ -9,6 +9,16 @@ export type Feature = {
 
 export const FEATURES: Feature[] = [
   {
+    id: 'organizer', name: 'Clem’s organizer', title: 'It plans your day before you ask.',
+    line: 'One thread where Clem plans your day, reminds you, and tells you what it moved and why.',
+    body: [
+      'Tap the message box on home and it grows into the main thread. Each morning Clem writes your day into the plan around your classes: what is due, what slipped, the cards worth reviewing. When it moves something it says so in a sentence.',
+      'Everything it says is a plain message, and you steer it the same way: “remind me tomorrow at 9”, “undo that”, “only tell me what can’t wait”. A question about one course carries on in that subject’s chat.',
+    ],
+    points: [['Reminders', 'Say “remind me tomorrow at 9” and it will, in Clem and as a Windows notification.'], ['Your own server', 'One switch runs Clem’s background work on a VPS of yours, so it carries on with the laptop shut.'], ['Telegram, in early access', 'The same messages on your phone, answered in plain words. Sign up in Settings.']],
+    shot: 'thread', alt: 'Clem’s main thread: plain messages about the student’s day, written by Clem.',
+  },
+  {
     id: 'learning', name: 'Learning', title: 'A subject that knows when the exam is.',
     line: 'Subjects hold your notes and slides, and turn them into flashcards, quizzes and a plan paced to the exam.',
     body: [
@@ -16,17 +26,17 @@ export const FEATURES: Feature[] = [
       'Every card is scheduled with FSRS spaced repetition and paced to the exam date, so the cards due today are the ones worth your time. A plan lays out the weeks before the exam and moves when you tell it what changed.',
     ],
     points: [['Import from Anki and Quizlet', 'Anki decks in both layouts, Quizlet exports pasted or opened as a file.'], ['Study reminders', 'One Windows notification a day at most, and never when nothing is due.'], ['Share a subject', 'A .clempack with flashcards, quizzes and chosen folders, never your chats or history.']],
-    shot: 'flashcards', alt: 'Clem showing the Biology 101 subject on its Flashcards tab: six cards to review and the Cell organelles set.', more: [['plan', 'The Biology 101 midterm plan: ready for the midterm on the 19th, on track, with the osmosis write-up due today.']],
+    shot: 'flashcards', alt: 'Clem showing the Biology 101 subject on its Flashcards tab: six cards to review and the Cell organelles set.', more: [['plan', 'The Biology 101 midterm plan: ready for the midterm on 7 December, on track, with the osmosis write-up due tomorrow.']],
   },
   {
-    id: 'research', name: 'Research', title: 'Answers that open your file at the page.',
-    line: 'Citations open the PDF at the page they came from, and a source check says which claims your files support.',
+    id: 'research', name: 'Research', title: 'Every claim names its page.',
+    line: 'Citations name the file and page and open it beside the chat, and a source check says which claims your files support.',
     body: [
-      'Ask about your own reading and Clem answers from it, with a citation after each claim. Click one and the file opens beside the chat at that page.',
+      'Ask about your own reading and Clem answers from it, with the file and page after each claim. Click one and the file opens beside the chat.',
       'Under every answer, Check sources lists each claim and whether your files support it, partly support it or say nothing about it. Second opinion asks another connected model, from another provider first, to review the answer.',
     ],
     points: [['Web search on your plan', 'Codex models search live, Claude uses its own search, and the chat shows what it is looking up.'], ['Long PDFs', 'Every document is read page by page, scanned pages included.'], ['Search everything', 'Ctrl Shift F searches chats, files, linked folders and flashcards on this PC.']],
-    shot: 'cited', alt: 'Clem answering why a potato gains mass in water, with citations to the lab handout and the handout open beside the chat at page 1.', more: [['chat', 'The same answer with its source check open: two of two claims supported, and two numbers recomputed and confirmed.']],
+    shot: 'cited', alt: 'Clem answering why a potato gains mass in water, with citations to the lab handout and the handout open beside the chat.', more: [['chat', 'The same answer with its source check open: two of two claims supported, and two numbers recomputed and confirmed.']],
   },
   {
     id: 'physics-diagrams', name: 'Physics diagrams', title: 'Turn the idea over in your hands.',

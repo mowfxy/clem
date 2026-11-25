@@ -1,6 +1,6 @@
 # Clem website — Kern record
 
-> Superseded: the website sections from "Brief (user, 2026-10-24)" to "System" describe a retired site. The current website is "2026-11-08 Website: the descent" at the end. The app sections still apply.
+> Superseded: the website sections from "Brief (user, 2026-10-24)" to "System" describe a retired site. The current website is "2026-11-25 Website: the sky and the window" at the end. The app sections still apply.
 
 ## Brief (user, 2026-10-24)
 Asked: feel, how loud, how much M4 Labs, never.
@@ -110,3 +110,9 @@ Captures: npm run desktop:build && node scripts/site/capture.mjs, then ffmpeg to
 
 Later the same day (user): only whole screenshots of the app. Every HTML rebuild of app pieces is gone (source check, answer tools, flashcard, plan, notification, models list, folder tree, document revision, the /visual command), and so is the live HTML plot. The visual example is now methane: scripts/site/capture.mjs adds a Chemistry 102 chat "/visual why is methane shaped like a tetrahedron?" whose 3D molecule is captured as the window "visual"; the cable plot stays as the window "ringing" on the physics-diagrams page. Windows are centred at full width. The page's richness is now the descent plus the real windows; there is no live element below the top.
 
+
+## 2026-11-25 Website: the sky and the window (user)
+The user rejected a first draft ("one day with Clem": long timeline, giant quotes, a sunset) and asked: "fully change it, i like the background thing of actual app with ascii, keep it simple and clean." Kept rules: whole-window captures only, no stock icons, Mowafy Serif and Sans.
+Thesis: the site is the app's own first moment: its sky, one sentence and its window, nothing else. Home = headline, one line, download, one window with six views, three plain facts, download. System light/dark like the app; every capture exists in both (scripts/site/capture.mjs).
+Honest limit: citations open the file at page 1 today (openCitation ignores the page), so the copy doesn't promise the page.
+Later the same day (user): "remove the guc part". GUC is gone from every page and every capture (the window is captured with GUC not connected); five views remain. Don't bring it back.
