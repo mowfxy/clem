@@ -7,6 +7,8 @@
  * - `renderCircuit` takes a netlist (elements between named nodes) and lays the whole figure out itself:
  *   ground rail at the bottom, nodes along a top rail, shunt elements hanging between them, series elements on
  *   the rail and longer connections arched over it. This is the preferred way to draw a circuit.
+ *   With a `layout` (where each node sits in the source figure) the figure is drawn with that arrangement instead,
+ *   slanted branches included, and circuits too interconnected for one rail are arranged on a grid (circuit_grid.ts).
  * - `renderSchematic` takes components placed in world coordinates and wires between their pins. Wires given
  *   without right-angle corners are routed orthogonally around the symbols.
  */
@@ -15,9 +17,11 @@ import { createArtifact, withRendering } from "../artifacts.js";
 import { sceneTransform, validateScene2D } from "./scene2d.js";
 import { netlistGround } from "../circuit/circuit.js";
 import {
-  CLEAR, INK, FONT, LINE_H, SIZE, aroundSymbol, blockSize, bodyEnds, dotSvg, drawSymbol, groundSymbol, junctions, labelLines,
-  leadArrow, num, place, segBox, symbolKind, textBlock, textWidth, wirePath,
+  CLEAR, INK, FONT, LINE_H, SIZE, acrossUp, aroundSymbol, blockSize, bodyBoxes, bodyEnds, boxSegDistance, dotSvg, drawSymbol, groundSymbol, isSlanted, junctions, labelLines,
+  leadArrow, near, num, place, segBox, symbolKind, textBlock, textWidth, wirePath,
 } from "./schematic_kit.js";
+import { autoGrid, routeGrid } from "./circuit_grid.js";
+import type { Grid, GridElement, GridLayout, XY } from "./circuit_grid.js";
 import type { Box, Candidate, Pt, Scene, Seg, SymbolKind } from "./schematic_kit.js";
 
 export type ComponentKind = SymbolKind | "ground";
@@ -92,7 +96,7 @@ export type CircuitLayout = {
   svg: string;
   width: number;
   height: number;
-  /** Every wire and lead, all horizontal or vertical. */
+  /** Every wire and lead: horizontal or vertical, except branches a grid arrangement slants. */
   segments: Seg[];
   /** Symbol bodies (and the ground symbol). */
   bodies: Box[];
@@ -146,6 +150,16 @@ function finish(frame: Box, title: string | undefined, parts: { segments: Seg[];
 /** "+ v −" beside a symbol (+ at the pin-0 end), on the side the placer finds clear. */
 function voltageCandidates(c: Pt, e: Pt, t: number, half: number, label: string, prefer: 1 | -1): (Candidate & { plus: Pt; minus: Pt; text: Box })[] {
   const lw = textWidth(label), out: (Candidate & { plus: Pt; minus: Pt; text: Box })[] = [];
+  if (isSlanted(e)) {
+    const u = Math.max(half, lw / 2 + 14);
+    for (const side of [prefer, -prefer] as (1 | -1)[]) for (const [k, step] of [0, 10, 22].entries()) {
+      const n = acrossUp(e, side), d = t + CLEAR + step + (Math.abs(n.x) * lw + Math.abs(n.y) * LINE_H) / 2;
+      const at = (s: number): Pt => ({ x: c.x + n.x * d + e.x * s, y: c.y + n.y * d + e.y * s });
+      const text = { x: at(0).x - lw / 2, y: at(0).y - LINE_H / 2, w: lw, h: LINE_H };
+      out.push({ box: text, anchor: "middle", cost: (side === prefer ? 0 : 6) + k * 4, plus: at(-u), minus: at(u), text });
+    }
+    return out;
+  }
   const horizontal = Math.abs(e.x) >= Math.abs(e.y);
   for (const side of [prefer, -prefer]) for (const [k, step] of [0, 10, 22].entries()) {
     if (horizontal) {
@@ -167,6 +181,13 @@ const markSvg = (p: Pt, plus: boolean) => `<path d="M${num(p.x - 4)} ${num(p.y)}
 /** Candidates for a label beside a straight lead: either side, stepping outward and sliding along the lead. */
 function besideLead(lead: Seg, d: Pt, size: { w: number; h: number }): Candidate[] {
   const out: Candidate[] = [];
+  if (isSlanted(d)) {
+    for (const [j, slide] of [0, 0.3, -0.3].entries()) for (const side of [1, -1] as const) for (const [k, step] of [0, 8, 18].entries()) {
+      const n = acrossUp(d, side), off = 6 + CLEAR + step + (Math.abs(n.x) * size.w + Math.abs(n.y) * size.h) / 2, l = Math.hypot(lead.b.x - lead.a.x, lead.b.y - lead.a.y) * slide;
+      out.push({ box: { x: (lead.a.x + lead.b.x) / 2 + d.x * l + n.x * off - size.w / 2, y: (lead.a.y + lead.b.y) / 2 + d.y * l + n.y * off - size.h / 2, w: size.w, h: size.h }, anchor: "middle", cost: k * 4 + j * 3 + (side > 0 ? 0 : 1) });
+    }
+    return out;
+  }
   const horizontal = Math.abs(d.x) >= Math.abs(d.y), length = Math.hypot(lead.b.x - lead.a.x, lead.b.y - lead.a.y);
   for (const [j, slide] of [0, 0.3, -0.3, 0.45, -0.45].entries()) {
     const mid = { x: (lead.a.x + lead.b.x) / 2 + d.x * slide * length, y: (lead.a.y + lead.b.y) / 2 + d.y * slide * length };
@@ -232,6 +253,12 @@ export interface CircuitElement {
   unit?: string;
   /** A current through the element: an arrow on its lead pointing from `from` to `to`, labelled with this text. */
   current?: string;
+  /** Which end of the element the current arrow sits at: "from" (default) or "to". The arrow always points from `from` to `to`. */
+  currentAt?: "from" | "to";
+  /** With `layout`: the corners the branch runs through, in grid units, from the `from` node to the `to` node. */
+  via?: [number, number][];
+  /** With `layout`: where the symbol's centre sits, in grid units; off the line between the nodes, wires run out to it. */
+  at?: [number, number];
   /** A voltage across the element: + beside the `from` end, − beside the `to` end, labelled with this text. */
   voltage?: string;
   closed?: boolean;
@@ -243,6 +270,17 @@ export interface CircuitSpec {
   ground?: string;
   /** Left-to-right order of the other nodes along the top rail. Defaults to the order with the fewest long or crossing connections. */
   order?: string[];
+  /**
+   * Where each node sits, copied from the source figure: grid units, x right, y DOWN. A list of positions is a node
+   * drawn as a wire through them (a ground rail). Every node is needed; elements run straight between their nodes.
+   */
+  layout?: Record<string, [number, number] | [number, number][]>;
+  /** A dot at every node ("all"), or only where three or more branches meet (default). */
+  dots?: "junctions" | "all";
+  /** Names printed beside the nodes: true for every node, or the label for each node listed. */
+  nodeLabels?: boolean | Record<string, string>;
+  /** False leaves out the earth symbol, for figures that do not mark a ground. */
+  earth?: boolean;
 }
 
 
@@ -281,6 +319,91 @@ function bestOrder(nodes: string[], pairs: [string, string][]): string[] {
   return order;
 }
 
+/** [[x, y], …] in grid units; numbers written as strings are read too. */
+function readPoints(v: unknown, where: string): XY[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  const coordinate = (n: unknown) => (typeof n === "number" || (typeof n === "string" && n.trim() !== "") ? Number(n) : NaN);
+  if (!Array.isArray(v)) throw new Error(`Circuit: ${where} must be a list of [x, y] positions`);
+  const out = v.map((p): XY => {
+    const at: XY = Array.isArray(p) && p.length === 2 ? [coordinate(p[0]), coordinate(p[1])] : [NaN, NaN];
+    if (!at.every(Number.isFinite)) throw new Error(`Circuit: ${where} must be [x, y] numbers`);
+    return at;
+  });
+  return out.length ? out : undefined;
+}
+function readLayout(layout: unknown, names: string[]): GridLayout {
+  if (typeof layout !== "object" || Array.isArray(layout)) throw new Error('Circuit: layout must give every node a position: {"a":[0,0],"b":[1,0]}');
+  const given = layout as Record<string, unknown>;
+  const missing = names.filter((n) => given[n] === undefined);
+  if (missing.length) throw new Error(`Circuit: layout has no position for node ${missing.map((n) => `"${n}"`).join(", ")}`);
+  return Object.fromEntries(names.map((n) => {
+    const v = given[n], points = readPoints(Array.isArray(v) && Array.isArray(v[0]) ? v : [v], `layout of node "${n}"`);
+    if (!points) throw new Error(`Circuit: layout of node "${n}" must be [x, y]`);
+    return [n, points];
+  }));
+}
+
+const addDots = (dots: Pt[], nodes: Map<string, Pt[]>) => {
+  for (const p of [...nodes.values()].flat()) if (!dots.some((d) => key(d) === key(p))) dots.push(p);
+};
+
+/** Node names beside their nodes, wherever there is clear space. */
+function labelNodes(spec: CircuitSpec, nodes: Map<string, Pt[]>, scene: Scene, labels: { box: Box; lines: string[]; anchor: "start" | "middle" | "end" }[]) {
+  if (!spec.nodeLabels) return;
+  for (const [n, at] of nodes) {
+    const label = spec.nodeLabels === true ? n : spec.nodeLabels[n];
+    if (label === undefined || label === "") continue;
+    const size = blockSize([String(label)]), out: Candidate[] = [];
+    for (const [i, p] of at.entries()) for (const [k, r] of [10, 18, 28].entries()) for (const [j, [dx, dy]] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]].entries())
+      out.push({ box: { x: p.x + dx * (r + size.w / 2) - size.w / 2, y: p.y + dy * (r + size.h / 2) - size.h / 2, w: size.w, h: size.h }, anchor: "middle", cost: i * 5 + k * 8 + j });
+    labels.push({ box: place(out, scene).box, lines: [String(label)], anchor: "middle" });
+  }
+}
+
+/** Draws a circuit whose nodes and routes are placed. */
+function drawGrid(spec: CircuitSpec, els: (CircuitElement & { kind: SymbolKind; id: string; lines: string[] })[], grid: Grid, ground: string, earth: boolean): CircuitLayout {
+  const segments: Seg[] = grid.rails.map((r) => ({ a: r.a, b: r.b })), drawn: Drawn[] = [], bodies: Box[] = [], pins: CircuitLayout["pins"] = [];
+  // Places on the ground node's own wires where the earth symbol may hang.
+  const earthAt: Pt[] = [...grid.nodes.get(ground)!];
+  const hang = (s: Seg) => { if (Math.abs(s.a.y - s.b.y) < 0.5 && Math.abs(s.a.x - s.b.x) > 24) earthAt.push({ x: (s.a.x + s.b.x) / 2, y: s.a.y }); };
+  for (const r of grid.rails) if (r.net === ground) hang(r);
+  const corners = [...grid.nodes.values()].flat();
+  for (const [i, r] of grid.routes.entries()) {
+    const e = els[i], p = r.points;
+    // Labels of a slanted branch on the figure's edge sit outside it.
+    const up = acrossUp(r.e, 1), sides = corners.map((q) => (q.x - r.c.x) * up.x + (q.y - r.c.y) * up.y);
+    const prefer = isSlanted(r.e) && sides.every((s) => s > -1) ? -1 : 1;
+    const [s0, s1] = bodyEnds(e.kind, r.c, r.e, r.scale);
+    const lead = { a: p[r.leg], b: s0 }, tail = { a: s1, b: p[r.leg + 1] };
+    const before: Seg[] = [], after: Seg[] = [];
+    for (let k = 0; k < r.leg; k++) before.push({ a: p[k], b: p[k + 1] });
+    before.push(lead);
+    after.push(tail);
+    for (let k = r.leg + 1; k < p.length - 1; k++) after.push({ a: p[k], b: p[k + 1] });
+    segments.push(...before, ...after);
+    if (e.from === ground) before.forEach(hang);
+    if (e.to === ground) after.forEach(hang);
+    pins.push({ id: e.id, at: [p[0], p[p.length - 1]] });
+    if (e.kind !== "wire") bodies.push(...bodyBoxes(e.kind, r.c, r.e, r.scale));
+    drawn.push({ id: e.id, kind: e.kind, c: r.c, e: r.e, scale: r.scale, lines: e.lines, prefer, current: e.current, voltage: e.voltage, lead: e.currentAt === "to" ? tail : lead, closed: e.closed });
+  }
+  const wires = tidy(segments);
+  const dots = junctions(wires);
+  if (spec.dots === "all") addDots(dots, grid.nodes);
+  let extraSvg = "";
+  if (earth) {
+    const crowd = (p: Pt) => { const b = { x: p.x - 13, y: p.y + 5, w: 26, h: 19 }; return wires.filter((s) => boxSegDistance(b, s) < 3).length + bodies.filter((o) => near(b, o, 4)).length; };
+    const at = earthAt.map((p, i) => ({ p, s: crowd(p) * 100 + i * 0.1 - p.y * 0.01 })).reduce((a, b) => (b.s < a.s ? b : a)).p;
+    const g = groundSymbol(at);
+    extraSvg = g.svg; bodies.push(g.box);
+  }
+  const scene: Scene = { segments: wires, boxes: bodies.slice(), labels: [], frame: { x: -1e5, y: -1e5, w: 2e5, h: 2e5 } };
+  const labels: { box: Box; lines: string[]; anchor: "start" | "middle" | "end" }[] = [];
+  const { symbols, extra } = decorate(drawn, scene, labels);
+  labelNodes(spec, grid.nodes, scene, labels);
+  return finish({ x: 0, y: 0, w: 0, h: 0 }, spec.title, { segments: wires, symbols, bodies, labels, extra: extraSvg + extra, dots, pins }, true);
+}
+
 /** Lays out a netlist and returns the drawing with its geometry (used by the tests to measure clearances). */
 export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
   if (!spec || !Array.isArray(spec.elements) || spec.elements.length === 0) throw new Error('Circuit: needs "elements": [{kind, from, to, label?, value?, unit?}]');
@@ -296,13 +419,24 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
   const names: string[] = [];
   for (const e of els) for (const n of [e.from, e.to]) if (!names.includes(n)) names.push(n);
   // The solver (circuit/spice.ts solveNetlist) picks the same reference, so a solved node is the node drawn.
-  const { ground, named: earth } = netlistGround(els, spec.ground);
+  const { ground, named } = netlistGround(els, spec.ground);
   if (!names.includes(ground)) throw new Error(`Circuit: ground node "${ground}" is not used by any element`);
   for (const e of els) if (e.from === ground && e.to === ground) throw new Error("Circuit: an element connects ground to ground");
+  const earth = spec.earth ?? named;
   const others = names.filter((n) => n !== ground);
   if (others.length === 0) throw new Error("Circuit: needs at least one node besides ground");
   if (others.length > 16) throw new Error("Circuit: at most 16 nodes besides ground");
   const series = els.filter((e) => e.from !== ground && e.to !== ground);
+  const gridEls: GridElement[] = els.map((e) => ({ id: e.id, kind: e.kind, from: e.from, to: e.to, current: e.current, labelWidth: blockSize(e.lines).w }));
+  if (spec.layout) {
+    const layout = readLayout(spec.layout, names);
+    const placed = gridEls.map((e, i) => ({ ...e, via: readPoints(els[i].via, `element ${i + 1} via`), at: readPoints(els[i].at && [els[i].at], `element ${i + 1} at`)?.[0] }));
+    let grid = routeGrid(placed, layout);
+    // A crowded arrangement is drawn larger; corners that still touch something are given up before the arrangement is.
+    for (const [list, roomier] of [[placed, 1.4], [placed, 1.9], [gridEls, 1], [gridEls, 1.6]] as const) if (grid.problem) grid = routeGrid(list, layout, 0, roomier);
+    if (grid.problem) grid = autoGrid(gridEls, names, ground) ?? grid;
+    if (!grid.problem) return drawGrid(spec, els, grid, ground, earth);
+  }
   let order: string[];
   if (spec.order) {
     if (!Array.isArray(spec.order) || spec.order.some((n) => !others.includes(n))) throw new Error(`Circuit: order must list node names from: ${others.join(", ")}`);
@@ -324,6 +458,11 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
     while (placed.some((b) => b.level === level && b.lo < a.hi && a.lo < b.hi)) level++;
     a.level = level;
     placed.push(a);
+  }
+  // Arches nested three deep no longer read as a schematic: such circuits are arranged on a grid.
+  if (!spec.order && !spec.layout && placed.some((a) => a.level >= 3)) {
+    const grid = autoGrid(gridEls, names, ground);
+    if (grid) return drawGrid(spec, els, grid, ground, earth);
   }
   const shunts = els.filter((e) => e.from === ground || e.to === ground);
 
@@ -389,7 +528,7 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
     const lead = { a: p, b: s0 };
     segments.push(lead, { a: s1, b: q });
     if (e.kind !== "wire") bodies.push(drawSymbol(e.kind, c, ev).box);
-    drawn.push({ id: e.id, kind: e.kind, c, e: ev, scale: 1, lines: e.lines, prefer, current: e.current, voltage: e.voltage, lead, closed: e.closed });
+    drawn.push({ id: e.id, kind: e.kind, c, e: ev, scale: 1, lines: e.lines, prefer, current: e.current, voltage: e.voltage, lead: e.currentAt === "to" ? { a: s1, b: q } : lead, closed: e.closed });
   };
   const groundXs: number[] = [];
   for (let i = 0; i < order.length; i++) {
@@ -418,6 +557,9 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
   for (let k = 1; k < groundXs.length; k++) if (groundXs[k] - groundXs[k - 1] > 0.5) segments.push({ a: { x: groundXs[k - 1], y: yG }, b: { x: groundXs[k], y: yG } });
   const wires = tidy(segments);
   const dots = junctions(wires);
+  const nodeAt = new Map(order.map((n, i) => [n, [{ x: xs[i][0], y: y0 }]]));
+  if (groundXs.length) nodeAt.set(ground, [{ x: groundXs[0], y: yG }]);
+  if (spec.dots === "all") addDots(dots, nodeAt);
   let extraSvg = "";
   if (earth && groundXs.length) {
     const mid = (groundXs[0] + groundXs[groundXs.length - 1]) / 2;
@@ -431,6 +573,7 @@ export function layoutCircuit(spec: CircuitSpec): CircuitLayout {
   const scene: Scene = { segments: wires, boxes: bodies.slice(), labels: [], frame: { x: -1e5, y: -1e5, w: 2e5, h: 2e5 } };
   const labels: { box: Box; lines: string[]; anchor: "start" | "middle" | "end" }[] = [];
   const { symbols, extra } = decorate(drawn, scene, labels);
+  labelNodes(spec, nodeAt, scene, labels);
   return finish({ x: 0, y: 0, w: 0, h: 0 }, spec.title, { segments: wires, symbols, bodies, labels, extra: extraSvg + extra, dots, pins }, true);
 }
 
