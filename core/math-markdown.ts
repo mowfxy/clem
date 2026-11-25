@@ -63,12 +63,16 @@ const ENVIRONMENTS = 'equation|align|aligned|gather|gathered|multline|alignat|eq
 const bareEnvironment = new RegExp(`(^|\\n)[ \\t]*(\\\\begin\\{(${ENVIRONMENTS})\\*?\\}[\\s\\S]*?\\\\end\\{\\3\\*?\\})`, 'g');
 const display = (m: string) => `\n$$\n${m.trim()}\n$$\n`;
 
+/** A letter grade's sign written as maths (B$-$, B$+$) is just the sign: nothing in it needs setting, and the dollars
+ *  would show. Not after a digit, where the dollars may be prices ("$5$-$10"). */
+export const plainSigns = (text: string) => text.replace(/([A-Za-z])(\$\$?)([+\-−])\2(?![\d$])/g, '$1$3');
+
 /** Normalises the maths in one stretch of prose (no code inside). */
 function prose(text: string, first: boolean, last: boolean) {
   // Line starts and ends count only at real line breaks, not where a code span interrupted the line.
   text = (first ? '\n' : '\u0000') + text + (last ? '\n' : '\u0000');
   // Bracket delimiters and bare environments become $$…$$ first, so the dollar pass sees one dialect.
-  text = text
+  text = plainSigns(text)
     // \[…\] in a table row stays on its line: a line break there would end the table.
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, m: string, at: number, all: string) => !m.includes('\n') && /^[ \t]*\|/.test(all.slice(all.lastIndexOf('\n', at) + 1)) ? `$$${m.trim()}$$` : display(m))
     .replace(/\\\((.+?)\\\)/g, (_, m) => `$$${m}$$`);

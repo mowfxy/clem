@@ -11,7 +11,7 @@ import { Engine } from "../desktop/engine/index.ts";
 import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
 import type { WorkerWorkspace } from "../desktop/engine/vps/workspace.ts";
 import { runThreadTool, threadBefore } from "../desktop/engine/thread-tools.ts";
-import { telegramTurn, THREAD_FAILED } from "../desktop/telegram-thread.ts";
+import { ownTurn, telegramTurn, THREAD_FAILED } from "../desktop/telegram-thread.ts";
 import { windowTelegram, type WindowThread } from "../src/telegram/thread.ts";
 import { DECLINE_RUN_MS, NOT_ON_TELEGRAM, TELEGRAM_DECLINE, TELEGRAM_DECLINE_SHORT, TELEGRAM_INTRO, telegramAllows, telegramDeclines, telegramGuide } from "../core/telegram/thread.ts";
 import { MAIN_THREAD_NOTE } from "../core/main-thread/guide.ts";
@@ -129,22 +129,40 @@ test("a study question and a file are declined with the one message on both side
     // An old lecture message's Summarize button is declined the same way.
     const tap: TelegramTurn = { id: "t1", tap: { t: "summarize", subjectId: "math", fileId: "m3", name: "Lecture 3" } as any };
     assert.equal((await W.agent.converse(tap)).text, TELEGRAM_DECLINE_SHORT);
-    // A model that tries anyway finds none of it: no hand-off, no file, no deck, no reading a file to answer from it.
+    // A model that tries anyway finds none of it: no hand-off, no file, no deck.
     const w = await W.agent.converse({ id: "s1", text: "sneak a few things" });
     assert.equal(w.text, "Done.");
     const results = seenW.at(-1)!.user;
-    assert.equal((results.match(/Not available on Telegram/g) || []).length, 5, "each request was refused");
+    assert.equal((results.match(/Not available on Telegram/g) || []).length, 4, "each request was refused");
     const s = W.state();
     assert.equal(s.chats.length, 1, "no subject chat");
     assert.equal(s.files.length, 1, "no file");
     assert.equal(s.studySets.length, 0, "no deck");
     // Management that names a subject stays.
-    for (const ok of ["remind me to revise Circuits on Thursday", "when is the Physics quiz?", "plan my study for the Math midterm", "send me lecture 3 slides", "make a study plan for next week", "block 2 hours for Math tomorrow"]) assert.equal(telegramDeclines(ok), false, ok);
-    for (const no of ["solve question 4 from sheet 2", "quiz me on thermodynamics", "create flashcards for chapter 5", "turn my notes into slides", "write a summary of the lecture", "can you explain this?", "make an excel sheet of my grades"]) assert.equal(telegramDeclines(no), true, no);
-    for (const a of ["clem.handoff", "pdf", "docx", "pptx", "xlsx", "image", "file", "call", "look", "crop", "ws.note", "ws.flashcards", "ws.files", "read", "guc.read"]) assert.equal(telegramAllows(a), false, a);
-    for (const a of ["clem.remind", "clem.undo", "guc.correct", "guc.resync", "telegram.sendFile", "vps.keep", "vps.run_command", "ws.subject"]) assert.equal(telegramAllows(a), true, a);
+    for (const ok of ["remind me to revise Circuits on Thursday", "when is the Physics quiz?", "plan my study for the Math midterm", "send me lecture 3 slides", "make a study plan for next week", "block 2 hours for Math tomorrow", "whats my highest achievable rn in math, look at the first lecture where it says the components.", "explain how my math grade is calculated", "summarize the grading scheme of circuits"]) assert.equal(telegramDeclines(ok), false, ok);
+    for (const no of ["solve question 4 from sheet 2", "quiz me on thermodynamics", "create flashcards for chapter 5", "turn my notes into slides", "write a summary of the lecture", "can you explain this?", "make an excel sheet of my grades", "solve question 2 from my coursework"]) assert.equal(telegramDeclines(no), true, no);
+    for (const a of ["clem.handoff", "pdf", "docx", "pptx", "xlsx", "image", "file", "call", "look", "crop", "ws.note", "ws.flashcards", "ws.files", "read"]) assert.equal(telegramAllows(a), false, a);
+    for (const a of ["clem.remind", "clem.undo", "guc.read", "guc.grades", "guc.correct", "guc.resync", "telegram.sendFile", "vps.keep", "vps.run_command", "ws.subject"]) assert.equal(telegramAllows(a), true, a);
     assert.deepEqual(await runThreadTool({ engine: W.engine, owner: "owner-1", subjects: [] }, { action: "pdf" }), NOT_ON_TELEGRAM, "the engine's side refuses too");
   } finally { await L.engine.close(); await W.engine.close(); await rm(W.root, { recursive: true, force: true }); }
+});
+
+test("a question about the course or their marks is answered, reading the marks and the first lecture; unasked, no file is read", { timeout: 60_000 }, async () => {
+  const q = "whats my highest achievable rn in math, look at the first lecture where it says the components.";
+  const asks: string[] = [];
+  let state: any = startState();
+  const deps = { ws: { state: () => state, change: (fn: any) => { state = fn(state); } }, clock: () => T0, run: async (t: any) => { asks.push(t.action); return t.action + " result"; },
+    complete: async ({ user }: { user: string }) => /Tool exchanges/.test(user) ? "96.5% is the most you can still get." : [req({ action: "guc.grades", subject: "Math" }), req({ action: "guc.read", file: "Lecture 1", subject: "Math" })].join("\n") };
+  assert.equal((await telegramTurn(deps, q)).text, "96.5% is the most you can still get.");
+  assert.deepEqual(asks, ["guc.grades", "guc.read"]);
+  assert.match(telegramGuide(), /highest achievable in Math/);
+  // The engine's side runs it too (no GUC here, so it says so instead of refusing).
+  const W = await vps(scripted([]));
+  try { assert.notDeepEqual(await runThreadTool({ engine: W.engine, owner: "owner-1", subjects: [] }, { action: "guc.read", file: "Lecture 1" }), NOT_ON_TELEGRAM); }
+  finally { await W.engine.close(); await rm(W.root, { recursive: true, force: true }); }
+  asks.length = 0;
+  await ownTurn(deps, { key: "k1", brief: "A new lecture is out." });
+  assert.deepEqual(asks, ["guc.grades"], "speaking by itself, Clem reads no file");
 });
 
 test("the decline: the long message once per run of the conversation, the short one after; a new run starts again", async () => {

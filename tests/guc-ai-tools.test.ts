@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deadlineWindow, fileTextPage, GUC_GUIDE, gucAction, gucNow, resolveSubject, scheduleDays } from "../core/guc/ai-tools.ts";
+import { deadlineWindow, fileTextPage, GUC_GUIDE, gradesText, gucAction, gucNow, resolveSubject, scheduleDays } from "../core/guc/ai-tools.ts";
 import { clemSkillsFor } from "../core/clem-skills.ts";
 import { localNowCard, renderNow, withGuc } from "../core/main-thread/context.ts";
 import { Engine } from "../desktop/engine/index.ts";
@@ -107,6 +107,25 @@ test("each tool answers from the fixture GUC in compact text with links to cite"
     assert.match(await t.run({ action: "guc.help" }) as string, /guc\.read/);
     assert.ok("error" in (await t.run({ action: "guc.schedule", range: 5 }) as object), "arguments are checked");
   } finally { await t.close(); }
+});
+
+test("grades: this term's midterm and coursework marks come first, what isn't posted is said, one course or all; then the transcript", () => {
+  const work = (code: string, entries: [string, [string, string][]][]) => ({ id: code, code, course: "Sem - " + code, entries: entries.map(([name, els]) => ({ name, elements: els.map(([n, grade]) => ({ name: n, grade, professor: "" })) })) });
+  const term = { midterms: [{ id: "m", code: "CSEN 301", course: "x CSEN 301", grade: "63.7611" }], coursework: [
+    work("CSEN 301", [["Lab Test 1", [["Question1", "9.5 / 10"]]], ["Quiz 1", [["Question1", "6.5 / 10"]]], ["Quiz 2", [["Question1", "/ 10"]]]]),
+    work("CPS 402", [["Presentations", [["Bonus 2", "5 / 5"], ["presentation 1", "80 / 100"]]]]),
+    work("DE 303", []),
+  ] };
+  const final = [{ id: "g", semester: "Summer 2026", code: "CSEN 202", name: "Intro", hours: 4, numeric: 1.3, letter: "A-", latest: true, fresh: false }];
+  const csen = { courseKey: "351:70", code: "CSEN 301", name: "Data structures" };
+  const one = gradesText(final, csen, term);
+  assert.match(one, /- Midterm: 63\.76%\n- Lab Test 1: 9\.5 \/ 10\n- Quiz 1: 6\.5 \/ 10\n- Quiz 2: not posted yet \(out of 10\)$/);
+  assert.doesNotMatch(one, /CPS 402|CSEN 202/);
+  const all = gradesText(final, undefined, term);
+  assert.match(all, /CPS 402:\n- Presentations: Bonus 2 5 \/ 5; presentation 1 80 \/ 100/);
+  assert.match(all, /Final grades \(transcript\).*\n- Summer 2026 · CSEN 202/);
+  assert.ok(all.indexOf("CSEN 301") < all.indexOf("CSEN 202"));
+  assert.match(gradesText([], { ...csen, code: "DE 303" }, term), /^No grades/);
 });
 
 test("read_file: an unsaved file is read from CMS into memory only, cached, and the cache expires", async () => {

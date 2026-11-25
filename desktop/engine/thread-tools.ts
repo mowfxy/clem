@@ -1,6 +1,6 @@
 // The engine's actions for the Telegram main thread (core/telegram/thread.ts), run the same way on the laptop
 // (desktop/main.ts, for the window's src/telegram/thread.ts) and on the VPS worker (desktop/engine/vps/agent.ts): the
-// organizer (clem.*), GUC (guc.*, never guc.read), an existing file sent to the chat, and the VPS (server changes asked
+// organizer (clem.*), GUC (guc.*; guc.read for a course's own facts), an existing file sent to the chat, and the VPS (server changes asked
 // once in words). Nothing here answers study questions or makes files. No electron.
 import { gucAction, type ToolSubject } from "../../core/guc/ai-tools.ts";
 import { clemAction } from "../../core/proactivity/tools.ts";
