@@ -116,7 +116,7 @@ export function boxSegDistance(b: Box, s: Seg) {
   const sb = segBox(s);
   const dx = Math.max(0, b.x - (sb.x + sb.w), sb.x - (b.x + b.w)), dy = Math.max(0, b.y - (sb.y + sb.h), sb.y - (b.y + b.h));
   if (s.a.x === s.b.x || s.a.y === s.b.y) return Math.hypot(dx, dy);
-  // A slanted segment: sample it (only manual figures can still contain one).
+  // A slanted segment: sample it.
   let best = Infinity;
   for (let i = 0; i <= 40; i++) {
     const p = { x: s.a.x + ((s.b.x - s.a.x) * i) / 40, y: s.a.y + ((s.b.y - s.a.y) * i) / 40 };
@@ -130,7 +130,7 @@ function inside(p: Pt, s: Seg) {
   if (same(p, s.a) || same(p, s.b)) return false;
   if (Math.abs(s.a.x - s.b.x) < 0.5) return Math.abs(p.x - s.a.x) < 0.5 && p.y > Math.min(s.a.y, s.b.y) && p.y < Math.max(s.a.y, s.b.y);
   if (Math.abs(s.a.y - s.b.y) < 0.5) return Math.abs(p.y - s.a.y) < 0.5 && p.x > Math.min(s.a.x, s.b.x) && p.x < Math.max(s.a.x, s.b.x);
-  return false;
+  return boxSegDistance({ x: p.x, y: p.y, w: 0, h: 0 }, s) < 0.5;
 }
 /** Junction dots: every point where three or more wire ends meet, or a wire ends on another wire's span. */
 export function junctions(segments: Seg[], extra: Pt[] = []): Pt[] {
@@ -282,12 +282,36 @@ export function place(cands: Candidate[], scene: Scene, ignore: Box[] = []): Can
   scene.labels.push(best.box);
   return best;
 }
+/** Whether an axis runs neither horizontally nor vertically. */
+export const isSlanted = (e: Pt) => Math.abs(e.x) > 0.02 && Math.abs(e.y) > 0.02;
+/** The normal of an axis on its upper side (side 1) or lower side (−1). */
+export function acrossUp(e: Pt, side: 1 | -1): Pt {
+  const n = { x: e.y, y: -e.x }, s = (n.y <= 0 ? 1 : -1) * side;
+  return { x: n.x * s, y: n.y * s };
+}
+/** The boxes a symbol covers: one, or a chain of small ones along a slanted symbol so labels can sit beside it. */
+export function bodyBoxes(kind: SymbolKind, c: Pt, e: Pt, scale = 1): Box[] {
+  if (!isSlanted(e)) return [drawSymbol(kind, c, e, scale).box];
+  const half = SIZE[kind].half * scale, r = SIZE[kind].thick * scale * 0.75, count = Math.max(1, Math.ceil(half / Math.max(r, 1)));
+  return Array.from({ length: count }, (_, i) => {
+    const u = count === 1 ? 0 : -half + r + ((2 * half - 2 * r) * i) / (count - 1);
+    return { x: c.x + e.x * u - r, y: c.y + e.y * u - r, w: 2 * r, h: 2 * r };
+  });
+}
 /**
  * Label candidates around a symbol with centre c, axis e and half-thickness t: both sides across the axis
  * (preferred side first), stepping outward and sliding along the axis, then beyond each end.
  */
 export function aroundSymbol(c: Pt, e: Pt, t: number, half: number, size: { w: number; h: number }, prefer: 1 | -1 = 1): Candidate[] {
   const out: Candidate[] = [];
+  if (isSlanted(e)) {
+    // Beside a slanted symbol: pushed out along its normal until the label's nearest corner clears it.
+    for (const side of [prefer, -prefer as 1 | -1]) for (const [k, step] of [0, 8, 18, 32].entries()) for (const [j, slide] of [0, 0.5, -0.5, 1, -1, 1.8, -1.8].entries()) {
+      const n = acrossUp(e, side), d = t + CLEAR + step + (Math.abs(n.x) * size.w + Math.abs(n.y) * size.h) / 2, along = slide * Math.max(half, 12);
+      out.push({ box: { x: c.x + n.x * d + e.x * along - size.w / 2, y: c.y + n.y * d + e.y * along - size.h / 2, w: size.w, h: size.h }, anchor: "middle", cost: (side === prefer ? 0 : 6) + k * 4 + j * 2 });
+    }
+    return out;
+  }
   const horizontal = Math.abs(e.x) >= Math.abs(e.y);
   for (const side of [prefer, -prefer as 1 | -1]) {
     for (const [k, step] of [0, 8, 18, 32].entries()) {
