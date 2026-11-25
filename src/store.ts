@@ -89,6 +89,8 @@ async function local(
     );
   return response;
 }
+const STOP_NOTE = /(?:\n\n\*Interrupted\.\*|^Stopped\. Your request is saved\.)$/;
+const stopNote = (m: { role: string; content?: string }) => m.role === "assistant" && typeof m.content === "string" && STOP_NOTE.test(m.content);
 function restoreState(value: unknown): State {
   if (!value || typeof value !== "object")
     throw Error("Invalid workspace data.");
@@ -110,6 +112,12 @@ function restoreState(value: unknown): State {
   const state = { ...structuredClone(emptyState), ...saved } as State;
   // A project reply or thread cut off when the app closed is shown as stopped, not as still working.
   if (Array.isArray(state.rooms)) state.rooms = state.rooms.map(settleRoom);
+  // Older versions wrote that an answer was stopped into its own text; those lines are no longer shown.
+  state.chats = state.chats.map((c) => Array.isArray(c.messages) && c.messages.some(stopNote) ? { ...c, messages: c.messages.flatMap((m) => {
+    if (!stopNote(m)) return [m];
+    const content = m.content.replace(STOP_NOTE, "");
+    return content || m.attachments?.length ? [{ ...m, content }] : [];
+  }) } : c);
   // 0.3.6 filed uploads sent in a subject or project chat under it. Sent files belong in the normal Files tab; ones kept
   // there on request carry no chat, so a file still tagged with its chat is moved back.
   const sent = new Set(state.files.filter((f) => f.chatId && !f.made && f.spaceId).map((f) => f.id));

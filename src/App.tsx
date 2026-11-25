@@ -1539,7 +1539,7 @@ export default function App({offline=false}:{offline?:boolean}={}) {
             id: messageId,
             role: "assistant",
             content:
-              "Your request is saved. Connect an AI provider in Settings → Models to start the conversation. You can already explore /visual, organize your sources, and build a Long Task plan.",
+              "Connect a model in Settings → Models to start.",
           },
         ],
       }));
@@ -1853,14 +1853,13 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
       }
       updateChat(id, (c) => ({
         ...c,
-        messages: c.messages.map((m) =>
+        // A stopped answer keeps what it wrote; one that wrote nothing leaves without a word.
+        messages: (e as Error).name === "AbortError" ? c.messages.filter((m) => m.id !== messageId || m.content.trim() || m.attachments?.length) : c.messages.map((m) =>
           m.id === messageId
             ? {
                 ...m,
                 content:
-                  (e as Error).name === "AbortError"
-                    ? m.content ? m.content + "\n\n*Interrupted.*" : "Stopped. Your request is saved."
-                    : m.content ? m.content + "\n\n*The reply was cut off: " + cleanError(e) + "*" : cleanError(e),
+                  m.content ? m.content + "\n\n*The reply was cut off: " + cleanError(e) + "*" : cleanError(e),
               }
             : m,
         ),
@@ -3045,7 +3044,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
       {m.role === "user" && editingMessage === m.id ? <UserMessageEdit content={m.content} onCancel={() => setEditingMessage(null)} onSend={(text) => resend(chat.id, m.id, text)} /> : <div className="message-text">
         {m.content ? (
           m.role === "assistant" ? (
-            <>{m.brought && <button type="button" className="brought-from" onClick={() => { const c = stateRef.current.chats.find((x) => x.id === m.brought!.chat); if (c) { setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); } else setToast(`That chat in ${m.brought!.name} was deleted.`); }}><Icon name={stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.kind === "project" ? "projects" : "subjects"} size={13} />From {stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.name || m.brought.name}<Icon name="arrow" size={12} /></button>}{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Clem continues from this brief</p>}{m.condensed && <p className="compact-note"><Icon name="cmd-compact" size={14} />Older messages in this chat were condensed into a brief so it can keep going</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(chat, m)} /></>
+            <>{m.brought && <button type="button" className="brought-from" onClick={() => { const c = stateRef.current.chats.find((x) => x.id === m.brought!.chat); if (c) { setChatId(c.id); setSpaceId(c.spaceId); navigate("/app"); } else setToast(`That chat in ${m.brought!.name} was deleted.`); }}><Icon name={stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.kind === "project" ? "projects" : "subjects"} size={13} />From {stateRef.current.spaces.find((x) => x.id === m.brought!.space)?.name || m.brought.name}<Icon name="arrow" size={12} /></button>}{m.compact && <p className="compact-note"><Icon name="cmd-compact" size={14} />Clem continues from this brief</p>}<MessageBody content={m.content} streaming={streaming} handlers={bodyHandlers(chat, m)} /></>
           ) : (
             <>{m.mentions?.length ? <span className="message-mentions">{m.mentions.map((id) => { const sp = state.spaces.find((x) => x.id === id); return sp ? <button type="button" key={id} className="pointer-chip mention-chip" onClick={() => openSpace(sp.id)} aria-label={`Open ${sp.name}`}><Icon name={sp.kind === "project" ? "projects" : "subjects"} size={13} />{sp.name}</button> : null; })}</span> : null}{(() => { const c = readCommand(m.content); return c ? <><CommandChip command={c.command} /><LinkifiedText text={c.rest} /></> : <LinkifiedText text={m.content} />; })()}{m.pointers?.length ? <span className="message-pointers">{m.pointers.map((p, i) => { const inner = <>{p.area && <Icon name="capture" size={13} />}{p.text && <span className="pc-quote">“{p.text.slice(0, 50)}{p.text.length > 50 ? "…" : ""}”</span>}{p.page && <small>p. {p.page}</small>}</>; return p.file !== REPLY_SOURCE && p.page ? <button type="button" className="pointer-chip" key={i} aria-label={`Show in ${p.file}, page ${p.page}`} title={`${p.file} · page ${p.page}`} onClick={() => showPointer(p)}>{inner}</button> : <span className="pointer-chip" key={i}>{inner}</span>; })}</span> : null}</>
           )
@@ -3412,7 +3411,6 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                     <div className="chat-composer">
                       {chatScroll.away && <button type="button" className="jump-latest" onClick={() => chatScroll.toEnd(true)}><Icon name="down" size={15} />{running ? "Clem is writing" : "Jump to latest"}</button>}
                       {composerUI}
-                      <p className="composer-note">Your main thread. Work on a subject or project runs in its own chat and comes back here.</p>
                     </div>
                   </>
                 ) : !activeChat?.messages.length ? (
@@ -3475,10 +3473,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                           <span><strong>Earlier chat</strong><small>Read-only. Move it to a subject or project to keep talking.</small></span>
                           <MoveToSpace chat={activeChat} spaces={state.spaces} onMove={(id) => { const name = state.spaces.find((x) => x.id === id)?.name; patch((s) => ({ ...s, chats: moveEarlier(s.chats, activeChat.id, id) })); setSpaceId(id); setToast(`Moved to ${name}.`); }} />
                         </div>
-                      ) : <>{composerUI}
-                      <p className="composer-note">
-                        {activeChat?.temporary ? "Temporary chat: not saved and never remembered. It disappears when you leave unless you save it." : "Make room for doubt. Check the things that matter."}
-                      </p></>}
+                      ) : composerUI}
                     </div>
                   </>
                 )}

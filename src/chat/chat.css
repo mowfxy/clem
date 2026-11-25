@@ -256,7 +256,6 @@ html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[
 /* Stripes go on the whole workspace: the chat view itself stops short of the window bottom, which cut the pattern off. */
 .workspace:has(.chat-view.temporary){background-image:repeating-linear-gradient(135deg,transparent 0 14px,#ffffff04 14px 15px);background-attachment:fixed}
 .chat-view.temporary .composer{border-style:dashed;border-color:#5a5a5a}
-.chat-view.temporary .composer-note{color:#9a9a9a}
 /* What the AI saved because it was asked to remember something (src/chat/KinetraFigure.tsx MemoryNote). */
 .memory-note{display:flex;align-items:flex-start;gap:9px;margin:14px 0 4px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;font:400 13px/1.45 var(--sans);color:var(--c-soft)}
 .memory-note>svg{flex:none;margin-top:2px;color:var(--c-muted)}
@@ -268,3 +267,6 @@ html[data-quiet=true] .visual-drafting,html[data-quiet=true] .drafting-dot,html[
 .v2.kinetra-figure .visual-stage{background:#fff}
 .v2.kinetra-figure .visual-figure{background:#fff;padding:16px 20px}
 .v2.kinetra-figure .visual-figure svg{width:100%;max-width:600px;height:auto;max-height:440px;margin:0 auto}
+
+/* Nothing sits under the box, so it keeps its own gap from the window edge. */
+body .chat-composer{padding-bottom:18px}
