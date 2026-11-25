@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import {bootDone} from "./boot";
 import {ModelsSettings} from "./ModelsSettings";
 import {confirmDialog} from './dialogs';
@@ -3395,7 +3396,7 @@ The person's instructions for this ${space.kind}: ${space.memory}`:''}`;
                 </div>
               ) : null)}
             </header>
-            {route === "/app" && dropping && <div className="drop-overlay" aria-hidden="true"><div className="drop-card"><Icon name="attach" size={26} /><strong>Drop to attach</strong><span>The files join your next message.</span></div></div>}
+            {route === "/app" && dropping && createPortal(<div className="drop-overlay" aria-hidden="true"><div className="drop-card"><Icon name="attach" size={26} /><strong>Drop to attach</strong><span>The files join your next message.</span></div></div>, document.body)}
             {route === "/app" ? (
               <div className="chat-split">
               <div
