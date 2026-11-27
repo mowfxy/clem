@@ -8,7 +8,7 @@ import { cairoAt, readPro } from "../core/proactivity/settings.ts";
 import { cardMessage, esc, markdownHtml, plainMessage, replyMessages } from "../core/telegram/render.ts";
 import { TG_FILE_LIMIT } from "../core/telegram/pairing.ts";
 import { Engine } from "../desktop/engine/index.ts";
-import { TelegramRelay } from "../desktop/engine/telegram.ts";
+import { setSendRetry, TelegramRelay } from "../desktop/engine/telegram.ts";
 import { runTelegramTool } from "../desktop/engine/ai-tools.ts";
 import type { TelegramTurn } from "../desktop/engine/host.ts";
 import { host as fakeHost } from "./guc-fake.ts";
@@ -90,6 +90,21 @@ test("relay: a paired chat's message is answered by Clem's agent once, with typi
     assert.equal(turns.length, 1);
     assert.equal(await relay.pullOnce(), 0);
   } finally { await engine.close(); }
+});
+
+test("relay: an answer whose send fails is sent again once, never dropped in silence", async () => {
+  const { env, tg, engine, relay, pairNow } = await setup();
+  setSendRetry(0);
+  try {
+    await pairNow();
+    await hook(env, tg, msg(42, "what's due tomorrow?"));
+    const post = relay.post.bind(relay);
+    let fails = 1;
+    relay.post = async (text: string) => { if (fails-- > 0) throw Error("Telegram is unavailable right now."); return post(text); };
+    assert.equal(await relay.pullOnce(), 1);
+    assert.equal(sent(tg).at(-1), "<b>Sheet 3</b> is due tomorrow.", "the answer arrived on the second try");
+    assert.ok(!sent(tg).some((t) => /couldn't answer/.test(t)), "and wasn't reported as unanswered");
+  } finally { setSendRetry(3000); await engine.close(); }
 });
 
 test("relay: taps round-trip through the inbox to the same appliers; old buttons still work or are explained", async () => {
@@ -174,7 +189,7 @@ test("pair card: posted once on first run, whenever asked; never when paired", a
   } finally { await engine.close(); }
 });
 
-test("files: sent as a document up to 50 MB; a bigger one gets a note and Open in Clem", async () => {
+test("files: sent as a document up to 50 MB; a bigger one isn't, and only the AI's answer says so (no extra message, no button)", async () => {
   const env = workerEnv(), tg = fakeTelegram(), dir = await mkdtemp(join(tmpdir(), "clem-tg-"));
   try {
     await writeFile(join(dir, "l3.pdf"), Buffer.from("%PDF-1.4 small"));
@@ -192,11 +207,12 @@ test("files: sent as a document up to 50 MB; a bigger one gets a note and Open i
       assert.deepEqual(await relay.sendFile("small"), { sent: true, name: "Lecture 3.pdf", size: 14 });
       assert.equal(tg.calls.at(-1)!.method, "sendDocument");
       assert.match(tg.calls.at(-1)!.body.multipart, /Lecture 3\.pdf/);
+      const before = tg.calls.length;
       const big = await relay.sendFile("huge");
       assert.equal(big.sent, false);
+      assert.match(big.reason!, /more than Telegram's 50 MB/, "the AI is told, to say it in its answer");
       assert.equal(tg.calls.filter((c) => c.method === "sendDocument").length, 1, "never uploaded");
-      assert.match(tg.said().at(-1).text, /more than Telegram's 50 MB/);
-      assert.equal(tg.said().at(-1).reply_markup.inline_keyboard[0][0].text, "Open in Clem");
+      assert.equal(tg.calls.length, before, "nothing posted by itself");
     } finally { await engine.close(); }
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

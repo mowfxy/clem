@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import type { Engine } from "../index.ts";
 import { DeviceStore, sha256 } from "../storage.ts";
 import { desktopRunsOffline, STALE_MS, BEAT_MS } from "../../../core/vps/lease.ts";
-import { WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
+import { MAIN_MEMORY, WORKER_PROTOCOL, type StorageMode, type VpsConfig, type VpsStatus, type VpsTest, type WorkerView } from "../../../core/vps/types.ts";
 import { leanState, type WsBatch, type WsCursor } from "../../../core/workspace/ops.ts";
 import { generateKey, publicOf } from "./keys.ts";
 import { DROPPED, SshLink, isDrop, plain, type LinkConfig, type VpsLink } from "./link.ts";
@@ -50,6 +50,9 @@ export type ManagerDeps = {
   /** Sends one of the person's files on this PC to their Telegram (a file asked for there while the PC was off):
    *  "sent", "gone" (deleted since, or never this PC's) or "later" (Telegram couldn't be reached). */
   sendToTelegram?: (fileId: string) => Promise<"sent" | "gone" | "later">;
+  /** What Clem learned about the person, as the main thread recalls it (desktop/memory.ts): the worker's Telegram answers
+   *  get it too (sealed, MAIN_MEMORY), sent with the workspace when it changed. */
+  learned?: () => Promise<string>;
 };
 /** Reconnecting after a failure waits one beat, then two, four, eight, at most ten minutes (any action tries at once). */
 export const RETRY_MAX_MS = 10 * 60_000;
@@ -497,12 +500,24 @@ export class VpsManager {
         const lean = leanState(state ?? await this.workspaceState?.());
         await (await this.worker()).pushWorkspace({ ...lean, files: await this.withBlobs(lean.files) });
         this.pushedAt = Date.now();
+        await this.pushLearned();
       } catch (e) { this.log("[vps] workspace push: " + (e as Error).message); }
     };
     if (now) return send();
     if (!this.pushTimer) { this.pushTimer = setTimeout(() => void send(), 20_000); this.pushTimer.unref?.(); }
   }
   private pushedAt = 0;
+  private learnedSent?: string;
+  /** What Clem learned about the person, to the worker when it changed (the worker's Telegram answers use it). */
+  async pushLearned() {
+    if (!this.d.learned) return;
+    try {
+      const text = await this.d.learned();
+      if (text === this.learnedSent) return;
+      await this.secretChanged(MAIN_MEMORY, text);
+      this.learnedSent = text;
+    } catch (e) { this.log("[vps] memory push: " + (e as Error).message); }
+  }
   /** Each file with where its bytes are on the VPS (content-addressed: the worker reads the same name on its disk). */
   private async withBlobs(files: { id: string }[]) {
     const engine = await this.d.engine();

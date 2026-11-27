@@ -4,7 +4,7 @@
 import { announcementsText, correctionsText, deadlinesText, deadlineWindow, fileTextPage, findItem, GUC_GUIDE, gradesText, attendanceText, gucAction, label, link, mailListText, mailText, materialsText, readArgs, resolveSubject, scheduleDays, scheduleText, searchText, since, type Resolved, type ToolSubject } from "../../core/guc/ai-tools.ts";
 import { applyCorrections, fingerprint, matches, ruleSentence, staleRule, type Correction, type RecordTarget, type Rule } from "../../core/guc/corrections.ts";
 import { mailTextId } from "../../core/guc/deadline-ai.ts";
-import { cairoInstant, whenText } from "../../core/guc/deadlines.ts";
+import { cairoInstant, nameOnly, whenText } from "../../core/guc/deadlines.ts";
 import { cairo, type HubDeadline } from "../../core/guc/hub.ts";
 import type { GucDeadline } from "../../core/guc/types.ts";
 import { settingsUpdateCard } from "../../core/guc/cards.ts";
@@ -230,7 +230,7 @@ export async function runTelegramTool(ctx: GucToolContext, request: Record<strin
     if (!id) return { error: `No CMS file "${file}". List a subject's files with {"action":"guc.materials","subject":…}.` };
     if (typeof id === "object") return id;
     const r = await t.sendFile(id);
-    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB: they were told in Telegram and offered Open in Clem. Say so briefly.`;
+    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB, so it wasn't sent: it's in Clem under GUC → CMS. Say so in one plain sentence.`;
   } catch (error) {
     return { error: (error instanceof GucError ? error.message : (error as Error)?.message) || "Telegram couldn't be reached right now." };
   }
@@ -250,7 +250,7 @@ function toRule(r: { type: string; days?: number; from?: string; words?: string[
 async function addItem(ctx: GucToolContext, a: Record<string, any>, course: Resolved | undefined, list: HubDeadline[]): Promise<string | { error: string }> {
   if (!course) return { error: 'guc.correct add: say which course: "subject".' };
   if (!a.date) return { error: 'guc.correct add: give "date" (YYYY-MM-DD), and "time" (HH:MM) when known.' };
-  const title = String(a.title || a.item).trim().slice(0, 80);
+  const title = nameOnly(String(a.title || a.item).trim()).slice(0, 80);
   const at = a.time ? /^(\d{1,2}):(\d{2})$/.exec(a.time) : null;
   const due = new Date(cairoInstant(+a.date.slice(0, 4), +a.date.slice(5, 7), +a.date.slice(8, 10), at ? +at[1] : 23, at ? +at[2] : 59)).toISOString();
   const kind = a.kind || (/quiz/i.test(title) ? "quiz" : /exam|midterm|final/i.test(title) ? "exam" : /assignment|sheet|homework/i.test(title) ? "assignment" : "other");
@@ -284,6 +284,8 @@ async function correctItem(ctx: GucToolContext, a: Record<string, any>, course: 
     done = await e.correct({ ...common, kind: "note", patch: { note: a.note }, label: `Added a note to ${said(found)}: "${a.note}"` });
   } else {
     if (!a.title && !a.date && a.time === undefined && a.place === undefined) return { error: "guc.correct edit: give title, date, time or place." };
+    // A name without the course code: Coming up shows the course beside it.
+    if (a.title) a = { ...a, title: nameOnly(a.title) };
     const c = cairo(Date.parse(base.due)), timed = base.timeKnown !== false && c.time !== "23:59";
     const day = a.date || c.ymd, time = a.time === "" ? undefined : a.time || (timed ? c.time : undefined);
     const dueMoved = !!a.date || a.time !== undefined;

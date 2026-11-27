@@ -1,13 +1,9 @@
-// A command that could change the server, asked in words, once (docs/GUC-VPS-ENGINE.md "VPS"): on the worker, where no
-// one can tap a card, Clem says in one plain message exactly what it will run and asks; "yes" runs it and the output is
-// reported, anything else drops it. The command classification is core/vps/commands.ts's. Pure.
+// A command that could change the server, asked in words, once (docs/GUC-VPS-ENGINE.md "VPS"): on Telegram, where no
+// one can tap a card, Clem says in one plain message exactly what it will run and asks; the model reads whether the
+// answer says yes and runs it (desktop/engine/thread-tools.ts heldAsk), anything else drops it. The command
+// classification is core/vps/commands.ts's. Pure.
 
 export type VpsAsk = { kind: "run"; command: string; reason?: string; at: number } | { kind: "write"; path: string; content: string; at: number };
-
-/** A plain yes (and only that): "yes", "yeah", "ok", "go ahead", "do it", "run it", in any case, with punctuation. */
-export function isYes(text: string) {
-  return /^\s*(y|yes|yeah|yep|yup|sure|ok|okay|go|go ahead|do it|run it|please do|yes please|yes,? (do|run) it|confirm(ed)?|approved?)\s*[.!👍]*\s*$/i.test(text);
-}
 
 /** What could go wrong for Clem itself or for the person's way in, said plainly in the question. */
 export function dangers(command: string): string[] {

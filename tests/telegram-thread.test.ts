@@ -10,10 +10,10 @@ import { join } from "node:path";
 import { Engine } from "../desktop/engine/index.ts";
 import { WorkerAgent } from "../desktop/engine/vps/agent.ts";
 import type { WorkerWorkspace } from "../desktop/engine/vps/workspace.ts";
-import { runThreadTool, threadBefore } from "../desktop/engine/thread-tools.ts";
+import { heldAsk, runThreadTool } from "../desktop/engine/thread-tools.ts";
 import { ownTurn, telegramTurn, THREAD_FAILED } from "../desktop/telegram-thread.ts";
 import { windowTelegram, type WindowThread } from "../src/telegram/thread.ts";
-import { DECLINE_RUN_MS, NOT_ON_TELEGRAM, TELEGRAM_DECLINE, TELEGRAM_DECLINE_SHORT, TELEGRAM_INTRO, telegramAllows, telegramDeclines, telegramGuide } from "../core/telegram/thread.ts";
+import { LEARNED_HEAD, NOT_ON_TELEGRAM, TELEGRAM_DECLINE, TELEGRAM_DECLINE_SHORT, TELEGRAM_INTRO, telegramAllows, telegramGuide } from "../core/telegram/thread.ts";
 import { MAIN_THREAD_NOTE } from "../core/main-thread/guide.ts";
 import { putMessage } from "../core/workspace/apply.ts";
 import type { TelegramTurn } from "../desktop/engine/host.ts";
@@ -25,6 +25,8 @@ const req = (o: object) => JSON.stringify({ kinetra: o });
 const asked = (input: string) => [...input.matchAll(/\[From Telegram\] (.+)/g)].at(-1)?.[1] || "";
 const mainOf = (s: any) => s.chats.find((c: any) => c.kind === "main");
 
+/** What Clem learned about the person (desktop/memory.ts memoryLines): the PC recalls it; the worker gets it sealed. */
+const LEARNED = "How the user wants answers (follow these every time unless they ask otherwise now):\n- Answers: short, no emoji";
 /** A workspace both sides start from: one subject, the main thread with one message typed in the app. */
 const startState = () => ({
   name: "Sam", memory: "Call me Sam.", skills: [], visuals: [], automations: [], studySets: [], plans: [],
@@ -43,6 +45,8 @@ function scripted(seen: { system: string; user: string }[]) {
     if (/exam is on/.test(q)) return after ? "Saved: Math exam on 20 December." : req({ action: "ws.subject", name: "Math", examDate: "2026-12-20" });
     if (/what's on today/.test(q)) return after ? "Nothing from GUC today." : req({ action: "guc.schedule", range: "today" });
     if (/plan two/.test(q)) return "Two sessions are in your plan.\n\n```plan\n" + JSON.stringify({ action: "create", space: "Math", title: "Math study plan", tasks: [{ id: "a", title: "Study: limits", due: "2026-11-17", time: "18:00" }, { id: "b", title: "Study: derivatives", due: "2026-11-19", time: "18:00" }] }) + "\n```";
+    // A study question or a file: the model declines it under the guide (the long words once, then the short ones).
+    if (/explain the chain rule|PDF of lecture|summari[sz]e (lecture|Lecture)|flashcards from/i.test(q)) return /On Telegram I help you run your day/.test(user.slice(0, user.lastIndexOf("[From Telegram]"))) ? TELEGRAM_DECLINE_SHORT : TELEGRAM_DECLINE;
     // Tries everything Telegram doesn't have.
     if (/sneak/.test(q)) return after ? "Done." : [req({ action: "clem.handoff", space: "Math", task: "Explain limits" }), req({ action: "pdf", title: "Limits", sections: [] }), req({ action: "ws.note", name: "x.md", content: "x" }), req({ action: "ws.flashcards", subject: "Math" }), req({ action: "guc.read", file: "Sheet 3" })].join("\n");
     return "Okay.";
@@ -55,7 +59,7 @@ async function openEngine() {
   return Engine.open("owner-1", h, { memory: true, jobs: false, clock: () => T0 });
 }
 
-/** The laptop's window: its state, the main process's actions (desktop/main.ts tgTool/tgComplete/tgBefore) over the
+/** The laptop's window: its state, the main process's actions (desktop/main.ts tgTool, tgComplete, tgAsk…, tgMemory) over the
  *  engine, and the window's Telegram queue (src/telegram/thread.ts). */
 async function laptop(complete: (r: { system: string; user: string }) => Promise<string>) {
   const engine = await openEngine();
@@ -64,7 +68,11 @@ async function laptop(complete: (r: { system: string; user: string }) => Promise
   const invoke = async (r: any): Promise<any> => {
     if (r.action === "tgComplete") return complete({ system: r.system, user: r.user });
     if (r.action === "tgTool") return runThreadTool({ engine, owner: "owner-1", subjects: state.spaces.filter((s: any) => s.kind === "subject") }, r.tool);
-    if (r.action === "tgBefore") return threadBefore({ take: async () => { const a = vault.get("ask") as any; vault.delete("ask"); return a; }, perform: async () => ({ error: "no VPS" }) }, r.text);
+    if (r.action.startsWith("tgAsk")) {
+      const asks = heldAsk({ get: async () => vault.get("ask") as any, set: async (a) => { if (a) vault.set("ask", a); else vault.delete("ask"); } }, async () => ({ error: "no VPS" }), () => T0);
+      return r.action === "tgAskPending" ? asks.pending() : r.action === "tgAskApprove" ? asks.approve(r.at) : asks.drop(r.at);
+    }
+    if (r.action === "tgMemory") return LEARNED;
     if (r.action === "gucNow") return engine.now().catch(() => null);
     throw Error("unexpected " + r.action);
   };
@@ -78,7 +86,7 @@ async function vps(complete: (r: { system: string; user: string }) => Promise<st
   let state: any = startState();
   const ws = { state: async () => state, change: async (fn: (s: any) => any) => { state = fn(state); return { state, ops: [] }; }, ready: async () => true, drain: async () => {} } as unknown as WorkerWorkspace;
   const root = await mkdtemp(join(tmpdir(), "clem-tg-"));
-  const agent = new WorkerAgent({ owner: "owner-1", complete: (r) => complete(r), engine: () => engine, ws, files: root, clock: () => T0 });
+  const agent = new WorkerAgent({ owner: "owner-1", complete: (r) => complete(r), engine: () => engine, ws, files: root, clock: () => T0, learned: async () => LEARNED });
   return { engine, state: () => state, agent, root };
 }
 const shape = (s: any) => ({ messages: mainOf(s).messages.map((m: any) => [m.role, m.content.replace(/\n```plan[\s\S]*```/, " [plan]"), m.via || null]), plans: (s.plans || []).map((p: any) => [p.spaceId, p.title, p.tasks.map((t: any) => [t.title, t.due, t.time])]), spaces: s.spaces.map((x: any) => [x.name, x.examDate || null]), chats: s.chats.length, files: s.files.length, studySets: s.studySets.length });
@@ -112,10 +120,11 @@ test("the same management requests give the same answers and the same workspace 
     assert.equal(seenL[0].user, seenW[0].user);
     assert.match(seenW[0].user, /I moved my Physics lab to Monday/, "the app's main-thread messages are known to the worker");
     assert.match(seenW[0].user, /Call me Sam/, "and the person's memory");
+    assert.ok(seenW[0].user.includes(LEARNED_HEAD + "\n" + LEARNED), "and what Clem learned about them, as the app's main thread gets it");
   } finally { await L.engine.close(); await W.engine.close(); await rm(W.root, { recursive: true, force: true }); }
 });
 
-test("a study question and a file are declined with the one message on both sides, then briefly; nothing can make them", { timeout: 60_000 }, async () => {
+test("a study question and a file reach the model on both sides, which declines them (the long message once, then briefly); nothing can make them", { timeout: 60_000 }, async () => {
   const seenL: { system: string; user: string }[] = [], seenW: { system: string; user: string }[] = [];
   const L = await laptop(scripted(seenL)), W = await vps(scripted(seenW));
   try {
@@ -125,8 +134,9 @@ test("a study question and a file are declined with the one message on both side
       assert.equal(L.answers.at(-1)!.text, w.text);
       assert.equal(w.text, i === 0 ? TELEGRAM_DECLINE : TELEGRAM_DECLINE_SHORT, "the whole message once, then short");
     }
-    assert.equal(seenL.length + seenW.length, 0, "no model call, nothing made");
-    // An old lecture message's Summarize button is declined the same way.
+    assert.equal(seenL.length, 3, "no rule answered before the model: it decided each one");
+    assert.equal(seenW.length, 3);
+    // An old lecture message's Summarize button goes to the model the same way.
     const tap: TelegramTurn = { id: "t1", tap: { t: "summarize", subjectId: "math", fileId: "m3", name: "Lecture 3" } as any };
     assert.equal((await W.agent.converse(tap)).text, TELEGRAM_DECLINE_SHORT);
     // A model that tries anyway finds none of it: no hand-off, no file, no deck.
@@ -138,9 +148,6 @@ test("a study question and a file are declined with the one message on both side
     assert.equal(s.chats.length, 1, "no subject chat");
     assert.equal(s.files.length, 1, "no file");
     assert.equal(s.studySets.length, 0, "no deck");
-    // Management that names a subject stays.
-    for (const ok of ["remind me to revise Circuits on Thursday", "when is the Physics quiz?", "plan my study for the Math midterm", "send me lecture 3 slides", "make a study plan for next week", "block 2 hours for Math tomorrow", "whats my highest achievable rn in math, look at the first lecture where it says the components.", "explain how my math grade is calculated", "summarize the grading scheme of circuits"]) assert.equal(telegramDeclines(ok), false, ok);
-    for (const no of ["solve question 4 from sheet 2", "quiz me on thermodynamics", "create flashcards for chapter 5", "turn my notes into slides", "write a summary of the lecture", "can you explain this?", "make an excel sheet of my grades", "solve question 2 from my coursework"]) assert.equal(telegramDeclines(no), true, no);
     for (const a of ["clem.handoff", "pdf", "docx", "pptx", "xlsx", "image", "file", "call", "look", "crop", "ws.note", "ws.flashcards", "ws.files", "read"]) assert.equal(telegramAllows(a), false, a);
     for (const a of ["clem.remind", "clem.undo", "guc.read", "guc.grades", "guc.correct", "guc.resync", "telegram.sendFile", "vps.keep", "vps.run_command", "ws.subject"]) assert.equal(telegramAllows(a), true, a);
     assert.deepEqual(await runThreadTool({ engine: W.engine, owner: "owner-1", subjects: [] }, { action: "pdf" }), NOT_ON_TELEGRAM, "the engine's side refuses too");
@@ -165,11 +172,9 @@ test("a question about the course or their marks is answered, reading the marks 
   assert.deepEqual(asks, ["guc.grades"], "speaking by itself, Clem reads no file");
 });
 
-test("the decline: the long message once per run of the conversation, the short one after; a new run starts again", async () => {
-  const { declineReply } = await import("../core/telegram/thread.ts");
-  assert.equal(declineReply([], T0), TELEGRAM_DECLINE);
-  assert.equal(declineReply([{ role: "assistant", content: TELEGRAM_DECLINE, at: T0 - 60_000 }], T0), TELEGRAM_DECLINE_SHORT);
-  assert.equal(declineReply([{ role: "assistant", content: TELEGRAM_DECLINE, at: T0 - DECLINE_RUN_MS - 1 }], T0), TELEGRAM_DECLINE, "hours later it is a new run");
+test("the decline is the model's: the guide gives it the words, and no rule answers before it", async () => {
+  const src = await readFile("desktop/telegram-thread.ts", "utf8") + await readFile("core/telegram/thread.ts", "utf8");
+  assert.doesNotMatch(src, /telegramDeclines|declineReply/, "no pre-model decline");
   assert.ok(telegramGuide().includes(TELEGRAM_DECLINE) && telegramGuide().includes(TELEGRAM_DECLINE_SHORT), "the model is told the same words");
   assert.ok(!MAIN_THREAD_NOTE.includes(TELEGRAM_DECLINE), "the app's main thread still does everything");
   assert.match(MAIN_THREAD_NOTE, /clem\.handoff/, "including the hand-off");
@@ -324,10 +329,9 @@ test("long answers reach Telegram split at paragraphs; the worker sends no photo
 
 void putMessage;
 
-test("what is made first decides: a reminder, routine, watch or study block that names a file is management; a file or a quiz is not", () => {
-  for (const ok of ["make a reminder for the quiz tomorrow", "create a reminder to finish my slides by Friday", "create a routine that tells me about new quizzes", "prepare a study block for the presentation",
-    "make a watch for quiz grades", "set up a reminder for my Excel assignment", "add a calendar event for the PDF submission", "make me a study plan for the midterm"])
-    assert.equal(telegramDeclines(ok), false, ok);
-  for (const no of ["make slides for my presentation and remind me tomorrow", "create a quiz on chapter 4", "make me a PDF of my schedule", "make a plan document for my project", "create flashcards for chapter 5"])
-    assert.equal(telegramDeclines(no), true, no);
+test("the window's answer to a briefing Clem speaks by itself (own-<uuid>) passes the request check, as a Telegram item's does", async () => {
+  const { requestSchema } = await import("../desktop/contracts.ts");
+  for (const id of ["m123", "t9", "own-" + crypto.randomUUID()]) assert.doesNotThrow(() => requestSchema.parse({ action: "tgAnswered", id, text: "x" }), id);
+  assert.throws(() => requestSchema.parse({ action: "tgAnswered", id: "../x", text: "x" }));
+  for (const r of [{ action: "tgMemory", text: "hi" }, { action: "tgAskPending" }, { action: "tgAskApprove", at: 5 }, { action: "tgAskDrop", at: 5 }]) assert.doesNotThrow(() => requestSchema.parse(r), r.action);
 });

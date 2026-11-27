@@ -80,7 +80,7 @@ import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool, type GucToolContext } from './engine/ai-tools';
-import { runThreadTool, sendFileTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
+import { heldAsk, runThreadTool, sendFileTool, type ThreadToolCtx } from './engine/thread-tools';
 import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
 import { isGucAction } from '../core/guc/ai-tools';
@@ -137,6 +137,7 @@ import {
   topicsFrom,
   untidyScopes,
   retrieveMemory,
+  memoryLines,
   PROFILE_SCOPE,
   mentionsSelf,
   explicitRemember,
@@ -823,6 +824,9 @@ void app.whenReady().then(async () => {
   let memoryWrites = Promise.resolve();
   /** What memory reads as when its file is not there: nothing, and marked so a sync never takes that for deletions. */
   const noMemory = async (owner: string): Promise<MemoryState> => ({ enabled: (await vault.read("setup-" + owner, setupDefault)).memory, records: [], unsynced: true });
+  /** What Clem learned about the person, recalled for the main thread as the app's chat recalls it (Telegram's answers,
+   *  on this PC and on the VPS worker, get the same). Empty while memory is off. */
+  const mainMemory = async (owner: string, query = "") => memoryLines(retrieveMemory(await vault.read<MemoryState>("memory-" + owner, await noMemory(owner)), PROFILE_SCOPE, query), PROFILE_SCOPE);
   /** Every change to a person's memory reads and writes it inside this queue, so no change overwrites another. */
   const memoryLocks = new Map<string, Promise<unknown>>();
   function withMemory<T>(owner: string, task: () => Promise<T>): Promise<T> {
@@ -990,6 +994,8 @@ void app.whenReady().then(async () => {
     clearTimeout(memorySyncTimers.get(owner));
     memorySyncTimers.set(owner, setTimeout(() => {
       memorySyncTimers.delete(owner);
+      // The VPS worker answers Telegram with the same memory.
+      void vpsManagers.get(owner)?.pushLearned();
       void syncMemory(owner).then(({ syncError }) => { if (syncError) syncFailed(owner, syncError); else syncWarned.delete(owner); }, (error) => syncFailed(owner, (error as Error).message));
     }, 5000));
   }
@@ -1312,6 +1318,7 @@ void app.whenReady().then(async () => {
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
         // A file asked for on Telegram while this PC was off: sent from here now that it's on (once, no question).
+        learned: () => mainMemory(owner),
         sendToTelegram: async (fileId) => {
           const state = await disk.readState(owner).catch(() => null) as { files?: { id: string; name: string; type?: string }[] } | null;
           const f = state?.files?.find((x) => x.id === fileId);
@@ -1739,15 +1746,18 @@ void app.whenReady().then(async () => {
       }
       // The Telegram main thread the window runs (src/telegram/thread.ts, desktop/telegram-thread.ts): one step of its
       // model (no tools, no working folder: Telegram makes no files), the engine's actions (desktop/engine/thread-tools.ts,
-      // the same as the VPS worker's), and the step before the model (a "yes" to a server change, the VPS-full answer).
+      // the same as the VPS worker's), what Clem learned about the person, and a server change Clem asked about (the
+      // model reads whether the person's answer is a yes, and runs it with vps.approve: desktop/engine/thread-tools.ts).
       if (request.action === "tgComplete") return engineHost(user.id).complete!({ system: request.system, user: request.user, model: request.model, reasoning: request.reasoning });
       if (request.action === "tgTool") return runThreadTool(await threadCtx(user.id, engine), request.tool);
-      if (request.action === "tgBefore") {
-        const vps = await vpsConfigured(user.id) ? vpsFor(user.id) : undefined, askKey = "tg-vps-ask-" + user.id;
-        return threadBefore({
-          take: async () => { const a = await vault.read<VpsAsk | undefined>(askKey, undefined); if (a) await vault.remove(askKey); return a; },
-          perform: async (ask) => vps ? vps.wordTools.perform(user.id, ask) : { error: "No VPS is connected." },
-        }, request.text);
+      if (request.action === "tgMemory") return mainMemory(user.id, String(request.text || ""));
+      if (request.action === "tgAskPending" || request.action === "tgAskApprove" || request.action === "tgAskDrop") {
+        const askKey = "tg-vps-ask-" + user.id;
+        const asks = heldAsk({ get: () => vault.read<VpsAsk | undefined>(askKey, undefined), set: async (a) => { if (a) await vault.write(askKey, a); else await vault.remove(askKey); } },
+          async (ask) => await vpsConfigured(user.id) ? vpsFor(user.id).wordTools.perform(user.id, ask) : { error: "No VPS is connected." });
+        if (request.action === "tgAskPending") return asks.pending();
+        if (request.action === "tgAskApprove") return asks.approve(Number(request.at));
+        return asks.drop(Number(request.at));
       }
     }
     if (request.action.startsWith("guc")) {
@@ -2628,9 +2638,9 @@ void app.whenReady().then(async () => {
       const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops.store(request.chat || request.id)) : diskCrops(user.id);
       const crops = new CropAssets(cropIo, request.chat || request.id);
       /** One task for the window, with the same minute "look" has. */
-      const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
+      const windowTask = (op: string, args: Record<string, unknown>, waitMs = 60_000) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
         const task = randomUUID();
-        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, 60_000);
+        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, waitMs);
         pendingTasks.set(task, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
         send({ id: request.id, type: "pdfTask", task, op, args });
       });
@@ -2684,8 +2694,33 @@ void app.whenReady().then(async () => {
         // The main thread hands subject and project work to a new chat there (core/main-thread/handoff.ts): the window
         // opens it, runs it on the person's last AI, and brings the result back to the main thread when it is done.
         if (tool?.action === "clem.handoff") {
-          if (typeof tool.space !== "string" || !tool.space.trim() || typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "space" (the subject or project, by name) and "task" (the request, complete).' };
-          try { return (await windowTask("handoff", { space: tool.space.slice(0, 200), task: tool.task.slice(0, 8000) })).data; }
+          const space = typeof tool.space === "string" ? tool.space.trim().slice(0, 200) : "", thread = typeof tool.thread === "string" ? tool.thread.trim().slice(0, 200) : "";
+          if (typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "task" (the request, complete) and "space" (the subject or project, by name) or "thread" (a thread id).' };
+          try { return (await windowTask("handoff", { space, thread, task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // A space's threads, for choosing which one a hand-off continues (core/main-thread/handoff.ts spaceThreads).
+        if (tool?.action === "clem.threads") {
+          try { return (await windowTask("threads", { space: typeof tool.space === "string" ? tool.space.slice(0, 200) : "" })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // A subject or project chat's AI sends the main thread's business up to it (core/main-thread/handoff.ts
+        // TO_MAIN_GUIDE); the window queues it on the main thread and copies the answer back.
+        if (tool?.action === "clem.toMain") {
+          if (typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.toMain needs "task": the request, complete.' };
+          try { return (await windowTask("toMain", { task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // The file open beside the chat, changed in place when the AI decides the message asks for it (src/files/edit-open.ts).
+        // An edit of a long document reads, rewrites and saves it: it gets longer than a page task.
+        if (tool?.action === "clem.editOpen") {
+          if (typeof tool.instruction !== "string" || !tool.instruction.trim()) return { error: 'clem.editOpen needs "instruction": what to change, complete.' };
+          try { return (await windowTask("editOpen", { instruction: tool.instruction.slice(0, 8000) }, 10 * 60_000)).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // Flashcards or a quiz the AI wrote, saved as a study set in the subject (core/study-request.ts STUDY_SET_GUIDE).
+        if (tool?.action === "clem.studySet") {
+          try { return (await windowTask("studySet", { kind: tool.kind, title: tool.title, items: tool.items })).data; }
           catch (error) { return { error: (error as Error).message }; }
         }
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):

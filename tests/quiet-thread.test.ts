@@ -56,13 +56,13 @@ test("new mail becomes an event that says who it is for; mail for everyone is ne
   assert.deepEqual(plan.rate, []);
 });
 
-test("a certain change is given words by the model, never a new level, and words it was not given are dropped", () => {
+test("a certain change: the model gives it words and decides its level too, and words it was not given are dropped", () => {
   const snap = snapshotOf({ spaces: [], plans: [], chats: [], files: [], studySets: [], automations: [] }, Date.now());
   const moved: Change = { key: "dl:a:2026-11-20T10:00:00.000Z", kind: "deadline_changed", title: "CSEN 301 Quiz 1 moved to Fri 20 Nov", detail: "Was Thu 19 Nov." };
   const plan = planSweep("event", { now: Date.now(), snap, prev: snap, slots: [], deadlines: [], events: [moved] }, { done: new Set() });
   assert.match(plan.ask!.user, /News:\n0\. deadline moved \(certain\) · CSEN 301 · CSEN 301 Quiz 1 moved to Fri 20 Nov: Was Thu 19 Nov\./);
   const silenced = readReply('{"levels":[{"i":0,"level":"silent","why":"x","say":"Your CSEN 301 Quiz 1 is now Friday 20 Nov, a day later."}]}', plan, snap, new Set());
-  assert.deepEqual([silenced.rated[0].level, silenced.rated[0].say], ["notify", "Your CSEN 301 Quiz 1 is now Friday 20 Nov, a day later."], "its words, the rules' level");
+  assert.deepEqual([silenced.rated[0].level, silenced.rated[0].say], ["silent", "Your CSEN 301 Quiz 1 is now Friday 20 Nov, a day later."], "its words and its level: no rule overrides the model");
   const invented = readReply('{"levels":[{"i":0,"level":"notify","why":"x","say":"Quiz 1 moved to Friday, and the midterm is in room C7.02."}]}', plan, snap, new Set());
   assert.equal(invented.rated[0].say, undefined, "a midterm and a room it was never told of: the rules say it instead");
 });

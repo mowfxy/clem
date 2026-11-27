@@ -19,6 +19,8 @@ const backupItem = z.union([z.object({ source: z.literal("folder"), path: z.stri
 const proKey = z.string().min(1).max(300);
 /** What a Telegram answer carries: files Clem made (by id) and its visuals drawn as PNGs (base64), sent as photos. */
 const gucCourse = z.string().regex(/^\d{1,10}:\d{1,10}$/), gucId = z.string().regex(/^[\w-]{1,100}$/);
+/** The ids the window answers Telegram turns by: an inbox item, or a briefing Clem speaks by itself. */
+export const TG_ANSWER_ID = /^(?:[mt]\d{1,20}|own-[\w-]{1,60})$/;
 export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("supportSend"), category:z.enum(["Contact support","Report a bug","Suggest a feature"]), subject:z.string().trim().min(1).max(150), message:z.string().trim().min(10).max(10000), diagnostics:z.boolean().optional() }),
@@ -112,10 +114,14 @@ export const requestSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("tgPair") }),
   z.object({ action: z.literal("tgUnpair") }),
   z.object({ action: z.literal("tgOffer") }),
-  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(/^[mt]\d{1,20}$/), text: z.string().max(200_000) }),
+  // A Telegram item ("m…"/"t…") or a briefing Clem speaks by itself ("own-<uuid>", desktop/main.ts speak).
+  z.object({ action: z.literal("tgAnswered"), id: z.string().regex(TG_ANSWER_ID), text: z.string().max(200_000) }),
   z.object({ action: z.literal("tgComplete"), system: z.string().max(400_000), user: z.string().max(3_000_000), model: z.string().max(200).optional(), reasoning: z.string().max(40).optional() }),
   z.object({ action: z.literal("tgTool"), tool: z.record(z.string(), z.unknown()) }),
-  z.object({ action: z.literal("tgBefore"), text: z.string().max(8000) }),
+  z.object({ action: z.literal("tgMemory"), text: z.string().max(8000) }),
+  z.object({ action: z.literal("tgAskPending") }),
+  z.object({ action: z.literal("tgAskApprove"), at: z.number().int().min(0) }),
+  z.object({ action: z.literal("tgAskDrop"), at: z.number().int().min(0) }),
   z.object({ action: z.literal("driveConnect"), pick: z.enum(["files", "folder"]).optional(), request: z.string().regex(/^[\w-]{16,64}$/).optional() }),
   z.object({ action: z.literal("drivePicked"), request: z.string().regex(/^[\w-]{16,64}$/) }),
   z.object({ action: z.literal("driveAccess"), hide: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional(), show: z.array(z.string().regex(/^[\w-]{10,150}$/)).max(200).optional() }),

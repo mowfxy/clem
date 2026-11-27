@@ -163,10 +163,15 @@ test("a sweep with nothing changed decides nothing and asks no model", () => {
   assert.equal(planSweep("midday", facts, { done: new Set(), lastDay: SUN }).changed, false, "a timed job that already ran today with no change");
   const morning0 = () => snapshotOf({ spaces: [space("phys", "Physics")], plans: [{ spaceId: "phys", rev: 1, tasks: [{ id: "t1", title: "Problem set", due: "2026-11-14" }] }] });
   const morning = planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: morning0() }, { done: new Set(), lastDay: "2026-11-14" });
-  assert.deepEqual(morning.actions, [{ type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set", due: SUN, time: "09:00" }], "a new day: the overdue task gets today and an hour, as one task, not a copy");
-  assert.ok(morning.ask?.user.includes("Sweep: the morning plan, Sunday 2026-11-15 07:30.") && /In the brief[^\n]*\n- Moved “Problem set”/.test(morning.ask.user), "the brief is said in Clem's words: one short call");
+  assert.deepEqual(morning.proposed, [{ type: "plan_move", spaceId: "phys", taskId: "t1", title: "Problem set", due: SUN, time: "09:00" }], "a new day: the overdue task gets today and an hour, as one task, not a copy");
+  assert.deepEqual(morning.actions, [], "proposed, not taken: the organizer model decides");
+  assert.ok(morning.ask?.user.includes("Sweep: the morning plan, Sunday 2026-11-15 07:30.") && /Proposed[^\n]*\n0\. Moved “Problem set”/.test(morning.ask.user), "the brief is said in Clem's words: one short call, with the move for it to take or leave");
+  assert.deepEqual(readReply('{"message":"Problem set first, at 9.","levels":[],"take":[0]}', morning, morning0(), new Set()).actions, morning.proposed, "taken by the model: applied");
+  assert.deepEqual(readReply('{"message":"Problem set first, at 9.","levels":[]}', morning, morning0(), new Set()).actions, [], "a reply that takes nothing changes nothing");
+  assert.deepEqual(readReply("not json", morning, morning0(), new Set()).actions, [], "an unreadable reply takes nothing either");
   const silent = planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: morning0() }, { done: new Set(), lastDay: "2026-11-14", voice: false });
-  assert.equal(silent.ask, undefined, "kept quiet (or no model): the rules needed no model");
+  assert.ok(silent.ask && !silent.ask.user.includes("In the brief"), "kept quiet: no brief to word, but the move is still the model's to take");
+  assert.equal(planSweep("morning", { ...facts, now: T(SUN, "07:30"), snap: morning0() }, { done: new Set(), lastDay: "2026-11-14", voice: false, model: false }).ask, undefined, "no model at all: nothing to ask");
 });
 
 test("the organizer's reply is checked: levels, watches, and only allowed actions", () => {
@@ -256,6 +261,28 @@ const event = (engine: Engine, key: string, kind: string, title: string, detail:
   engine.db.query("insert into guc_events (owner_id, event_key, kind, course_key, title, detail, created_at) values ($1, $2, $3, $4, $5, $6, now() + interval '1 second' * (select count(*) from guc_events))", ["pro-owner", key, kind, course, title, detail]);
 const empty = (): Ws => ({ spaces: [space("phys", "Physics")], plans: [], chats: [{ id: "main", kind: "main", messages: [] }], files: [], studySets: [], automations: [] });
 
+test("engine: a note no AI could say is not lost: the next sweep with an AI says it, once", async () => {
+  const clock = { t: T(SUN, "13:00") }, ws = empty();
+  const { engine, h, o } = await engineWith(ws, clock);
+  try {
+    await o.setSettings({ level: "balanced" });
+    await o.sweep("event");
+    ws.chats[0].messages.push({ id: "u1", role: "user", content: "I'll finish the lab report tomorrow.", at: clock.t });
+    clock.t = T("2026-11-16", "21:00");
+    const speaker = h.speaker; h.speaker = undefined;
+    await o.sweep("event");
+    assert.deepEqual((await o.inbox()).posts, [], "no AI: nothing said");
+    h.speaker = speaker;
+    ws.chats[0].messages.push({ id: "u2", role: "user", content: "ok", at: clock.t });
+    await o.sweep("event");
+    const posts = (await o.inbox()).posts.map((p) => p.content);
+    assert.ok(posts.some((p) => /lab report/.test(p)), "said once an AI answers: " + JSON.stringify(posts));
+    ws.chats[0].messages.push({ id: "u3", role: "user", content: "thanks", at: clock.t });
+    await o.sweep("event");
+    assert.equal((await o.inbox()).posts.filter((p) => /lab report/.test(p.content)).length, 1, "and only once");
+  } finally { await engine.close(); }
+});
+
 test("engine: no change, no model call; new words in the main thread ask once", async () => {
   const clock = { t: T(SUN, "13:00") }, ws = empty();
   const { engine, h, o } = await engineWith(ws, clock);
@@ -339,7 +366,7 @@ test("engine: the morning brief writes blocks the window applies, logs them, and
   const clock = { t: T(SUN, "07:30") }, ws = empty();
   ws.spaces[0].examDate = "2026-11-22";
   ws.plans.push({ id: "p1", spaceId: "phys", title: "Physics plan", start: "2026-11-01", created: 1, updated: 1, rev: 1, tasks: [{ id: "t1", title: "Problem set 2", due: "2026-11-13" }, { id: "t9", title: "Session", due: "2026-11-21", group: "Before the exam" }] });
-  const { engine, h, o } = await engineWith(ws, clock, () => '{"message":"Problem set 2 slipped past Friday, so it\'s first at 9. Exam in a week: I added an hour for it.","levels":[]}');
+  const { engine, h, o } = await engineWith(ws, clock, () => '{"message":"Problem set 2 slipped past Friday, so it\'s first at 9. Exam in a week: I added an hour for it.","levels":[],"take":[0,1]}');
   try {
     const r = await o.sweep("morning");
     assert.ok(r.changed && r.posted && r.called, "one short call for Clem's own words");
@@ -410,7 +437,7 @@ test("engine: the timed jobs' schedules follow settings and survive a restart", 
 
 test("engine: news is never lost to the level: balanced says it at midday, quiet keeps it for the next card", async () => {
   const clock = { t: T(SUN, "13:30") };
-  const { engine, h, o } = await engineWith(empty(), clock, (r) => '{"levels":[{"i":0,"level":"notify","why":"Reading"' + (r.user.includes("chapter 3") ? ',"say":"Read chapter 3 before Thursday."' : "") + '}]}');
+  const { engine, h, o } = await engineWith(empty(), clock, (r) => '{"levels":[{"i":0,"level":"' + (r.user.includes("Sheet 5") ? "urgent" : "notify") + '","why":"Reading"' + (r.user.includes("chapter 3") ? ',"say":"Read chapter 3 before Thursday."' : "") + '}]}');
   try {
     await o.sweep("event");
     await o.setSettings({ level: "balanced" });

@@ -23,7 +23,7 @@ import type { DiskSize } from "../core/vps/limit.ts";
 import { callPath, serveWorker } from "../desktop/engine/vps/rpc.ts";
 import { FileSecrets } from "../desktop/engine/vps/secrets.ts";
 import { serveHooks } from "../desktop/engine/hooks.ts";
-import { WORKER_PROTOCOL } from "../core/vps/types.ts";
+import { MAIN_MEMORY, WORKER_PROTOCOL } from "../core/vps/types.ts";
 import { StudyReminders } from "../desktop/study-reminders.ts";
 import { agyCommand } from "../desktop/engine/vps/antigravity.ts";
 import { runGucTool } from "../desktop/engine/ai-tools.ts";
@@ -131,6 +131,7 @@ export async function startWorker(o: { config?: Config; key?: Uint8Array; env?: 
     vps: (tool) => vpsTools.run(config.owner, tool),
     vpsPerform: (ask) => vpsTools.perform(config.owner, ask),
     state, waiting: () => waiting.items(),
+    learned: () => secrets.get<string>(MAIN_MEMORY),
   });
   // The flashcards-due reminder (desktop/study-reminders.ts), as the laptop sends it, while this worker runs Clem's jobs:
   // to the PC as a notice and to Telegram when paired. The person's time and switch come from the PC (a sealed secret).
