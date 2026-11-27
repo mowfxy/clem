@@ -207,7 +207,9 @@ export class Organizer {
       classes: g.slots.map((x) => ({ code: /^[A-Z]{2,5} ?\d{3}/.test(x.code) ? x.code : g.links.find((l) => l.name && [x.code, x.name].some((n) => n?.toLowerCase().trim() === l.name.toLowerCase().trim()))?.code || x.code, type: x.type, group: x.group, day: x.day, start: x.start, end: x.end, location: x.location })) };
     const watches = await this.watchRows();
     const nowCard = withGuc({ ...localNowCard({ spaces: snap.spaces, plans: snap.plans.map((p) => ({ spaceId: p.spaceId, tasks: p.tasks.map((t) => ({ title: t.title, due: t.due, done: t.done ? 1 : undefined, kind: t.milestone ? "milestone" as const : "task" as const })) })), today }) }, g.now);
-    let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, model: !!this.host.complete, voice: s.level !== "quiet" });
+    // The rules only propose changes to the plan and files; the organizer model takes them or not. Without a model that
+    // answers, nothing proposed is taken (owner, 2026-11-27: no automated function overrides the AI).
+    let plan = planSweep(kind, facts, { done, lastDay: last?.last_day || undefined, now: nowCard, mutes, watches, voice: s.level !== "quiet" });
     let called = false;
     if (plan.ask && this.host.complete) {
       try {
@@ -232,15 +234,16 @@ export class Organizer {
    *  words, clem.undo), and what it asks is a question the person answers in the thread. */
   private async deliverSweep(kind: SweepKind, plan: ReturnType<typeof planSweep>, s: ProSettings, snap: Snapshot, deadlines: Deadline[]) {
     const name = (id?: string) => snap.spaces.find((x) => x.id === id)?.name, now = this.clock();
-    // Actions: notes are said; the rest wait for the window to apply them.
+    const fresh = async (key: string) => !(await this.db.query("select 1 from organizer_actions where owner_id = $1 and key = $2", [this.owner, key])).length;
+    // Actions: changes wait for the window to apply them. Notes are recorded as said only once an AI has said them
+    // (below): without one they are not lost, and the next sweep brings them again.
     const taken: ProAction[] = [];
     for (const a of plan.actions) {
-      const status = a.type === "note" ? "said" : needsConfirm(a) ? "confirm" : "apply";
-      if (await this.record(actionKey(a), kind, a, describe(a, name), status)) taken.push(a);
+      if (a.type === "note") { if (await fresh(actionKey(a))) taken.push(a); continue; }
+      if (await this.record(actionKey(a), kind, a, describe(a, name), needsConfirm(a) ? "confirm" : "apply")) taken.push(a);
     }
     for (const h of plan.hits) await this.db.query("update organizer_watches set fired = fired + 1, last_fired = now() where owner_id = $1 and id = $2", [this.owner, h.watch.id]);
     // Attention: urgent and notify are said (urgent pushed now), digest is named in passing, silent nothing.
-    const fresh = async (key: string) => !(await this.db.query("select 1 from organizer_actions where owner_id = $1 and key = $2", [this.owner, key])).length;
     const said: RatedChange[] = [];
     for (const r of plan.rated.filter((r) => r.level === "urgent" || r.level === "notify")) if (await fresh("change:" + r.change.key)) said.push(r);
     // What the person asked to hear is told (once) whatever its level, in Clem's words when it has them.
@@ -248,7 +251,8 @@ export class Organizer {
     for (const h of plan.hits) if (!said.some((r) => r.change.key === h.change.key) && await fresh("change:" + h.change.key)) { const r = plan.rated.find((x) => x.change.key === h.change.key); asked.push({ change: h.change, level: "urgent", why: "You asked.", ...(r?.say ? { say: r.say } : {}) }); }
     const urgent = said.some((r) => r.level === "urgent") || plan.hits.length > 0 || taken.some((a) => needsConfirm(a) || (a.type === "note" && a.kind === "clash"));
     // News is news whichever sweep found it: a timed sweep that carries some speaks as an event sweep would.
-    const news = said.length + asked.length > 0;
+    // A note (a follow-up, a clash, a question) is worth a message too: it waits for one otherwise.
+    const news = said.length + asked.length > 0 || taken.some((a) => a.type === "note");
     const say = delivery(s, kind === "event" ? { news, urgent } : { job: kind as JobKind, news, urgent });
     // News a quieter level kept back (worth knowing, not worth a message then) is told with the next thing Clem says,
     // for a week; then it is only in the log.
@@ -267,6 +271,7 @@ export class Organizer {
     const textOf = new Map(msgs.flatMap((m) => m.tells.map((k) => [k, m.text] as const)));
     const spoken = wanted ? await this.voice(`sweep:${kind}:${now}`, sweepBrief(kind, now, msgs, [...told, ...held], x), s) : null;
     for (const r of told) { const text = textOf.get(r.change.key) || r.say || plainText(r.change, x); await this.record("change:" + r.change.key, kind, { type: "note", kind: "info", text: text.slice(0, 300) }, text, spoken !== null ? "said" : "held", { change: r.change, level: r.level, ...(r.say ? { say: r.say } : {}) }); }
+    if (spoken !== null) for (const a of taken) if (a.type === "note") await this.record(actionKey(a), kind, a, describe(a, name), "said");
     if (spoken !== null && heldRows.length) await this.db.query("update organizer_actions set status = 'said', updated_at = now() where owner_id = $1 and key = any($2::text[]) and status = 'held'", [this.owner, heldRows.map((r) => r.key)]);
     return !!spoken;
   }

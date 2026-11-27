@@ -1,6 +1,7 @@
 // What deserves the person's attention (docs/MAIN-THREAD.md "Proactivity" → Attention). Every change gets a level:
-// urgent (pushed now), notify (a message of its own), digest (named in a closing line) or silent. Rules decide; only
-// announcements the rules can't place go to the organizer model, batched into the sweep's one short call. The person
+// urgent (pushed now), notify (a message of its own), digest (named in a closing line) or silent. The rules give a
+// first level; everything not muted or sent to every student goes to the organizer model in the sweep's one short call,
+// and its level stands (sweep.ts readReply). The rules' level is only what is used when no model answered. The person
 // teaches the filter by saying so ("stop telling me about new files in Math": a mute, clem.mute). Timetable changes are
 // found here too. Pure.
 import { stableId } from "../guc/parse.ts";
@@ -46,7 +47,9 @@ export function importance(c: Change, mutes: Mute[] = []): Rated {
       // Mail has its say in the subject line too ("MATH301 Extra Lecture").
       const body = (c.kind === "new_mail" ? c.title.replace(/^Email from [^:]*:s*/, "") + " " : "") + c.detail.trim();
       if (ACTION_WORDS.test(body)) return { level: URGENT_WORDS.test(body) && /\b(cancel|postpone|moved?|reschedul)/i.test(body) ? "urgent" : "notify", why: "It asks something of you." };
-      if (!body || body.length < 25 || TRIVIAL.test(body)) return { level: "silent", why: "Nothing to act on." };
+      if (!body) return { level: "silent", why: "Nothing to act on." };
+      // A short or greeting-like post is probably nothing, but the organizer reads it before it is dropped.
+      if (body.length < 25 || TRIVIAL.test(body)) return { level: "silent", why: "Nothing to act on.", ambiguous: true };
       if (ROUTINE.test(body)) return { level: "digest", why: "Routine." };
       if (c.mine) return { level: "notify", why: "Written to you." };
       return { level: "digest", why: "Unclear.", ambiguous: true };
