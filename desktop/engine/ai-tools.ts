@@ -230,7 +230,7 @@ export async function runTelegramTool(ctx: GucToolContext, request: Record<strin
     if (!id) return { error: `No CMS file "${file}". List a subject's files with {"action":"guc.materials","subject":…}.` };
     if (typeof id === "object") return id;
     const r = await t.sendFile(id);
-    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB: they were told in Telegram and offered Open in Clem. Say so briefly.`;
+    return r.sent ? `Sent ${r.name} to their Telegram. Say so in one short sentence.` : `${r.name} is ${Math.round(r.size / 1048576)} MB, over Telegram's 50 MB, so it wasn't sent: it's in Clem under GUC → CMS. Say so in one plain sentence.`;
   } catch (error) {
     return { error: (error instanceof GucError ? error.message : (error as Error)?.message) || "Telegram couldn't be reached right now." };
   }

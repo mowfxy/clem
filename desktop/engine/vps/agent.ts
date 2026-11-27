@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { nextAutomation } from "../../../core/automation-schedule.ts";
 import { mainThreadOf, putMessage } from "../../../core/workspace/apply.ts";
 import { ownTurn, telegramTurn, type OwnBrief, type ThreadDeps } from "../../telegram-thread.ts";
-import { runThreadTool, threadBefore, type ThreadVps } from "../thread-tools.ts";
+import { heldAsk, runThreadTool, type ThreadVps } from "../thread-tools.ts";
 import type { VpsAsk } from "../../../core/vps/ask.ts";
 import type { StoredFile } from "../../../core/types.ts";
 import { sha256 } from "../storage.ts";
@@ -36,6 +36,8 @@ export type AgentDeps = {
   vpsPerform?: (ask: VpsAsk) => Promise<unknown>;
   /** The worker's standing state (a question waiting for its answer). */
   state?: WorkerState;
+  /** What Clem learned about the person, as the PC's main thread recalls it (sent by the PC, sealed: MAIN_MEMORY). */
+  learned?: () => Promise<string | undefined>;
   /** What waits for the PC past the storage limit. */
   waiting?: () => Promise<{ item: string; name: string; bytes: number }[]>;
   log?: (m: string) => void;
@@ -107,11 +109,9 @@ export class WorkerAgent {
             return { name: f.name, type: f.type || "application/octet-stream", bytes: await this.bytes(f) };
           } }, tool);
       },
-      before: (text) => threadBefore({
-        take: async () => this.d.state?.take<VpsAsk>("vps-ask"),
-        perform: async (ask) => this.d.vpsPerform ? this.d.vpsPerform(ask) : { error: "The VPS tools aren't available here." },
-        clock: this.clock,
-      }, text),
+      ...(this.d.state ? { asks: heldAsk({ get: async () => this.d.state!.get<VpsAsk>("vps-ask"), set: async (a) => { if (a) await this.d.state!.set("vps-ask", a); else await this.d.state!.delete("vps-ask"); } },
+        async (ask) => this.d.vpsPerform ? this.d.vpsPerform(ask) : { error: "The VPS tools aren't available here." }, this.clock) } : {}),
+      learned: async () => (await this.d.learned?.().catch(() => undefined)) || "",
       guc: async () => await engine.now().catch(() => null) as Awaited<ReturnType<NonNullable<ThreadDeps["guc"]>>>,
       model: "vps", clock: this.clock, deadline: this.d.deadline, log: (m) => this.log(m),
     };
