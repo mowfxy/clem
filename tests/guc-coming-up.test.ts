@@ -140,7 +140,7 @@ test("the model is given the student's classes, groups and exam seats; a long ta
   const { system, user } = readerPrompt(input);
   assert.match(user, /- Tutorial: Sunday, 2nd slot 10:00–11:30, group 3MIET T014, C5\.212/);
   assert.match(user, /- Lecture: Monday, 1st slot/);
-  assert.match(user, /Their groups: tutorial group T14 \(T14\), lecture group 2 \(L2\)\./);
+  assert.match(user, /Their groups: tutorial group T14 \(T14\), lecture group 2 \(L2\); the portal writes them 3MIET T014, 3MIET L002\./);
   assert.match(user, /Exam seats the portal already lists:\n- Midterm on Thu 29 Oct, 08:30, H5, seat J13/);
   assert.match(system, /"T13 - T17" and "T11,T12,T14" both include T14/);
   assert.match(system, /still return the item: the earliest day, "timeKnown": false, and "either"/);

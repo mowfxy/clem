@@ -25,7 +25,12 @@ export function windowThreadDeps(w: WindowThread): ThreadDeps<State> {
     ws: { state: () => w.state(), change: (fn) => w.patch(fn) },
     complete: ({ system, user }) => w.invoke({ action: 'tgComplete', system, user, ...(w.model() ? { model: w.model() } : {}), ...(w.reasoning?.() ? { reasoning: w.reasoning() } : {}) }),
     run: (tool) => w.invoke({ action: 'tgTool', tool }),
-    before: (text) => w.invoke({ action: 'tgBefore', text }),
+    asks: {
+      pending: () => w.invoke({ action: 'tgAskPending' }),
+      approve: (at) => w.invoke({ action: 'tgAskApprove', at }),
+      drop: (at) => w.invoke({ action: 'tgAskDrop', at }),
+    },
+    learned: (text) => w.invoke({ action: 'tgMemory', text }),
     guc: async () => (w.guc?.() === false ? null : await w.invoke({ action: 'gucNow' }).catch(() => null)),
     model: w.model(),
     clock: w.clock,

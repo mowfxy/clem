@@ -52,8 +52,9 @@ test("the AI's answer: new ones join, a moved one keeps its id, a cancelled one 
     { title: "Old quiz", due: "2025-11-18 15:30" },
     { title: "Students will have to submit their solutions to their tutorial TAs before the end of the week", due: "2026-11-19" },
   ], cancel: ["a9"] }, input)!;
-  assert.deepEqual(out.map((d) => [d.title, dueText(d.due)]), [["In-class assignment 3", "Tue 17 Nov, 13:45"], ["Quiz 2", "Tue 24 Nov, 15:30"]]);
-  assert.equal(out[1].id, "q2", "moved, not added twice");
+  // The sentence the model gave as a name is named ("Submit your solutions"), not dropped: the model found a deadline.
+  assert.deepEqual(out.map((d) => [d.title, dueText(d.due)]), [["In-class assignment 3", "Tue 17 Nov, 13:45"], ["Submit your solutions", "Thu 19 Nov"], ["Quiz 2", "Tue 24 Nov, 15:30"]]);
+  assert.equal(out[2].id, "q2", "moved, not added twice");
   assert.equal(out[0].note, "during the second tutorial of the week starting Saturday 14th");
   assert.equal(applyReader({ nope: 1 }, input), null);
   assert.equal(applyReader({ deadlines: [{ title: "Quiz 4", due: "next week" }] }, input), null);

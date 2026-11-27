@@ -1,15 +1,9 @@
 import Fuse from 'fuse.js';
 
-/** A subject or project as the main thread's router sees it. `aliases`: other names it goes by (a course code, a short
- *  name); course codes in its name or description are found on their own. */
+/** A subject or project as the main thread sees it when it tells the AI which spaces a message may be about
+ *  (core/main-thread/handoff.ts spaceHints) and finds the space a clem.handoff names (resolveSpace). `aliases`: other
+ *  names it goes by (a course code, a short name); course codes in its name or description are found on their own. */
 export type RouteSpace = { id: string; name: string; kind: 'subject' | 'project'; description?: string; aliases?: string[] };
-export type RouteResult =
-  | { kind: 'handoff'; spaceId: string; reason: 'mention' | 'match'; score: number }
-  | { kind: 'stay'; reason: 'none' | 'ambiguous' | 'small-talk'; candidates: { spaceId: string; score: number }[] };
-
-/** How sure the router must be, and how far ahead of the next space, before it hands a message off by itself. */
-export const ROUTE_THRESHOLD = 0.8;
-export const ROUTE_MARGIN = 0.15;
 
 const CODE = /\b([A-Z]{2,5})\s?-?(\d{3}[A-Z]?)\b/g;
 /** Course codes ("CSEN 401", "math203") in a text, normalised to "CSEN401". */
@@ -18,7 +12,6 @@ export function courseCodes(text: string) {
 }
 const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const STOP = new Set(['the', 'a', 'an', 'and', 'of', 'to', 'in', 'for', 'my', 'me', 'i', 'is', 'it', 'on', 'with', 'about', 'what', 'how', 'can', 'you', 'this', 'that', 'do', 'be', 'are', 'help', 'please', 'today', 'tomorrow']);
-const SMALL = /^(hi|hey|hello|yo|thanks|thank you|thx|ok|okay|good (morning|night|evening)|bye|cool|nice|great)[\s!.?]*$/i;
 
 /** Whole-phrase match: "circuits" in "help with circuits hw", not in "short-circuitsy". */
 function hasPhrase(text: string, phrase: string) {
@@ -50,21 +43,6 @@ export function scoreSpaces(message: string, spaces: RouteSpace[]) {
     }
     return { spaceId: s.id, score: Math.round(score * 1000) / 1000 };
   }).filter((c) => c.score > 0).sort((a, b) => b.score - a.score);
-}
-
-/**
- * Where a main-thread message goes. An @mention hands off to that space. Otherwise the local classifier hands off only
- * when one space clearly stands out (`threshold`, and `margin` ahead of the next); anything less stays in the thread.
- */
-export function routeMessage(message: string, spaces: RouteSpace[], { mentions = [], threshold = ROUTE_THRESHOLD, margin = ROUTE_MARGIN }: { mentions?: string[]; threshold?: number; margin?: number } = {}): RouteResult {
-  const mentioned = mentions.find((id) => spaces.some((s) => s.id === id));
-  if (mentioned) return { kind: 'handoff', spaceId: mentioned, reason: 'mention', score: 1 };
-  if (SMALL.test(message.trim())) return { kind: 'stay', reason: 'small-talk', candidates: [] };
-  const candidates = scoreSpaces(message, spaces);
-  const [best, next] = candidates;
-  if (!best || best.score < threshold) return { kind: 'stay', reason: 'none', candidates };
-  if (next && best.score - next.score < margin) return { kind: 'stay', reason: 'ambiguous', candidates };
-  return { kind: 'handoff', spaceId: best.spaceId, reason: 'match', score: best.score };
 }
 
 /** The short note a handed-off message carries: the last few main-thread turns, clipped, oldest first. */

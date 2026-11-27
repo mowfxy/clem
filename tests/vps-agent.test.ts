@@ -18,6 +18,7 @@ import { vpsRoot } from "../desktop/engine/vps/store.ts";
 import type { Engine } from "../desktop/engine/index.ts";
 import { applyPull } from "../core/workspace/ops.ts";
 import { TELEGRAM_DECLINE } from "../core/telegram/thread.ts";
+import { MAIN_MEMORY } from "../core/vps/types.ts";
 import { startWorker } from "../worker/index.ts";
 import { FakeLocal, FakeVps } from "./vps-fake.ts";
 
@@ -48,9 +49,12 @@ test("with no window, a Telegram management request is carried out on the VPS an
   const complete = async ({ system, user }: { system: string; user: string }) => {
     seen.push({ system, user });
     assert.match(system, /main thread/);
+    // A study request: the model declines it under the guide (nothing on this path can make a deck).
+    if (/\[From Telegram\] make me flashcards/.test(user)) return TELEGRAM_DECLINE;
     assert.doesNotMatch(system, /"action":"clem\.handoff"/, "no hand-off on Telegram");
     assert.match(user, /\[From Telegram\] add a study session for Math on Thursday/);
     assert.match(user, /Subjects: Math/, "the Now card is in the context");
+    assert.match(user, /What Clem knows about the person[^\n]*\n- Answers: short, in English/, "and what Clem learned about them, sent by the PC");
     return `Added a study session on Thursday.\n\n\`\`\`plan\n${JSON.stringify({ action: "create", space: "Math", title: "Math study plan", tasks: [{ id: "t1", title: "Study session: limits and derivatives", due: thursday, time: "18:00" }] })}\n\`\`\``;
   };
 
@@ -63,7 +67,7 @@ test("with no window, a Telegram management request is carried out on the VPS an
   const kept = new Map<string, unknown>();
   kept.set("vps-" + OWNER, { config: { host: "vps.test", port: 22, user: "u", auth: "key", fingerprint: "SHA256:x" }, privateKey: "k", storage: { mode: "vps" }, worker: { enabled: true, kind: "docker", key: key.toString("base64"), rpc, installedAt: 1 } } satisfies VpsVault);
   const changed: string[] = [];
-  const m = new VpsManager({ owner: OWNER, secrets: { get: async <T,>(k: string) => kept.get(k) as T, set: async (k, v) => { kept.set(k, v); }, delete: async (k) => { kept.delete(k); } }, local: new FakeLocal(), files: root, engine: async () => engine, bundle: "", accountService: "", connect: async () => link, changed: (w) => changed.push(w) });
+  const m = new VpsManager({ owner: OWNER, learned: async () => "- Answers: short, in English", secrets: { get: async <T,>(k: string) => kept.get(k) as T, set: async (k, v) => { kept.set(k, v); }, delete: async (k) => { kept.delete(k); } }, local: new FakeLocal(), files: root, engine: async () => engine, bundle: "", accountService: "", connect: async () => link, changed: (w) => changed.push(w) });
   await m.ready();
   (await m.router()).markVps("notes", `${vpsRoot(OWNER)}/${hash}.blob`, hash, notes.length, false);
   let desk: any = {
@@ -75,11 +79,23 @@ test("with no window, a Telegram management request is carried out on the VPS an
   try {
     await m.pushWorkspace(true, desk);
     assert.ok(await worker.ws.ready(), "the worker holds a copy of the workspace");
+    // What Clem learned about the person went with it, sealed (the fake VPS holds it; on a real one it lands in the
+    // worker's secrets folder, as here); unchanged, it isn't sent again.
+    const isMemory = (p: string) => p.endsWith("/secrets/" + secretFile(MAIN_MEMORY));
+    const sealed = [...link.files].filter(([p]) => isMemory(p));
+    assert.equal(sealed.length, 1);
+    await writeFile(join(data, "secrets", secretFile(MAIN_MEMORY)), sealed[0][1]);
+    const put = link.put.bind(link);
+    let resent = 0;
+    link.put = async (p: string, b: Uint8Array) => { if (isMemory(p)) resent++; return put(p, b); };
+    await m.pushWorkspace(true, desk);
+    assert.equal(resent, 0, "unchanged: not sent again");
 
-    // A study request: declined in one message, no model call, nothing made.
+    // A study request: the model decides, and declines it in one message; nothing made.
     const no = await worker.host.converse!({ id: "tg-0", text: "make me flashcards from my Math notes" });
     assert.equal(no.text, TELEGRAM_DECLINE);
-    assert.equal(seen.length, 0, "declined before any model call");
+    assert.equal(seen.length, 1, "the model, not a rule, declined it");
+    assert.equal((await worker.ws.state())!.studySets.length, 0);
 
     // The laptop is off. Telegram's message reaches the worker (the relay calls host.converse, as it does here).
     const reply = await worker.host.converse!({ id: "tg-1", text: "add a study session for Math on Thursday" });

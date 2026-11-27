@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { organizerAsk, workAsk, resolveSpace, lastUsedModel, taskTitle, broughtText, HANDOFF_GUIDE } from "../core/main-thread/handoff.ts";
+import { spaceHints, resolveSpace, lastUsedModel, taskTitle, broughtText, HANDOFF_GUIDE } from "../core/main-thread/handoff.ts";
 import { figureBlocks, withoutFigures, replyMessages } from "../core/telegram/render.ts";
 import type { RouteSpace } from "../core/main-thread/route.ts";
 
@@ -10,18 +10,14 @@ const spaces: RouteSpace[] = [
   { id: "web", name: "Portfolio website", kind: "project" },
 ];
 
-test("the organizer's own business stays in the main thread, subject work does not", () => {
-  for (const t of ["remind me about the Circuits quiz tomorrow", "stop telling me about new files in Data Structures", "when is the Circuits midterm", "what's due in CSEN 301 this week", "send me the Circuits lecture 3 slides", "watch for grades in Circuits"])
-    assert.equal(organizerAsk(t), true, t);
-  for (const t of ["make me a PDF summary of Circuits lecture 3", "explain Kirchhoff's laws from Circuits", "draw a visual of a binary heap for Data Structures", "make flashcards for CSEN 301 chapter 4"])
-    assert.equal(organizerAsk(t), false, t);
-});
-
-test("only work on the material is handed off by rule; plain questions about a subject stay", () => {
-  for (const t of ["whats my quiz 2 math about", "what does the Circuits midterm cover", "what's on the Data Structures final", "what is lecture 4 in Circuits", "how many lectures does Circuits have", "remind me about the Circuits quiz"])
-    assert.equal(workAsk(t), false, t);
-  for (const t of ["make me a PDF summary of Circuits lecture 3", "explain Kirchhoff's laws from Circuits", "quiz me on Data Structures chapter 4", "/visual a binary heap for CSEN 301", "help me study for Circuits"])
-    assert.equal(workAsk(t), true, t);
+test("the main-thread AI is told which spaces a message may be about; nothing is handed off for it", () => {
+  assert.match(spaceHints("explain Kirchhoff's laws from Circuits", spaces), /"Circuits" \(subject\)/);
+  assert.match(spaceHints("help with the CSEN 301 sheet", spaces), /"Data Structures"/);
+  assert.equal(spaceHints("plan my day please", spaces), "", "no space named, no hint");
+  const mentioned = spaceHints("summarize lecture 5", spaces, ["web"]);
+  assert.match(mentioned, /@mentioned "Portfolio website" \(project\)[^.]*: their choice of space/);
+  assert.equal(spaceHints("anything", spaces, ["gone"]), "", "a mention of a space that no longer exists is ignored");
+  assert.doesNotMatch(spaceHints("Circuits", spaces, ["circ"]), /may be about/, "a mentioned space isn't listed twice");
 });
 
 test("clem.handoff finds the space by id, name, course code or a clear spelling", () => {
@@ -65,19 +61,18 @@ test("Telegram gets visuals as photos, never their JSON as text", () => {
   assert.deepEqual(replyMessages("```visual\n{}\n```"), []);
 });
 
-test("naming a subject never starts a chat there: planning stays in the main thread, curriculum work goes (0.3.35 regression guard)", async () => {
-  const { handsOff } = await import("../core/main-thread/handoff.ts");
-  const subjects: RouteSpace[] = [
-    { id: "math", name: "Math", kind: "subject", description: "MATH 203" }, { id: "phys", name: "Physics", kind: "subject" }, { id: "chem", name: "Chemistry", kind: "subject" }, ...spaces,
-  ];
-  for (const t of ["plan my week for Math", "when is the Physics quiz", "move my Chemistry revision to Thursday", "help me plan revision for Physics", "reschedule my Math study session to Friday", "block 2 hours for Chemistry tomorrow",
-    "what does the Physics midterm cover", "remind me about the Math sheet", "what are my grades in Chemistry", "how is Math going this week", "Math", "physics"])
-    assert.equal(handsOff(t, subjects), undefined, t);
-  for (const t of ["what's next in Math"]) assert.equal(handsOff(t, subjects, ["math"]), undefined, "an @mention alone isn't work: " + t);
-  for (const [t, id] of [["explain Newton's second law from Physics", "phys"], ["solve question 3 of the Math sheet", "math"], ["make me a PDF summary of Chemistry lecture 2", "chem"], ["make flashcards for MATH 203 chapter 4", "math"], ["draw a visual of a titration curve for Chemistry", "chem"]])
-    assert.equal(handsOff(t, subjects), id, t);
-  assert.equal(handsOff("summarize lecture 5", subjects, ["phys"]), "phys", "@mentioned curriculum work goes");
+test("no rule hands a main-thread message off before the AI answers (owner, 2026-11-27)", async () => {
+  const handoff = await import("../core/main-thread/handoff.ts");
+  for (const gone of ["handsOff", "workAsk", "organizerAsk", "mainOnly"]) assert.equal(gone in handoff, false, gone);
+  const route = await import("../core/main-thread/route.ts");
+  assert.equal("routeMessage" in route, false);
+  const app = await import("node:fs/promises").then((f) => f.readFile("src/App.tsx", "utf8"));
+  assert.doesNotMatch(app, /handsOff\(|mainOnly\(|isEditRequest\(/, "the window decides nothing about what a message means");
+  assert.match(app, /spaceHints\(prompt, /, "the AI gets the spaces as context");
+  assert.match(app, /if \(op === "handoff"\) return Promise\.resolve\(\{ data: handoffTool\(chat, args, \{ carry: \{ attachments: user\.attachments/, "the AI's hand-off carries the message's files");
+  assert.match(app, /You mentioned|@mentioned \$\{chosen/, "an @mention stays the person's choice of space");
   assert.match(HANDOFF_GUIDE, /Naming a subject is never by itself a reason to hand off/);
+  assert.match(HANDOFF_GUIDE, /@mentioned is their own choice of space/);
 });
 
 test("a hand-off's result in the main thread: its files posted with it, its visuals left in the chat it opened", async () => {
@@ -89,6 +84,6 @@ test("a hand-off's result in the main thread: its files posted with it, its visu
   assert.equal(broughtMessage({ content: "```kinetra\n{}\n```" }, "Physics").content, "Done: the visual is in the Physics chat. Open it to see it.");
   assert.equal("attachments" in visual, false);
   const app = await import("node:fs/promises").then((f) => f.readFile("src/App.tsx", "utf8"));
-  assert.match(app, /const brought = broughtMessage\(reply, h\.name\)/, "the window posts exactly that");
+  assert.match(app, /const brought = handoffResult\(target\?\.messages \|\| \[\], user, h\.name, h\.task\)/, "the window posts exactly that (through handoffResult)");
   assert.match(app, /type: "handoff", spaceId: space\.id[^\n]*chatId: id/, "the card links the chat the person can open");
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeMessage, scoreSpaces, courseCodes, carriedNote, mentionMatches, type RouteSpace } from "../core/main-thread/route.ts";
+import { scoreSpaces, courseCodes, carriedNote, mentionMatches, type RouteSpace } from "../core/main-thread/route.ts";
 
 const spaces: RouteSpace[] = [
   { id: "circ", name: "Circuits", kind: "subject", description: "ELCT 201 · Electric circuits" },
@@ -14,34 +14,20 @@ test("course codes are found however they are written", () => {
   assert.deepEqual(courseCodes("Is the elct201 quiz on CSEN 301-style trees?"), ["ELCT201", "CSEN301"]);
 });
 
-test("an @mention always hands off", () => {
-  const r = routeMessage("what should I do today", spaces, { mentions: ["web"] });
-  assert.deepEqual(r, { kind: "handoff", spaceId: "web", reason: "mention", score: 1 });
-  assert.equal(routeMessage("hi", spaces, { mentions: ["gone"] }).kind, "stay", "a mention of a space that no longer exists is ignored");
-});
-
-test("a confident match hands off: full name, course code or alias", () => {
+test("a full name, course code or alias ranks its space first", () => {
   for (const [text, id] of [["Can you explain Thevenin equivalents for circuits?", "circ"], ["help with the ELCT 201 sheet", "circ"], ["my data structures assignment on AVL trees", "ds"], ["the MATH203 midterm topics", "math"], ["fix the navbar on my site", "web"]] as const) {
-    const r = routeMessage(text, spaces);
-    assert.equal(r.kind, "handoff", text);
-    assert.equal(r.kind === "handoff" && r.spaceId, id, text);
+    const [best] = scoreSpaces(text, spaces);
+    assert.equal(best?.spaceId, id, text);
+    assert.ok(best.score >= 0.9, text);
   }
 });
 
-test("a close misspelling of a distinctive name still ranks it first; a loose word does not hand off", () => {
-  const scored = scoreSpaces("explain cirquits nodal analysis", spaces);
-  assert.equal(scored[0].spaceId, "circ");
-  assert.equal(routeMessage("what's the structure of my week", spaces).kind, "stay");
-});
-
-test("ambiguous or unrelated messages stay in the main thread", () => {
-  const two = routeMessage("compare what I have due in physics and circuits", spaces);
-  assert.equal(two.kind, "stay");
-  assert.equal(two.kind === "stay" && two.reason, "ambiguous");
-  assert.equal(routeMessage("plan my day please", spaces).kind, "stay");
-  const hi = routeMessage("thanks!", spaces);
-  assert.equal(hi.kind === "stay" && hi.reason, "small-talk");
-  assert.equal(routeMessage("anything", []).kind, "stay");
+test("a close misspelling of a distinctive name still ranks it first; a loose word scores low", () => {
+  assert.equal(scoreSpaces("explain cirquits nodal analysis", spaces)[0].spaceId, "circ");
+  assert.ok((scoreSpaces("what's the structure of my week", spaces)[0]?.score ?? 0) < 0.5);
+  const two = scoreSpaces("compare what I have due in physics and circuits", spaces).slice(0, 2).map((c) => c.spaceId).sort();
+  assert.deepEqual(two, ["circ", "phys"]);
+  assert.deepEqual(scoreSpaces("anything", []), []);
 });
 
 test("the carried note is the last few turns, short, without cards", () => {
