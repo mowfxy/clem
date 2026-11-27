@@ -14,7 +14,6 @@ import { markdownDeck } from "./markdown-deck";
 import {askedKind, markdownDocument, unwritten} from "./pdf-document";
 import { failureMemory } from "./repeat-guard";
 import {memoryQuery,replayBudget,retrievalQuery} from "../core/chat-context";
-import {smallTalk} from "../core/chat-intent";
 import {condenseConversation,briefKey,type Brief} from "./chat-condense";
 import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
@@ -145,7 +144,6 @@ import {
   extractionInstructions,
   parseExtraction,
   learnMemories,
-  rememberedWords,
   memoryBlocks,
   confirmMemory,
   pruneMemory,
@@ -887,8 +885,7 @@ void app.whenReady().then(async () => {
         console.warn("[memory] extraction failed:", (error as Error).message);
         if (!explicit) return;
       }
-      // "Remember that…" is the person's own instruction: keep their words even when extraction found nothing.
-      if (!learned.length) learned = rememberedWords(message);
+      // Nothing is written that the AI did not choose: an explicit "remember that…" is saved by the answer's own memory block.
       if (!learned.length) return;
       const added = await withMemory(owner, async () => {
         const latest = await vault.read<MemoryState>(key, state);
@@ -2285,8 +2282,8 @@ void app.whenReady().then(async () => {
       const messages = condensed.messages;
       if (condensed.condensed) send({ id: request.id, type: "condensed" });
       if (cancelledRuns.has(request.id)) throw Error("Request cancelled");
-      // A greeting needs no recall (Hermes skips it too); the person's name still goes.
-      const memories = smallTalk(query) ? [] : retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
+      // Small talk gets recall too: personal facts and how the person wants answers matter in a greeting as well.
+      const memories = retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
       // Pictures go to Codex as local image files that are removed when the turn ends.
       const imagePaths: string[] = [];
       const savePictures = async (images: { name: string; data: string }[]) => {
