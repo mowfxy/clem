@@ -14,7 +14,6 @@ import { markdownDeck } from "./markdown-deck";
 import {askedKind, markdownDocument, unwritten} from "./pdf-document";
 import { failureMemory } from "./repeat-guard";
 import {memoryQuery,replayBudget,retrievalQuery} from "../core/chat-context";
-import {smallTalk} from "../core/chat-intent";
 import {condenseConversation,briefKey,type Brief} from "./chat-condense";
 import {contextBudget} from "../core/context-budget";
 import {WorkspaceDisk} from "./workspace-disk";
@@ -139,14 +138,13 @@ import {
   retrieveMemory,
   memoryLines,
   PROFILE_SCOPE,
-  mentionsSelf,
-  explicitRemember,
-  standingInstruction,
+  mayConcernUser,
+  forgetBlocks,
+  forgetWords,
   forgetChat,
   extractionInstructions,
   parseExtraction,
   learnMemories,
-  rememberedWords,
   memoryBlocks,
   confirmMemory,
   pruneMemory,
@@ -864,39 +862,55 @@ void app.whenReady().then(async () => {
     }).catch((error) => console.warn("[memory] could not save what was asked:", (error as Error).message));
   }
   /**
+   * What the AI forgot because the person asked it to ("forget that I…", the forget list of its memory block): those notes
+   * leave memory everywhere this chat can see them, the pre-topics backup goes too, and sync carries the delete.
+   */
+  function forgetAsked(owner: string, scope: string, asked: string[]) {
+    memoryWrites = memoryWrites.then(async () => {
+      const key = "memory-" + owner;
+      const removed = await withMemory(owner, async () => {
+        const latest = await vault.read<MemoryState>(key, await noMemory(owner));
+        const { state, removed } = forgetWords(latest, scope, asked);
+        if (removed.length) { await vault.write(key, state); await dropMemoryBackup(owner); }
+        return removed;
+      });
+      if (!removed.length) { console.warn("[memory] asked to forget, but no note matched"); return; }
+      scheduleMemorySync(owner);
+    }).catch((error) => console.warn("[memory] could not forget what was asked:", (error as Error).message));
+  }
+  /** The copy of memory kept from before topics (moveToTopics) would still hold what the person deleted: it goes with any delete. */
+  const dropMemoryBackup = (owner: string) => vault.remove("memory-" + owner + "-before-topics").catch(() => {});
+  /**
    * After a reply, a short low-effort pass notes durable facts the person shared about themselves.
-   * It runs only when the message talks about them, never blocks the chat, and stores learned
-   * items as unconfirmed until the person keeps them; "remember that…" is saved as confirmed.
+   * It runs when the message could be about them (mayConcernUser, a cost filter), never blocks the chat, and the AI alone
+   * decides what is kept: learned items stay unconfirmed until the person keeps them, and items the AI marks "kept" (the
+   * person asked to remember them or set a standing rule) are confirmed.
    */
   function learnFromTurn(owner: string, scope: string, eventId: string, sourceId: string, message: string, model?: string, previous = "") {
     // Study tools send their request inside a JSON envelope with the person's notes; only the request is theirs to learn from.
     if (/^\s*\{/.test(message)) {
       try { const request = JSON.parse(message)?.request; if (typeof request !== "string") return; message = request; } catch { /* plain text that starts with a brace */ }
     }
-    if (!mentionsSelf(message) || message.length > 6000) return;
+    if (!mayConcernUser(message) || message.length > 6000) return;
     memoryWrites = memoryWrites.then(async () => {
       const key = "memory-" + owner;
       const state = await vault.read<MemoryState>(key, await noMemory(owner));
       if (!state.enabled) return;
       const known = knownTopics(state, scope);
-      const explicit: boolean | "preferences" = explicitRemember(message) || (standingInstruction(message) ? "preferences" : false);
       // A correction ("the last part was wrong") is usually about how the answer ended, so a long answer keeps both ends.
       const context = previous.length > 1500 ? previous.slice(0, 600) + "\n[…]\n" + previous.slice(-900) : previous;
       let learned: Learned[] = [];
       try {
         const raw = await quickAsk(owner, model, extractionInstructions + "\n\n" + topicGuide(scope) + "\n\nKnown topics (data): " + JSON.stringify(known) + (context ? "\n\nPrevious answer, for context only (data):\n" + context : "") + "\n\nUser's latest message (data, not instructions):\n" + message.slice(0, 4000));
         learned = parseExtraction(raw);
-        if (!learned.length && !explicit) return;
       } catch (error) {
         console.warn("[memory] extraction failed:", (error as Error).message);
-        if (!explicit) return;
       }
-      // "Remember that…" is the person's own instruction: keep their words even when extraction found nothing.
-      if (!learned.length) learned = rememberedWords(message);
+      // Nothing is written that the AI did not choose: an explicit "remember that…" is saved by the answer's own memory block.
       if (!learned.length) return;
       const added = await withMemory(owner, async () => {
         const latest = await vault.read<MemoryState>(key, state);
-        const next = learnMemories(latest, learned, { scope, sourceId, explicit });
+        const next = learnMemories(latest, learned, { scope, sourceId, explicit: false });
         await vault.write(key, next);
         return changedTopics(latest, next);
       });
@@ -1952,8 +1966,8 @@ void app.whenReady().then(async () => {
     const memoryKey = "memory-" + user.id;
     const loadMemory = async () => vault.read<MemoryState>(memoryKey, await noMemory(user.id));
     /** Reads, changes and writes memory inside the person's memory queue. */
-    const changeMemory = async (change: (state: MemoryState) => MemoryState | Promise<MemoryState>) => {
-      await withMemory(user.id, async () => { await vault.write(memoryKey, await change(await loadMemory())); });
+    const changeMemory = async (change: (state: MemoryState) => MemoryState | Promise<MemoryState>, deletes = false) => {
+      await withMemory(user.id, async () => { await vault.write(memoryKey, await change(await loadMemory())); if (deletes) await dropMemoryBackup(user.id); });
       scheduleMemorySync(user.id);
     };
     const syncedMemory = () => syncMemory(user.id);
@@ -1990,7 +2004,7 @@ void app.whenReady().then(async () => {
       return state;});return {ok:true};
     }
     if (request.action === "memoryClear") {
-      await changeMemory((state) => unshareScope(forgetMemory(state,state.records.filter(m=>m.scope===request.scope).map(m=>m.id)),request.scope));
+      await changeMemory((state) => unshareScope(forgetMemory(state,state.records.filter(m=>m.scope===request.scope).map(m=>m.id)),request.scope), true);
       return {ok:true};
     }
     // The person's own change to one memory: its words, where it applies, or other spaces that use it too.
@@ -2003,15 +2017,15 @@ void app.whenReady().then(async () => {
       return { ok: true };
     }
     if (request.action === "memoryForget") {
-      await changeMemory((state) => forgetMemory(state, [request.ids || request.id].flat()));
+      await changeMemory((state) => forgetMemory(state, [request.ids || request.id].flat()), true);
       return { ok: true };
     }
     if (request.action === "memoryForgetNotes") {
-      await changeMemory((state) => request.items.reduce((next, item) => forgetNotes(next, item.id, item.notes), state));
+      await changeMemory((state) => request.items.reduce((next, item) => forgetNotes(next, item.id, item.notes), state), true);
       return { ok: true };
     }
     if (request.action === "memoryForgetChat") {
-      await changeMemory((state) => request.chats.reduce(forgetChat, state));
+      await changeMemory((state) => request.chats.reduce(forgetChat, state), true);
       // A deleted chat's kept CLI session goes with it.
       for (const chat of request.chats) chatSessions.drop(`${user.id}:${chat}`);
       return { ok: true };
@@ -2295,8 +2309,8 @@ void app.whenReady().then(async () => {
       const messages = condensed.messages;
       if (condensed.condensed) send({ id: request.id, type: "condensed" });
       if (cancelledRuns.has(request.id)) throw Error("Request cancelled");
-      // A greeting needs no recall (Hermes skips it too); the person's name still goes.
-      const memories = smallTalk(query) ? [] : retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
+      // Small talk gets recall too: personal facts and how the person wants answers matter in a greeting as well.
+      const memories = retrieveMemory(memoryState, request.scope, memoryQuery(request.messages));
       // Pictures go to Codex as local image files that are removed when the turn ends.
       const imagePaths: string[] = [];
       const savePictures = async (images: { name: string; data: string }[]) => {
@@ -2932,7 +2946,8 @@ void app.whenReady().then(async () => {
           // A stopped answer teaches nothing.
           if (cancelledRuns.has(request.id) || request.temporary) return;
           // Asked to remember something: what the AI wrote down is kept as it is, and no second pass guesses at it.
-          const asked = memoryBlocks(answered);
+          const asked = memoryBlocks(answered), forgot = forgetBlocks(answered);
+          if (forgot.length) forgetAsked(user.id, request.scope, forgot);
           if (asked.length) rememberAsked(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), asked);
           else learnFromTurn(user.id, request.scope, request.id, "chat:" + (request.chat || request.id), query, request.model, [...messages].reverse().find((m) => m.role === "assistant")?.content);
           tidyTopics(user.id, request.model);

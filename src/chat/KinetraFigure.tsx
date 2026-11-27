@@ -107,8 +107,16 @@ export function KinetraFigure({ body, streaming }: { body: string; streaming: bo
 
 /** A ```memory block: what the AI saved because the person asked it to remember something (desktop/main.ts rememberAsked). */
 export function MemoryNote({ body }: { body: string }) {
-  let items: string[] = [];
-  try { const value = parseModelJson(body) as any; items = [value?.remember ?? value].flat().map((m: any) => typeof m?.text === 'string' ? m.text : '').filter(Boolean); } catch { /* still arriving */ }
-  if (!items.length) return null;
-  return <div className="memory-note" role="note"><Icon name="check" size={14} /><span><strong>Memory</strong>{items.map((t, i) => <span key={i}>{t}</span>)}</span></div>;
+  let items: string[] = [], forgot: string[] = [];
+  try {
+    const value = parseModelJson(body) as any;
+    items = [value?.remember ?? (value?.forget ? [] : value)].flat().map((m: any) => typeof m?.text === 'string' ? m.text : '').filter(Boolean);
+    // What the person asked Clem to forget (desktop/main.ts forgetAsked).
+    forgot = [value?.forget ?? []].flat().map((f: any) => typeof f === 'string' ? f : typeof f?.note === 'string' ? f.note : '').filter(Boolean);
+  } catch { /* still arriving */ }
+  if (!items.length && !forgot.length) return null;
+  return <div className="memory-note" role="note"><Icon name="check" size={14} /><span>
+    {items.length > 0 && <><strong>Memory</strong>{items.map((t, i) => <span key={i}>{t}</span>)}</>}
+    {forgot.length > 0 && <><strong>Forgotten</strong>{forgot.map((t, i) => <span key={'f' + i}><s>{t}</s></span>)}</>}
+  </span></div>;
 }

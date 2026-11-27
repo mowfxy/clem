@@ -118,6 +118,19 @@ export function remember(entries: MemoryEntry[], added: MemoryEntry[]): MemoryEn
 
 export const forget = (entries: MemoryEntry[], id: string) => entries.filter((e) => e.id !== id);
 
+/** Takes one note out by its words (the coordinator's [[forget: …]]); a line left with no notes goes. */
+export function forgetNote(entries: MemoryEntry[], words: string): MemoryEntry[] {
+  const said = oneLine(words).replace(/^-?\s*\([^)]*\)\s*/, "").toLowerCase();
+  if (said.length < 3) return entries;
+  const hit = (n: string) => n.toLowerCase() === said || overlap(n, said) >= 0.7 || (said.length >= 6 && n.toLowerCase().includes(said));
+  return entries.flatMap((e) => {
+    const notes = noteList(e.text);
+    const left = notes.filter((n) => !hit(n));
+    if (left.length === notes.length) return [e];
+    return left.length ? [entry(left.join("; "), e.tags, e.at)] : [];
+  });
+}
+
 /**
  * The lines that matter to `query`, best first, within `chars`. BM25 on words, tags counted twice, and up to 15% more
  * for the newest lines; a line sharing no word with the query is never returned.

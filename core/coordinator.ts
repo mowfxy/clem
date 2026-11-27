@@ -14,7 +14,8 @@
  * its work ends, and once none is left working the coordinator answers all the new reports in one reply.
  */
 import type { ProjectRoom, ProjectTeam, ProjectThread, Reaction, RoomMessage, Space } from "./types";
-import { entry, memoryLines, recall, remember, type MemoryEntry } from "./project-memory.ts";
+import { entry, forgetNote, memoryLines, recall, remember, type MemoryEntry } from "./project-memory.ts";
+import { looksSecret } from "./secrets.ts";
 
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅", "🤔", "🙏"];
 
@@ -41,14 +42,15 @@ export type Directives = {
   delegate: { agent: string; title: string; task: string }[];
   remember: { tags: string[]; text: string }[];
   recall: string[];
+  forget: string[];
   summary?: string;
 };
-const DIRECTIVE = /\[\[\s*(react|delegate|thread|remember|recall|summary)\s*:\s*([\s\S]*?)\]\]/gi;
+const DIRECTIVE = /\[\[\s*(react|delegate|thread|remember|recall|forget|summary)\s*:\s*([\s\S]*?)\]\]/gi;
 const isEmoji = (s: string) => /^\p{Extended_Pictographic}/u.test(s) && s.length <= 8;
 
 /** The text to show and the directives in a reply. While streaming, a directive still being written is hidden too. */
 export function readReply(raw: string, streaming = false): { text: string; directives: Directives } {
-  const d: Directives = { delegate: [], remember: [], recall: [] };
+  const d: Directives = { delegate: [], remember: [], recall: [], forget: [] };
   let text = raw.replace(DIRECTIVE, (_, kind: string, body: string) => {
     const value = body.trim();
     switch (kind.toLowerCase()) {
@@ -65,10 +67,12 @@ export function readReply(raw: string, streaming = false): { text: string; direc
         const cut = value.indexOf("|");
         const tags = cut > 0 ? value.slice(0, cut).split(/[\s,]+/).filter(Boolean) : [];
         const fact = (cut > 0 ? value.slice(cut + 1) : value).trim();
-        if (fact) d.remember.push({ tags, text: fact });
+        // Passwords, keys and account numbers never go into the project's memory file.
+        if (fact && !looksSecret(fact)) d.remember.push({ tags, text: fact });
         break;
       }
       case "recall": if (value) d.recall.push(value.slice(0, 200)); break;
+      case "forget": if (value) d.forget.push(value.slice(0, 400)); break;
       case "summary": if (value) d.summary = value.slice(0, 300); break;
     }
     return "";
@@ -139,6 +143,7 @@ How to reply:
 - Otherwise open threads for work that benefits from a specialist or from running in parallel (up to ${MAX_THREADS} at once); answer simple questions yourself.
 - Reactions are rare. Most replies carry none; never add one just to acknowledge a request you are answering. When a message asks for nothing (thanks, ok, a sign-off), reply with only [[react: emoji]] (one of ${REACTIONS.join(" ")}) instead of words.
 - To keep a durable fact (a decision, deadline, preference, constraint, number), add [[remember: topic, tag | a few words]]. The first tag is its topic, one area of the project's work (launch, pricing, audience): reuse a topic that exists so the fact joins it. Write a fragment, not a sentence. Never store what is already in the memory below.
+- When the person asks you to forget something in the project's memory, add [[forget: the note's words, copied from memory]] and say what you removed. A fact that changed is replaced by remembering the new one.
 - If the memory below may be missing something you need, reply with only [[recall: search words]] and you will get the matching lines.
 - Directive lines are hidden from the person. Keep answers short and concrete.
 
@@ -209,10 +214,14 @@ export function toggleReaction(reactions: Reaction[] | undefined, emoji: string,
 }
 const addReaction = (reactions: Reaction[] | undefined, emoji: string, by: string) => (reactions || []).some((r) => r.by === by && r.emoji === emoji) ? reactions! : [...(reactions || []), { emoji, by }];
 
-/** Saves the facts a reply asked to keep. A failed write (reported by whoever saves) never loses the reply itself. */
-async function keep(io: Room, facts: Directives["remember"]) {
-  if (!facts.length) return 0;
-  try { await io.saveMemory(remember(io.memory(), facts.map((f) => entry(f.text, f.tags)))); } catch { return 0; }
+/**
+ * Saves the facts a reply asked to keep, after taking out what it asked to forget (the person's "forget that…"). A failed
+ * write (reported by whoever saves) never loses the reply itself.
+ */
+async function keep(io: Room, facts: Directives["remember"], forgotten: string[] = []) {
+  if (!facts.length && !forgotten.length) return 0;
+  const left = forgotten.reduce(forgetNote, io.memory());
+  try { await io.saveMemory(remember(left, facts.map((f) => entry(f.text, f.tags)))); } catch { return 0; }
   return facts.length;
 }
 
@@ -269,7 +278,7 @@ export async function coordinatorTurn(space: Space, runs: { coordinator: Run; ag
       extra = [...extra, { role: "assistant", content: raw.trim() }, { role: "user", content: `(Memory search results)\n${more.length ? memoryLines(more) : "(no matching lines)"}\nNow answer.` }];
       continue;
     }
-    const remembered = await keep(io, directives.remember);
+    const remembered = await keep(io, directives.remember, directives.forget);
     const jobs = mayOpen ? directives.delegate.slice(0, MAX_THREADS) : [];
     const threads: ProjectThread[] = jobs.map((j) => ({ id: uid(), agent: roleName(j.agent), title: j.title || j.task.slice(0, 60), status: "working", created: Date.now(), updated: Date.now(), from: id,
       messages: [{ id: uid(), from: "coordinator", content: j.task, at: Date.now() }] }));
@@ -317,7 +326,7 @@ export async function runThread(space: Space, run: Run, threadId: string, io: Ro
     throw error;
   }
   const { text, directives } = readReply(raw);
-  const remembered = await keep(io, directives.remember);
+  const remembered = await keep(io, directives.remember, directives.forget);
   io.set((r) => patchThread(r, threadId, (t) => {
     let messages = t.messages.map((m) => m.id === id ? { ...m, content: text, status: undefined, at: Date.now(), remembered: remembered || undefined } : m);
     if (directives.react && last) messages = messages.map((m) => m.id === last.id ? { ...m, reactions: addReaction(m.reactions, directives.react!, role) } : m);

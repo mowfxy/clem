@@ -253,7 +253,13 @@ function whereLabel(memoryScope: string, scope?: string) {
  * user wants answers matters on every turn. A record that is not a topic yet is its words alone.
  */
 export function memoryLines(records: Omit<Memory, "embedding">[], scope?: string) {
-  const line = (m: Omit<Memory, "embedding">) => `- ${isTopicKey(m.key) ? topicName(m.key) + ": " : ""}${m.text.trim()}`;
+  // Notes the person stated come first; what Clem only inferred is labelled so it never outweighs them.
+  const said = (m: Omit<Memory, "embedding">) => {
+    if (!isTopicKey(m.key)) return m.confirmed ? m.text.trim() : m.text.trim() + " (inferred)";
+    const notes = notesOf(m.text), guessed = notes.filter((n) => isLearned(n, m.derivedFrom)), stated = notes.filter((n) => !guessed.includes(n));
+    return [joinNotes(stated), guessed.length ? `inferred: ${joinNotes(guessed)}` : ""].filter(Boolean).join(" | ");
+  };
+  const line = (m: Omit<Memory, "embedding">) => `- ${isTopicKey(m.key) ? topicName(m.key) + ": " : ""}${said(m)}`;
   const prefs = records.filter(isPreference), places = new Map<string, string[]>();
   for (const m of records) if (!isPreference(m)) { const where = whereLabel(m.scope, scope); places.set(where, [...(places.get(where) || []), line(m)]); }
   return [
@@ -279,6 +285,14 @@ const otherLanguages = [
  */
 export function mentionsSelf(text: string) {
   return correctsStyle(text) || otherLanguages.some((cue) => cue.test(text)) || /\b(i work|i study|i teach|i live|i moved|my (?:name|job|role|major|degree|course|class|classes|exams?|goal|goals|level|company|team|field|background|school|university|college|teacher|professor|boss|thesis|research|students?|kids?|business|startup|native language|first language)|i have (?:an? |my )(?:[\w-]+ ){0,2}(?:exams?|tests?|midterms?|finals|quiz|interview|degree|job|background|kids?|children|students?|class(?:es)?|dyslexia|adhd)|(?:i'?m|i am) (?:from|based in|in (?:year|grade|my))|i speak|i'?d (?:rather|prefer)|i would (?:rather|prefer)|i want (?:answers|replies|responses)|i run|i own|i graduated|(?:i'?m|i am) (?:taking|applying|\d{1,2} years? old)|i prefer|i like|i love|i hate|i dislike|i don'?t like|i usually|i always|i never|i struggle|call me|from now on|going forward|i'?ve been (?:a|an|teaching|working as|studying|learning)|(?:i'?m|i am) (?:a|an|studying|learning|preparing))\b/i.test(text) || explicitRemember(text);
+}
+/**
+ * Whether a message is worth the memory side call at all: a cost filter, not a decision. Anything in the first person, or a
+ * correction or standing instruction, goes to the AI, which alone decides what (if anything) is kept. Messages with no
+ * first person ("explain entropy", "summarise this PDF") cannot tell Clem about the person and skip the call.
+ */
+export function mayConcernUser(text: string) {
+  return mentionsSelf(text) || /\b(?:i|i'?m|i'?ve|i'?d|i'?ll|my|mine|myself)\b/i.test(text) || /(?:^|[\s،.؟!"'(])(?:أنا|انا|عندي|لدي)/u.test(text) || /(?:^|\s)(?:je|j'|mon|ma|mes|yo|mi|mis|ich|mein|meine)(?=\s|$)/iu.test(text);
 }
 /** Corrections and standing instructions about answers ("shorter please", "stop using bullet points", "answer in Arabic"). */
 export function correctsStyle(text: string) {
@@ -326,31 +340,12 @@ export function standingInstruction(text: string) {
     /(?:من الآن|من الان)(?:\s+فصاعدا|\s+فصاعداً)?[،,\s]+/u.test(text) ||
     /\b(?:à partir de maintenant|désormais|a partir de ahora|de ahora en adelante|ab jetzt|von nun an)\b/iu.test(text);
 }
-/**
- * Passwords, keys, card and account numbers never become memory, even when asked: memory syncs to the
- * person's other devices and goes to their AI with every message.
- */
-export function looksSecret(text: string) {
-  if (/\b(?:sk|pk|rk)[-_](?:live|test|proj|ant)?[-_]?[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}|\bAIza[0-9A-Za-z_-]{30,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.|-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)) return true;
-  if (/\b(?:password|passcode|passwd|pwd|pin(?: code)?|api[ _-]?key|secret[ _-]?key|access[ _-]?key|(?:api|access|auth|bearer|refresh)[ _-]?token|private[ _-]?key|recovery (?:code|phrase)|seed phrase|mot de passe|contraseña|passwort|kennwort)\b\s*(?:is|was|=|:|est|es|ist)\s*\S+/i.test(text) || /(?:كلمة السر|كلمة المرور|الرقم السري)\s*(?:هي|:|=)?\s*\S+/u.test(text)) return true;
-  if (/\b\d{3}-\d{2}-\d{4}\b/.test(text) || /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}\b/.test(text)) return true;
-  // Card numbers: 13 to 19 digits (spaces or dashes allowed) that pass the Luhn check.
-  for (const run of text.match(/\b\d(?:[ -]?\d){12,18}\b/g) || []) {
-    const digits = run.replace(/\D/g, "");
-    let sum = 0;
-    for (let i = 0; i < digits.length; i++) {
-      let d = Number(digits[digits.length - 1 - i]);
-      if (i % 2) { d *= 2; if (d > 9) d -= 9; }
-      sum += d;
-    }
-    if (sum % 10 === 0) return true;
-  }
-  return false;
-}
+export { looksSecret } from "../core/secrets.ts";
+import { looksSecret } from "../core/secrets.ts";
 export const extractionInstructions = `You keep a private memory about the user, organised by topic, so future answers fit them. From the user's latest message, take only lasting information about the USER: identity (name, role, field, level, school/company), lasting goals (a degree, a career aim), fixed dates of exams and similar milestones, and stable preferences about how they want answers (length, tone, language, format, units, level of detail, words or styles to avoid). A correction of the previous answer ("too long", "stop using bullet points", "answer in Arabic") is a preference when it reads as a standing wish rather than a one-off edit. The previous answer is given only so corrections make sense; never store anything the assistant said. Ignore the topic of the question itself and one-off requests. A request is not a preference: how they want THIS answer, plan, document or task built ("make the plan work backward from my deadlines", "one block per subject", "use worksheets 1–5") describes that one piece of work, so store nothing from it; only a wish stated for answers in general ("always…", "from now on…", "I prefer…" about how Clem answers) is a preference. Never store plans, schedules, study timetables, to-do lists, steps, outlines, drafts or what they intend to do when; from such a message keep at most the fixed facts underneath it (an exam and its date). A deadline for one piece of work (a lab report due tomorrow, an assignment, a project due on the 3rd) belongs to that task, not to memory. When unsure whether something will still matter in a month, leave it out. All this applies except when the user explicitly asks to remember, save or note something ("remember this", "save this to the project memory", "don't forget that…"): then store exactly what they asked to keep, even about the topic or the project, resolving "this" or "that" from the previous answer, as "space" when they name the project or subject memory or it is about the course or project rather than about them. Never store secrets, passwords, health, financial, or other sensitive details unless the user explicitly asked you to remember them. The message may be in any language: write "topic" and "note" in the language the user wrote in.
 Topics, not time: file each thing under what it is about, never under when it was said. When a known topic fits, use its exact name, even though the detail came from another chat. Open a new topic only when none fits.
 Notes are labels, not sentences: a fragment of at most 10 words, such as "2nd-year physics", "DSA midterm Oct 22", "no bullet points". Never write "The user", never a full sentence, one fact per note. Skip what a known note already says. When the new fact corrects a known note, copy that note's words into "replaces".
-Return ONLY JSON: {"memories":[{"topic":"name of 1 to 4 words","note":"the fragment","replaces":"known note it corrects (optional)","kind":"fact"|"preference","about":"user"|"space","until":"YYYY-MM-DD (optional)"}]}. "about":"space" only for facts tied to the current project or subject. For time-bound facts (an exam, a thesis defence, a trip) set "until" to the day after it ends; leave it out for lasting facts. Return {"memories":[]} when there is nothing durable. At most 5 items.`;
+Return ONLY JSON: {"memories":[{"topic":"name of 1 to 4 words","note":"the fragment","replaces":"known note it corrects (optional)","kind":"fact"|"preference","about":"user"|"space","until":"YYYY-MM-DD (optional)","kept":true (optional)}]}. Set "kept":true only when the user stated it as something to keep: they asked to remember, save or note it, or gave a standing instruction for all future answers ("from now on…", "always…", "never…"); leave it out for what you only noticed in passing. "about":"space" only for facts tied to the current project or subject. For time-bound facts (an exam, a thesis defence, a trip) set "until" to the day after it ends; leave it out for lasting facts. Return {"memories":[]} when there is nothing durable. At most 5 items.`;
 /** How finely a place divides memory: broad about the person, narrow in a subject, one area of work in a project. */
 const BROAD = `"about":"user" topics are broad, a handful for a whole person: Background, Studies, Work, Goals, Exams, Language, Answer style.`;
 export function topicGuide(scope: string) {
@@ -366,7 +361,7 @@ export function knownTopics(state: MemoryState, scope: string) {
     .map((m) => ({ topic: topicName(m.key), notes: m.text.slice(0, 300) }));
 }
 /** `key` is the topic's name; `replaces` is the note this one corrects. */
-export type Learned = { key: string; text: string; kind: "fact" | "preference"; about: "user" | "space"; until?: string; replaces?: string };
+export type Learned = { key: string; text: string; kind: "fact" | "preference"; about: "user" | "space"; until?: string; replaces?: string; kept?: boolean };
 const NAME = /^[\p{L}\p{N}\p{M}_ .:&'’()/+-]{1,60}$/u;
 export function parseExtraction(raw: string): Learned[] {
   const json = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -379,6 +374,7 @@ export function parseExtraction(raw: string): Learned[] {
       ["fact", "preference"].includes(m.kind) && ["user", "space"].includes(m.about)
       ? [{ key: cleanTopic(topic), text: note.trim(), kind: m.kind, about: m.about,
           ...(typeof m.replaces === "string" && m.replaces.trim() ? { replaces: m.replaces.trim().slice(0, 400) } : {}),
+          ...(m.kept === true ? { kept: true } : {}),
           ...(typeof m.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(m.until) && Number.isFinite(Date.parse(m.until)) ? { until: m.until } : {}) }]
       : [];
   });
@@ -501,7 +497,7 @@ export function learnMemories(state: MemoryState, items: Learned[], context: { s
   const now = context.now || new Date().toISOString();
   for (const item of items) {
     if (looksSecret(item.text)) continue;
-    const confirmed = context.explicit === true || (context.explicit === "preferences" && item.kind === "preference");
+    const confirmed = context.explicit === true || (context.explicit === "preferences" && item.kind === "preference") || item.kept === true;
     const scope = item.about === "user" ? PROFILE_SCOPE : context.scope;
     const preference = item.kind === "preference";
     const until = item.until && Date.parse(item.until) > Date.parse(now) ? item.until : undefined;
@@ -734,4 +730,42 @@ export function memoryBlocks(answer: string): Learned[] {
     }
   }
   return items.slice(0, 10);
+}
+/**
+ * What the AI forgot because the person asked it to ("forget that I…"): each ```memory block may hold
+ * {"forget":["the remembered note's words", …]}. The AI picks the notes from the memory it was shown.
+ */
+export function forgetBlocks(answer: string): string[] {
+  const gone: string[] = [];
+  for (const [, body] of answer.matchAll(/^[ \t]*```memory[^\n]*\n([\s\S]*?)\n[ \t]*```/gm)) {
+    let value: any;
+    try { value = JSON.parse(body); } catch { continue; }
+    for (const f of [value?.forget ?? []].flat().slice(0, 10)) {
+      const words = (typeof f === "string" ? f : typeof f?.note === "string" ? f.note : typeof f?.text === "string" ? f.text : "").replace(/\s+/g, " ").trim();
+      if (words.length >= 3 && words.length <= 400) gone.push(words);
+    }
+  }
+  return gone.slice(0, 10);
+}
+/**
+ * Takes out every note the person asked to forget, wherever this chat can see it (about them, this space, or shared into
+ * it), matched by its words. Returns the new state and what went, so the caller only claims what was really removed.
+ */
+export function forgetWords(state: MemoryState, scope: string, asked: string[]) {
+  // The AI may copy a line as it was shown ("Studies: 2nd-year physics", "inferred: …"): the note is the words after the label.
+  asked = [...new Set(asked.flatMap((w) => [w, w.replace(/^(?:[^:]{1,60}:\s+)?(?:inferred:\s+)?/iu, "").replace(/\s*\(inferred\)$/iu, "")]).map((w) => w.replace(/[.\s]+$/u, "").trim()).filter((w) => w.length >= 3))];
+  const sees = (m: Memory) => !m.supersededBy && (m.scope === PROFILE_SCOPE || m.scope === scope || m.sharedWith.includes(scope));
+  const matches = (note: string, words: string) => sameWords(note, words) || sameNote(note, words) || (words.length >= 6 && note.toLowerCase().includes(words.toLowerCase()));
+  const removed: string[] = [];
+  let next = state;
+  for (const m of state.records.filter(sees)) {
+    if (!next.records.some((r) => r.id === m.id)) continue;
+    if (!isTopicKey(m.key)) {
+      if (asked.some((w) => matches(m.text, w))) { next = forgetMemory(next, [m.id]); removed.push(m.text); }
+      continue;
+    }
+    const gone = notesOf(m.text).filter((n) => asked.some((w) => matches(n, w)));
+    if (gone.length) { next = forgetNotes(next, m.id, gone); removed.push(...gone); }
+  }
+  return { state: next, removed };
 }
