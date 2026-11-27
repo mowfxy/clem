@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { TG_FILE_LIMIT } from "../../core/telegram/pairing.ts";
 import { cardsIn } from "../../core/guc/cards.ts";
-import { noticeMessage, plainMessage, replyMessages, type Button, type Tap, type TgMessage } from "../../core/telegram/render.ts";
+import { plainMessage, replyMessages, type Button, type Tap, type TgMessage } from "../../core/telegram/render.ts";
 import { TELEGRAM_INTRO } from "../../core/telegram/thread.ts";
 import type { Db } from "./db.ts";
 import type { EngineHost, TelegramTurn } from "./host.ts";
@@ -27,6 +27,10 @@ export type RelayEngine = {
 /** How long a Telegram question may take before the person is told Clem couldn't answer. */
 export const ANSWER_MS = 10 * 60_000;
 const TYPING_MS = 4500, STATUS_MS = 60_000;
+/** How long a failed send of an answer waits before its one retry. */
+export let SEND_RETRY_MS = 3000;
+/** Tests: no wait before the retry. */
+export const setSendRetry = (ms: number) => { SEND_RETRY_MS = ms; };
 /** How often someone not let in yet is looked up in the background: there is nothing to pull, so rarely. */
 const WAITING_MS = 15 * 60_000;
 const errorText = (e: unknown) => String((e as Error)?.message || e);
@@ -164,17 +168,22 @@ export class TelegramRelay {
   /** Clem's answer to a message (or a tap that needs the agent), with "typing…" shown until it comes. */
   private async answer(turn: TelegramTurn) {
     if (!this.host.converse) return this.say("Clem can't answer here right now. Open Clem on your PC and try again.");
-    let done = false, wake = () => {};
+    let done = false, wake = () => {}, text = "", failed = "";
     const typing = (async () => { while (!done) { await this.call("/telegram/typing", { hold: [...this.holding] }).catch(() => {}); if (!done) await new Promise<void>((r) => { wake = r; const t = setTimeout(r, TYPING_MS); t.unref?.(); }); } })();
     try {
-      const reply = await Promise.race([this.host.converse(turn), new Promise<never>((_, no) => { const t = setTimeout(() => no(Error("timeout")), ANSWER_MS); t.unref?.(); })]);
-      done = true;
-      await this.post(reply.text || "Done.");
+      text = (await Promise.race([this.host.converse(turn), new Promise<never>((_, no) => { const t = setTimeout(() => no(Error("timeout")), ANSWER_MS); t.unref?.(); })])).text || "Done.";
     } catch (e) {
-      done = true;
       this.host.log("warn", "[telegram] answer: " + errorText(e));
-      await this.say(errorText(e) === "timeout" ? "This is taking longer than it should. You'll find the answer in Clem's main thread." : "Clem couldn't answer that just now. Try again in a moment.");
+      failed = errorText(e) === "timeout" ? "This is taking longer than it should. You'll find the answer in Clem's main thread." : "Clem couldn't answer that just now. Try again in a moment.";
     } finally { done = true; wake(); await typing; }
+    if (failed) return this.say(failed);
+    // The answer is in the main thread already: a send that fails is tried once more, never dropped silently.
+    try { await this.post(text); }
+    catch (e) {
+      this.host.log("warn", "[telegram] send: " + errorText(e) + "; trying again");
+      await new Promise<void>((r) => { const t = setTimeout(r, SEND_RETRY_MS); t.unref?.(); });
+      await this.post(text);
+    }
   }
   /** A tap on an older message's button: the organizer's own buttons run here; Undo and Do it go to the main thread
    *  (the window or the worker, the same appliers as its buttons); Summarize and Make flashcards are declined there. */
@@ -233,15 +242,12 @@ export class TelegramRelay {
     if (caption) form.set("caption", caption);
     await this.call("/telegram/file", undefined, { form, timeout: 180_000 });
   }
-  /** A CMS file to the paired chat (the AI's telegram.sendFile, or Send me the file). Telegram takes 50 MB; a bigger file
-   *  gets a short note and Open in Clem instead. */
+  /** A CMS file to the paired chat (the AI's telegram.sendFile, or Send me the file). Telegram takes 50 MB; a bigger
+   *  file isn't sent and the AI says so in its own answer (no second message, no button). */
   async sendFile(materialId: string): Promise<{ sent: boolean; name: string; size: number; reason?: string }> {
     if (!(await this.paired())) throw Error("Telegram isn't paired. The person can pair it from their main thread or Settings → Channels → Telegram.");
     const f = await this.engine.file(materialId);
-    if (f.size > TG_FILE_LIMIT) {
-      await this.send([noticeMessage(f.name, `This file is ${Math.round(f.size / 1048576)} MB, more than Telegram's 50 MB, so it can't come here. It's in Clem on your PC.`, [[{ text: "Open in Clem", tap: { t: "open", route: "#/app/guc/cms" } }]])]);
-      return { sent: false, name: f.name, size: f.size, reason: "Bigger than Telegram's 50 MB: the person was told and offered Open in Clem." };
-    }
+    if (f.size > TG_FILE_LIMIT) return { sent: false, name: f.name, size: f.size, reason: `${Math.round(f.size / 1048576)} MB, more than Telegram's 50 MB, so it can't be sent here: it's in Clem's GUC → CMS. Say so in one plain sentence.` };
     await this.upload(f.name, f.type, new Uint8Array(await readFile(f.path)), f.name);
     return { sent: true, name: f.name, size: f.size };
   }

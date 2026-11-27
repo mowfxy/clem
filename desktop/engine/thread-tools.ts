@@ -5,7 +5,7 @@
 import { gucAction, type ToolSubject } from "../../core/guc/ai-tools.ts";
 import { clemAction } from "../../core/proactivity/tools.ts";
 import { isVpsAction } from "../../core/vps/tools.ts";
-import { isYes, ranReport, type VpsAsk } from "../../core/vps/ask.ts";
+import { askQuestion, ranReport, type VpsAsk } from "../../core/vps/ask.ts";
 import { NOT_ON_TELEGRAM, telegramAllows } from "../../core/telegram/thread.ts";
 import { runGucTool, runTelegramTool, type GucToolContext } from "./ai-tools.ts";
 import type { Engine } from "./index.ts";
@@ -92,13 +92,34 @@ export async function sendFileTool(ctx: Pick<ThreadToolCtx, "engine" | "owner" |
   return cms;
 }
 
-/** Before the model: a "yes" to the server change Clem asked about runs it (anything else drops it). The same on both
- *  sides. */
-export async function threadBefore(o: { take(): Promise<VpsAsk | undefined>; perform(ask: VpsAsk): Promise<unknown>; clock?: () => number }, text: string): Promise<string | null> {
-  const ask = await o.take().catch(() => undefined);
-  if (ask && (o.clock || Date.now)() - ask.at < ASK_MS && isYes(text)) {
-    const r = await o.perform(ask).catch((e: Error) => ({ error: e.message })) as { exitCode?: number; output?: string; error?: string };
-    return ranReport(ask, r);
-  }
-  return null;
+/** Where the server change Clem asked about waits for the person's next message (the worker's state, the PC's vault). */
+export type AskStore = { get(): Promise<VpsAsk | undefined>; set(ask: VpsAsk | undefined): Promise<void> };
+/** A server change Clem asked about on Telegram. Whether the person's answer is a yes is the model's reading of it
+ *  (core/telegram/thread.ts vps.approve), never a word list: the change runs only through that action, exactly as
+ *  asked, once. `at` names the question, so a new one asked in the same turn is never run or dropped by mistake. */
+export type HeldAsk = {
+  /** The question waiting for an answer (asked within a day), or null. */
+  pending(): Promise<{ at: number; question: string } | null>;
+  /** The person said yes: runs that change, and says what happened (for the model to tell). */
+  approve(at: number): Promise<unknown>;
+  /** Answered with anything else: it lapses. */
+  drop(at: number): Promise<void>;
+};
+/** The same on both sides: the worker (desktop/engine/vps/agent.ts) and the PC (desktop/main.ts). */
+export function heldAsk(store: AskStore, perform: (ask: VpsAsk) => Promise<unknown>, clock: () => number = Date.now): HeldAsk {
+  const current = async (at?: number) => {
+    const a = await store.get().catch(() => undefined);
+    return a && clock() - a.at < ASK_MS && (at === undefined || a.at === at) ? a : undefined;
+  };
+  return {
+    pending: async () => { const a = await current(); return a ? { at: a.at, question: askQuestion(a) } : null; },
+    approve: async (at) => {
+      const a = await current(at);
+      if (!a) return { error: "Nothing is waiting to run any more (it lapsed or was answered). Ask again if they still want it." };
+      await store.set(undefined);
+      const r = await perform(a).catch((e: Error) => ({ error: e.message })) as { exitCode?: number; output?: string; error?: string };
+      return { ran: a.kind === "run" ? a.command : "replaced " + a.path, ...(r?.error ? { error: r.error } : { exitCode: r?.exitCode, output: r?.output }), report: ranReport(a, r || {}), note: "Tell them plainly what happened, with the output when it matters." };
+    },
+    drop: async (at) => { const a = await store.get().catch(() => undefined); if (a && a.at === at) await store.set(undefined); },
+  };
 }

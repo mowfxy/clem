@@ -69,7 +69,7 @@ export function wire(bot, env) {
       await unpair(env, link.user_id);
       return void await ctx.reply("Unpaired. Pair again from Clem whenever you like.");
     }
-    if (/^\/(start|help)(@\w+)?$/.test(text)) return void await ctx.reply("You're paired with Clem. Just write to me here: questions, \"send me lecture 3 slides\", anything you'd ask in your main thread.");
+    if (/^\/(start|help)(@\w+)?$/.test(text)) return void await ctx.reply("You're paired with Clem. Just write to me here, as in your main thread: what's on today, reminders, deadlines, your marks, \"send me lecture 3 slides\".");
     if (!text) return void await ctx.reply("I can read text messages here for now. Send files to Clem on your PC.");
     await keep(env, link.user_id, "m" + ctx.update.update_id, "message", { text: text.slice(0, 4000), messageId: ctx.message.message_id, at: ctx.message.date * 1000 });
     if (now() - link.last_seen > OFFLINE_AFTER && now() - link.offline_noted > 3600_000) {
@@ -81,7 +81,7 @@ export function wire(bot, env) {
     const chatId = ctx.callbackQuery.message?.chat.id, link = chatId ? await linkOfChat(env, chatId) : null;
     if (!link || link.from_id !== ctx.from.id || !/^b:[\w-]{1,40}$/.test(ctx.callbackQuery.data)) return void await ctx.answerCallbackQuery({ text: "This bot only talks to paired Clem accounts." });
     await keep(env, link.user_id, "t" + ctx.update.update_id, "tap", { data: ctx.callbackQuery.data, messageId: ctx.callbackQuery.message?.message_id, at: now() });
-    await ctx.answerCallbackQuery({ text: now() - link.last_seen > OFFLINE_AFTER ? "Clem will do this when your PC is back online." : "On it…" });
+    await ctx.answerCallbackQuery({ text: now() - link.last_seen > OFFLINE_AFTER ? "Clem will do this as soon as it's back online." : "On it…" });
   });
   return bot;
 }

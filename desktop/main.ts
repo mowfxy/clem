@@ -80,7 +80,7 @@ import { RPC_METHODS } from './engine/vps/rpc';
 import { isVpsAction } from '../core/vps/tools';
 import { likelyNext, chatFiles } from '../core/vps/prefetch';
 import { runGucTool, runTelegramTool, type GucToolContext } from './engine/ai-tools';
-import { runThreadTool, sendFileTool, threadBefore, type ThreadToolCtx } from './engine/thread-tools';
+import { heldAsk, runThreadTool, sendFileTool, type ThreadToolCtx } from './engine/thread-tools';
 import type { VpsAsk } from '../core/vps/ask';
 import { ANSWER_MS } from './engine/telegram';
 import { isGucAction } from '../core/guc/ai-tools';
@@ -137,6 +137,7 @@ import {
   topicsFrom,
   untidyScopes,
   retrieveMemory,
+  memoryLines,
   PROFILE_SCOPE,
   mentionsSelf,
   explicitRemember,
@@ -823,6 +824,9 @@ void app.whenReady().then(async () => {
   let memoryWrites = Promise.resolve();
   /** What memory reads as when its file is not there: nothing, and marked so a sync never takes that for deletions. */
   const noMemory = async (owner: string): Promise<MemoryState> => ({ enabled: (await vault.read("setup-" + owner, setupDefault)).memory, records: [], unsynced: true });
+  /** What Clem learned about the person, recalled for the main thread as the app's chat recalls it (Telegram's answers,
+   *  on this PC and on the VPS worker, get the same). Empty while memory is off. */
+  const mainMemory = async (owner: string, query = "") => memoryLines(retrieveMemory(await vault.read<MemoryState>("memory-" + owner, await noMemory(owner)), PROFILE_SCOPE, query), PROFILE_SCOPE);
   /** Every change to a person's memory reads and writes it inside this queue, so no change overwrites another. */
   const memoryLocks = new Map<string, Promise<unknown>>();
   function withMemory<T>(owner: string, task: () => Promise<T>): Promise<T> {
@@ -990,6 +994,8 @@ void app.whenReady().then(async () => {
     clearTimeout(memorySyncTimers.get(owner));
     memorySyncTimers.set(owner, setTimeout(() => {
       memorySyncTimers.delete(owner);
+      // The VPS worker answers Telegram with the same memory.
+      void vpsManagers.get(owner)?.pushLearned();
       void syncMemory(owner).then(({ syncError }) => { if (syncError) syncFailed(owner, syncError); else syncWarned.delete(owner); }, (error) => syncFailed(owner, (error as Error).message));
     }, 5000));
   }
@@ -1312,6 +1318,7 @@ void app.whenReady().then(async () => {
         engineToken: async () => { if ((await auth.user(false))?.id !== owner) return undefined; const r = await auth.cloudFetch("/engine/token", { method: "POST" }); return r.ok ? (await r.json() as { token?: string }).token : undefined; },
         log: (msg) => console.warn(msg),
         // A file asked for on Telegram while this PC was off: sent from here now that it's on (once, no question).
+        learned: () => mainMemory(owner),
         sendToTelegram: async (fileId) => {
           const state = await disk.readState(owner).catch(() => null) as { files?: { id: string; name: string; type?: string }[] } | null;
           const f = state?.files?.find((x) => x.id === fileId);
@@ -1739,15 +1746,18 @@ void app.whenReady().then(async () => {
       }
       // The Telegram main thread the window runs (src/telegram/thread.ts, desktop/telegram-thread.ts): one step of its
       // model (no tools, no working folder: Telegram makes no files), the engine's actions (desktop/engine/thread-tools.ts,
-      // the same as the VPS worker's), and the step before the model (a "yes" to a server change, the VPS-full answer).
+      // the same as the VPS worker's), what Clem learned about the person, and a server change Clem asked about (the
+      // model reads whether the person's answer is a yes, and runs it with vps.approve: desktop/engine/thread-tools.ts).
       if (request.action === "tgComplete") return engineHost(user.id).complete!({ system: request.system, user: request.user, model: request.model, reasoning: request.reasoning });
       if (request.action === "tgTool") return runThreadTool(await threadCtx(user.id, engine), request.tool);
-      if (request.action === "tgBefore") {
-        const vps = await vpsConfigured(user.id) ? vpsFor(user.id) : undefined, askKey = "tg-vps-ask-" + user.id;
-        return threadBefore({
-          take: async () => { const a = await vault.read<VpsAsk | undefined>(askKey, undefined); if (a) await vault.remove(askKey); return a; },
-          perform: async (ask) => vps ? vps.wordTools.perform(user.id, ask) : { error: "No VPS is connected." },
-        }, request.text);
+      if (request.action === "tgMemory") return mainMemory(user.id, String(request.text || ""));
+      if (request.action === "tgAskPending" || request.action === "tgAskApprove" || request.action === "tgAskDrop") {
+        const askKey = "tg-vps-ask-" + user.id;
+        const asks = heldAsk({ get: () => vault.read<VpsAsk | undefined>(askKey, undefined), set: async (a) => { if (a) await vault.write(askKey, a); else await vault.remove(askKey); } },
+          async (ask) => await vpsConfigured(user.id) ? vpsFor(user.id).wordTools.perform(user.id, ask) : { error: "No VPS is connected." });
+        if (request.action === "tgAskPending") return asks.pending();
+        if (request.action === "tgAskApprove") return asks.approve(Number(request.at));
+        return asks.drop(Number(request.at));
       }
     }
     if (request.action.startsWith("guc")) {

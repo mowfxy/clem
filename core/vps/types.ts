@@ -43,5 +43,9 @@ export const WORKER_SECRETS = [
   { name: "engine-token", what: "A Telegram relay token: works only for Clem's /telegram/* routes, revocable, not your Clem session", when: "always (minted at install)" },
   { name: "model", what: "A model API key you typed for the worker (Clem never reads keys from your CLIs)", when: "you added one" },
   { name: "rpc", what: "The token the desktop uses to talk to the worker through the SSH tunnel", when: "always" },
+  { name: "main-memory", what: "What Clem has learned about you and how you want answers (as in Settings → Memory), so Telegram answers from your VPS know it too", when: "background jobs are on" },
   { name: "host-ssh", what: "A key of the worker's own that signs in to this server as you, accepted only from the server itself, so a change you approve on Telegram runs on the server and not inside Clem's container", when: "the worker runs in Docker" },
 ] as const;
+/** The sealed secret holding what Clem learned about the person (desktop/memory.ts memoryLines for the main thread),
+ *  sent by the PC so the worker's Telegram answers know it as the PC's do. */
+export const MAIN_MEMORY = "main-memory";
