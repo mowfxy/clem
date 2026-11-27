@@ -6,7 +6,7 @@
 // (deadlines.ts) stands in when no model is set up.
 import { z } from "zod";
 import { groupIn, groupWords, sameCode } from "./codes.ts";
-import { cairoInstant, dueText, kindOf, myGroups } from "./deadlines.ts";
+import { cairoInstant, dueText, itemName, kindOf, myGroups, nameOnly } from "./deadlines.ts";
 import { addDays, cairo, endsAt, examWhen, TZ } from "./hub.ts";
 import { mailAbout } from "./mail-about.ts";
 import { stableId, weekDay } from "./parse.ts";
@@ -124,7 +124,8 @@ export function readerPrompt(i: ReaderInput) {
   const weeks = Array.from({ length: back + 11 }, (_, k) => { const s = addDays(sat, (k - back) * 7); return `- Week starting ${short(s)} ${s.slice(0, 4)}: ` + Array.from({ length: 6 }, (_, d) => short(addDays(s, d))).join(", "); }).join("\n");
   const mine = i.slots.filter((s) => sameCode(s.code, i.course.code));
   const classes = mine.length ? mine.map((s) => `- ${s.type || "Class"}: ${s.day}, ${ORD[s.period - 1] || s.period + "th"} slot ${s.start}–${s.end}${s.group ? `, group ${s.group}` : ""}${s.location ? `, ${s.location}` : ""}`).join("\n") : "- (not on their schedule)";
-  const groups = myGroups(mine), groupLine = groups.length ? groups.map((g) => `${groupWords(g)} (${g.label})`).join(", ") : "(not known)";
+  const groups = myGroups(mine), raw = [...new Set(mine.map((s) => s.group?.trim()).filter(Boolean))];
+  const groupLine = groups.length ? groups.map((g) => `${groupWords(g)} (${g.label})`).join(", ") + (raw.length ? `; the portal writes them ${raw.join(", ")}` : "") : "(not known)";
   const tracked = i.tracked.length ? i.tracked.map((d) => `- id ${d.id}: ${d.title} · ${dueText(d.due)}${d.place ? ` · ${d.place}` : ""}${d.either ? ` · ${d.either}` : ""}${d.note ? ` · from "${d.note.slice(0, 160)}"` : ""}`).join("\n") : "- (none yet)";
   const exams = (i.exams || []).map((e) => { const w = examWhen(e); return w ? `- ${e.type || "Exam"} on ${dueText(w.start)}, ${[e.hall, e.seat && "seat " + e.seat].filter(Boolean).join(", ")}` : ""; }).filter(Boolean);
   let budget = TOTAL_BUDGET;
@@ -132,13 +133,13 @@ export function readerPrompt(i: ReaderInput) {
   const system = `You keep a GUC student's deadlines for one course, reading its new CMS posts. Times are Cairo (${TZ}). Answer with JSON only, no prose.
 A deadline is something the student must hand in, sit or attend for marks: quizzes, assignments and submissions, in-class assignments and evaluations, lab reports, projects and milestones, presentations, midterms and finals. Not lectures, office hours or general news.
 - Resolve every date with the calendar and the student's classes below. "During the second tutorial of the week starting Saturday 7 November" is that week's second tutorial of THEIR schedule: its date, start time and room. "The tutorial of week 14/11-19/11" and "the tutorial starting next week" are their own tutorial that week. "In your lab" is their lab slot. "The last 40 minutes" of a 90-minute slot starts 50 minutes in. When the post gives a time ("3:30-5:15"), use the start; GUC classes run 08:15–22:30, so 3:30 means 15:30.
-- Groups: a table row is theirs when it names their group. "T13 - T17" and "T11,T12,T14" both include T14. Take that row's date, time and room ("place").
+- Groups: a table row is theirs when it names their group. "T13 - T17" and "T11,T12,T14" both include T14. Take that row's date, time and room ("place"). Group numbers repeat across majors ("BI: T13, T14" and "IET/MET: T13, T14" are different students): when rows name a major, theirs is the row of their own major, shown by the letters of their group name below ("3MIET T014" is MET/IET, "3BI T014" is BI).
 - When a post gives several days by group and their group is not in it, or there is no table yet, still return the item: the earliest day, "timeKnown": false, and "either" naming the days ("Monday or Tuesday, by tutorial group"). Never skip it.
 - The exam seats below are already known: don't return those exams again.
 - A date with no year is in the current academic year. A weekday that doesn't match the date ("Tuesday November 18th" when the 18th is a Wednesday) is a slip in the post: use the earlier of the two days and say so in "doubt" (one short sentence).
 - Every text says when it was sent. Relative words in it ("next week", "next week's class", "tomorrow", "this Thursday", "in two days", "the coming tutorial") count from the day it was SENT, never from today: a mail sent Sunday 25 October that says "next week" means the week starting Saturday 31 October. In a text with "[d/m/yyyy]:" stamps, each stamp is when the part after it was posted. Set "relative": true on an item whose date came from such words. When a text's date isn't known and its date is only relative, skip the item.
 - Skip anything already past (counted as above), and anything you can't date.
-- Name each one shortly and specifically: "Quiz 2", "Assignment 3", "In-class assignment 3", "Lab 4 report", "Project milestone 2", "Midterm". Never a sentence.
+- Name each one shortly and specifically: "Quiz 2", "Assignment 3", "In-class assignment 3", "Lab 4 report", "Project milestone 2", "Midterm". Never a sentence, and without the course code (it is shown beside the name).
 - If a post moves or corrects a tracked deadline, return it with that id and the new date. If a post cancels one, list its id in "cancel". Don't repeat a tracked deadline that nothing changed.
 - "quote" is the post's own words that say it (under 200 characters). "covers" is what it covers when the post says (under 120 characters: "Stewart 16.1–16.3, lectures 10–12, worksheets 5–6"). "kind" is one of quiz, exam, assignment, in-class, lab, project, presentation, other. "place" is the room or hall, only when written.
 - A post and an email about the same item are one item: return it once (with the tracked id when it is tracked).
@@ -174,12 +175,22 @@ const item = z.object({
     relative: z.boolean().optional().nullable(),
   }).passthrough();
 const KINDS = new Set(["quiz", "exam", "assignment", "in-class", "lab", "project", "presentation", "other"]);
+/** The name of an item the model named with a sentence, from the kind it gave. */
+const KIND_NAME: Record<string, string> = { quiz: "Quiz", exam: "Exam", assignment: "Assignment", "in-class": "In-class assignment", lab: "Lab", project: "Project", presentation: "Presentation" };
 /** "Quiz 2", "CSEN 301 quiz #2", "Second quiz" → "quiz|2": one item whoever wrote it and however. */
 const ORDS: Record<string, string> = { first: "1", second: "2", third: "3", fourth: "4", fifth: "5", sixth: "6", seventh: "7", eighth: "8" };
 export function itemKey(title: string, kind?: string) {
   const t = title.toLowerCase().replace(/\b[a-z]{2,5}\s?\d{3}[a-z]?\b/g, " ").replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth)\b/g, (w) => ORDS[w]);
   const n = /(\d{1,2})/.exec(t)?.[1];
   return n ? `${kind || kindOf(title)}|${Number(n)}` : undefined;
+}
+/** Two names of one item: the same words (codes, "#", "no." and ordinals aside), or one's words all in the other's
+ *  ("Quiz 3" and "Quiz 3 / Assignment 3"). */
+const nameWords = (t: string) => new Set(t.toLowerCase().replace(/\b[a-z]{2,5}\s?\d{3}[a-z]?\b/g, " ").replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth)\b/g, (w) => ORDS[w])
+  .replace(/\b(?:no|number)\b\.?|#/g, " ").replace(/(\d)/g, " $1 ").split(/[^a-z0-9]+/).filter(Boolean).map((w) => (/^\d+$/.test(w) ? String(Number(w)) : w)));
+export function sameName(a: string, b: string) {
+  const x = nameWords(a), y = nameWords(b), sub = (p: Set<string>, q: Set<string>) => [...p].every((w) => q.has(w));
+  return x.size > 0 && y.size > 0 && (sub(x, y) || sub(y, x));
 }
 const reply = z.object({ deadlines: z.array(z.unknown()).max(40), cancel: z.array(z.string().max(40)).max(40).optional() }).passthrough();
 
@@ -203,20 +214,27 @@ export function applyReader(json: unknown, i: ReaderInput): GucDeadline[] | null
     // Relative words count from when the text was sent: a date that doesn't fit is the model counting from today, and is
     // counted again from the sending day, or left out (anchorDue).
     const sent = from ? sentFor(from, d.quote || "") : undefined;
-    const due = anchorDue(read, { sent: sent?.at, around: sent?.around, quote: d.quote || "", relative: !!d.relative, now: i.now, firstRead: !!from && i.firstRead });
+    // The model's own "relative" decides; the words are only looked at when it didn't say.
+    const due = anchorDue(read, { sent: sent?.at, around: sent?.around, quote: d.quote || "", relative: typeof d.relative === "boolean" ? d.relative : undefined, now: i.now, firstRead: !!from && i.firstRead });
     if (due === null || !Number.isFinite(due) || due < i.now - 30 * 864e5 || due > i.now + 200 * 864e5) continue;
-    const title = d.title.replace(/[.\s]+$/, "");
-    if (title.length > 80 || title.split(/\s+/).length > 8) continue;
-    const kind = d.kind && KINDS.has(d.kind.toLowerCase()) ? d.kind.toLowerCase() : kindOf(title), key = itemKey(title, kind);
-    // The same quiz from a post and a mail, or named twice: one item (the tracked one when there is one).
-    const was = (d.id ? byId.get(d.id) : undefined) || (key && byKey.get(key) ? byId.get(byKey.get(key)!) : undefined);
+    // A name, never a sentence and without the course code: a sentence the model gave is named, not dropped.
+    let title = nameOnly(d.title.replace(/[.\s]+$/, ""));
+    const given = d.kind && KINDS.has(d.kind.toLowerCase()) ? d.kind.toLowerCase() : undefined;
+    if (title.length > 80 || title.split(/\s+/).length > 8) { const n = itemName(title); title = !given || given === "other" || kindOf(n) === given ? n : KIND_NAME[given]; }
+    const kind = given || kindOf(title), key = itemKey(title, kind);
+    // The same quiz from a post and a mail, or named twice: one item (the tracked one when there is one). Without an id,
+    // a tracked item is the same only when the names agree too ("CSEN301 quiz #2" and "Quiz 2"; never "Lab test 3" and
+    // "Lab 3 report"): two items the model kept apart stay apart.
+    const keyed = key ? byId.get(byKey.get(key) || "") : undefined;
+    const was = (d.id ? byId.get(d.id) : undefined) || (keyed && sameName(keyed.title, title) ? keyed : undefined);
     // Something new that is already over is not Coming up: an old message read late adds nothing.
     if (!was && endsAt({ due: new Date(due).toISOString(), kind, timeKnown: timed }) <= i.now) continue;
     const id = was?.id || stableId(i.course.key + "|n|" + title.toLowerCase());
     if (key) byKey.set(key, id);
     const doubt = (d.doubt || "").trim().slice(0, 120);
     const said = (d.quote || "").trim() || from?.text.slice(0, 200) || was?.note, note = said && doubt ? said.slice(0, 150) + " " + doubt : said || doubt || undefined;
-    const either = (d.either || "").trim().slice(0, 100), place = (d.place || "").trim().slice(0, 60) || (timed ? undefined : was?.place), covers = (d.covers || "").trim().slice(0, 140) || was?.covers;
+    // A room the model didn't repeat stays while the date and time are the same; a new time may be a new room.
+    const either = (d.either || "").trim().slice(0, 100), place = (d.place || "").trim().slice(0, 60) || (!timed || (was && Date.parse(was.due) === due) ? was?.place : undefined), covers = (d.covers || "").trim().slice(0, 140) || was?.covers;
     const ref = from?.id || was?.ref, sentAt = sent && !sent.around ? new Date(sent.at).toISOString() : from ? undefined : was?.sent;
     byId.set(id, { id, courseKey: i.course.key, title, due: new Date(due).toISOString(), source: from?.source || was?.source || "announcement", ...(note ? { note: note.slice(0, 280) } : {}),
       kind, timeKnown: timed, ...(place ? { place } : {}), ...(covers ? { covers } : {}), ...(either && !timed ? { either } : {}), ...(ref ? { ref } : {}), ...(sentAt ? { sent: sentAt } : {}) });
@@ -268,10 +286,12 @@ function reach(quote: string) {
  *  about weeks), and left out when that doesn't fit either. With no sending date, a relative date on a course's first
  *  read is left out (an old post read for the first time); otherwise it stands. Null: leave the item out. */
 export function anchorDue(due: number, o: { sent?: number; around?: boolean; quote: string; relative?: boolean; now: number; firstRead?: boolean }): number | null {
-  const relative = !!o.relative || (RELATIVE.test(o.quote) && !WRITTEN.test(o.quote));
+  // The model said whether the date came from relative words; only when it didn't do the words decide.
+  const relative = o.relative ?? (RELATIVE.test(o.quote) && !WRITTEN.test(o.quote));
   if (o.sent === undefined || !Number.isFinite(o.sent)) return relative && o.firstRead ? null : due;
   const lo = o.sent - (o.around ? 7 : 1) * 864e5;
-  if (!relative) return due >= lo ? due : null;
+  // A written date the model read as such stands: nothing second-guesses it (what is already over is left out later).
+  if (!relative) return o.relative === false || due >= lo ? due : null;
   const span = reach(o.quote), hi = o.sent + (span + (o.around ? 7 : 0) + 1) * 864e5;
   if (due >= lo && due <= hi) return due;
   let shift = Math.round((Date.parse(cairo(o.now).ymd) - Date.parse(cairo(o.sent).ymd)) / 864e5);
