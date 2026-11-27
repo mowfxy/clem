@@ -1,52 +1,38 @@
-import { routeMessage, scoreSpaces, type RouteSpace } from './route.ts';
+import { scoreSpaces, type RouteSpace } from './route.ts';
 
 /**
- * The main thread hands subject and project work to a chat of its own (docs/MAIN-THREAD.md "Hand-off"). A message that
- * clearly names one space is handed off by the window's rules (`routeMessage`) before the AI sees it; anything else is
- * the main-thread AI's call, through `clem.handoff`. Either way a NEW chat is opened in that space, run on the AI the
- * person used last, and its answer and files come back to the main thread (and to Telegram when they wrote from there).
+ * The main thread hands subject and project work to a chat of its own (docs/MAIN-THREAD.md "Hand-off"). The main-thread
+ * AI decides, always: no rule hands a message off before it answers (owner, 2026-11-27: "the AI controls everything").
+ * The window gives it the spaces the message may be about (`spaceHints`) and the ones the person @mentioned, and the AI
+ * calls `clem.handoff`. A NEW chat is opened in that space, run on the AI the person used last, and its answer and files
+ * come back to the main thread (and to Telegram when they wrote from there).
  */
 export const HANDOFF_ACTION = 'clem.handoff';
 
 /** Said in every main-thread request (MAIN_THREAD_NOTE): byte-stable. */
-export const HANDOFF_GUIDE = `Subject and project work happens in its own chat, not here. When the person asks a question or gives a task about the material of one of their subjects or projects (explain or solve something from it, summarize a lecture, make a PDF, slides, a document, flashcards, a quiz or a visual from it, help studying its content, work on a project), do not do it yourself: call {"kinetra":{"action":"clem.handoff","space":"<the subject or project, by name>","task":"<their request, complete and self-contained, in their words>"}}. Clem opens a new chat there, their latest AI does it with that space's files, and the result comes back to this thread by itself (and to Telegram when they wrote from there). Then reply with one short line ("On it in Circuits."), never the answer itself. One call per separate request. Naming a subject is never by itself a reason to hand off: only work on its material is ("plan my week for Math", "move my Chemistry revision to Thursday", "when is the Physics quiz" stay here). Keep here and answer yourself: their schedule, classes, deadlines, what an upcoming quiz, exam or assignment covers and when it is, grades, announcements, reminders, watches, routines, plans and study time, sending them a CMS file (guc.* and telegram.sendFile), settings, Telegram, small talk, and questions across several subjects. When you can't tell which subject it is, ask.`;
+export const HANDOFF_GUIDE = `Subject and project work happens in its own chat, not here. When the person asks a question or gives a task about the material of one of their subjects or projects (explain or solve something from it, summarize a lecture, make a PDF, slides, a document, flashcards, a quiz or a visual from it, help studying its content, work on a project), do not do it yourself: call {"kinetra":{"action":"clem.handoff","space":"<the subject or project, by name>","task":"<their request, complete and self-contained, in their words>"}}. Clem opens a new chat there, their latest AI does it with that space's files, and the result comes back to this thread by itself (and to Telegram when they wrote from there). Then reply with one short line ("On it in Circuits."), never the answer itself. One call per separate request. Naming a subject is never by itself a reason to hand off: only work on its material is ("plan my week for Math", "move my Chemistry revision to Thursday", "when is the Physics quiz" stay here). Keep here and answer yourself: their schedule, classes, deadlines, what an upcoming quiz, exam or assignment covers and when it is, grades, announcements, reminders, watches, routines, plans and study time, sending them a CMS file (guc.* and telegram.sendFile), settings, Telegram, small talk, and questions across several subjects. When you can't tell which subject it is, ask. A subject or project the person @mentioned is their own choice of space: hand its work off there (or answer here with its files when it isn't work on its material), never to another one.`;
 
-/** The organizer's own business: these stay in the main thread even when they name a subject ("remind me about the
- *  Circuits quiz", "stop telling me about new files in Math", "when is the Physics midterm"). */
-const ORGANIZER = /\b(plan(s|ning|ned)?|re-?schedul\w*|postpone|move (my|the|it)|push (it |my |the )?(back|to)|revision (sessions?|slots?|time|blocks?)|study (blocks?|slots?|hours?)|block (out |off )?(\d|an? |some |time)|exam dates?|this week|next week|my week|remind(er|ers)?|alarm|watch (for|out)|keep an eye|ping me|tell me (when|if)|let me know (when|if)|notify|mute|unmute|stop (telling|sending|pinging)|undo|routine|schedule|timetable|calendar|study (time|sessions?|plan)|plan my|my plan|deadlines?|due|when (is|are|'s)|what time|which room|room|grades?|marks?|transcript|gpa|announcements?|mail|telegram|send me|settings?|quiet hours)\b/i;
-/** Questions about their own assessments ("what's my quiz 2 math about", "what does the Circuits midterm cover") are
- *  read from the CMS here, not worked on in a subject chat. */
-const ASSESSMENT = /\b(quiz(zes)?(?! me)|exams?|midterms?|finals?|tests?(?! me)|assignments?|assessments?)\b[^.?!\n]*\b(about|cover(s|ed|ing)?|includes?|weight|worth|format)\b|\bwhat('s| is| are)? on (my|the)\b/i;
-export function organizerAsk(text: string) { return ORGANIZER.test(text) || ASSESSMENT.test(text); }
+/** What the main-thread AI is told with a message about the spaces it may be about: the ones the person @mentioned (their
+ *  choice) and the ones its words name most surely (`scoreSpaces`). Context only: the AI decides whether to hand off. */
+export function spaceHints(text: string, spaces: RouteSpace[], mentions: string[] = []): string {
+  const named = (id: string) => spaces.find((s) => s.id === id);
+  const mentioned = mentions.map(named).filter((s): s is RouteSpace => !!s);
+  const likely = scoreSpaces(text, spaces).filter((c) => c.score >= 0.5 && !mentions.includes(c.spaceId)).slice(0, 3)
+    .map((c) => named(c.spaceId)).filter((s): s is RouteSpace => !!s);
+  const label = (s: RouteSpace) => `"${s.name}" (${s.kind})`;
+  return [
+    mentioned.length ? `The person @mentioned ${mentioned.map(label).join(" and ")} in this message: their choice of space. If it is work on its material, hand it off there.` : "",
+    likely.length ? `Spaces this message may be about, by their names in it: ${likely.map(label).join(", ")}. Hand off only when it asks for work on that space's material.` : "",
+  ].filter(Boolean).join(" ");
+}
 
 /** What only the main thread can do, asked in a subject or project chat (owner, 2026-11-16: "any message asked to a
- *  normal thread that only the main thread can answer… sends a message to main thread"): reminders, watches, mutes,
- *  routines, quiet hours, Telegram, undoing what Clem did, Coming up and deadlines, the schedule and classes, grades,
- *  announcements, plans across the week, and what an assessment covers (read from the CMS there). Work on the material
- *  ("explain", "make flashcards", "solve") stays in the chat; so does a slash command. */
-const MAIN_ONLY = /\b(remind(er|ers)?|alarm|wake me|watch (for|out)|keep an eye|ping me|tell me (when|if)|let me know (when|if)|notify|notifications?|mute|unmute|stop (telling|sending|pinging|notifying)|routines?|quiet hours|telegram|undo (that|it|this|what you did)|coming up|upcoming|deadlines?|due (dates?|tomorrow|today|this week|next week)|(my|the) (schedule|timetable|calendar)|my classes|classes (today|tomorrow|this week)|what('s| is) (on )?(today|tomorrow)|(this|next) week|my week|study (time|sessions?|blocks?|slots?)|revision (sessions?|slots?|time|blocks?)|re-?schedul\w*|postpone|grades?|marks?|transcript|gpa|announcements?|(cms|guc) (mail|news|posts?)|which room|what time is|when is|when's)\b/i;
-export function mainOnly(text: string) {
-  const t = text.trim();
-  if (!t || t.startsWith('/')) return false;
-  if (WORK.test(t) && !/\b(remind|mute|unmute|undo|coming up|routine|telegram)\b/i.test(t)) return false;
-  return MAIN_ONLY.test(t) || ASSESSMENT.test(t);
-}
-/** The subject chat's line when its message went to the main thread; the answer is copied back under it. */
+ *  normal thread that only the main thread can answer… sends a message to main thread"). The chat's AI decides, through
+ *  `clem.toMain` (src/App.tsx toMainTool); no rule sends a message up before it answers. Byte-stable. */
+export const TO_MAIN_ACTION = 'clem.toMain';
+export const TO_MAIN_GUIDE = `This chat is one subject or project; the person's main thread is their organizer. When they ask here for something that is the main thread's (a reminder, an alarm, a watch, muting or unmuting news, a routine, quiet hours, Telegram, undoing what Clem did by itself, Coming up and deadlines, their schedule, classes or rooms, grades, announcements, what an upcoming quiz, exam or assignment covers and when it is, study time across their week) and you have no tool for it here, call {"kinetra":{"action":"clem.toMain","task":"<their request, complete and self-contained, in their words>"}}. The main thread does it with its own tools and its answer is shown in this chat too. Then reply with one short line ("I sent that to your main thread; its answer will show up here."), never the answer itself. Work on this space's material (explain, solve, summarize, make a file, flashcards, a quiz, a visual) always stays here, and so does anything you can do yourself.`;
+/** What clem.toMain answers when the main thread can take it. */
 export const SENT_UP = "That's one for your main thread, so I sent it there. The answer will show up there and here.";
-
-/** The window hands a message off by rule only when it asks for work on the material (explain, solve, make, draw…);
- *  a plain question that names a subject stays with the main-thread AI, which reads the CMS or calls clem.handoff. */
-const WORK = /^\/\w+|\b(explain|solve|summari[sz]e|summary|make|create|generate|write|draft|draw|visuali[sz]e|plot|diagram|teach|walk me through|go (over|through)|help me|quiz me|test me|practi[cs]e|exercises?|flashcards?|slides?|pdf|outline|translate|prove|derive|calculate|compute|study guide|cheat ?sheet|worksheet)\b/i;
-export function workAsk(text: string) { return WORK.test(text.trim()) && !organizerAsk(text); }
-
-/** The window's rule before the AI sees a main-thread message (src/App.tsx `send`): the space it hands off to, or
- *  undefined to keep it here. Only work on a space's material is handed off, @mentioned or clearly named; merely naming
- *  a subject never is, and planning, scheduling, deadlines, reminders, grades and what an exam covers stay. */
-export function handsOff(text: string, spaces: RouteSpace[], mentions: string[] = []): string | undefined {
-  if (!workAsk(text)) return undefined;
-  const route = routeMessage(text, spaces, { mentions });
-  return route.kind === "handoff" ? route.spaceId : undefined;
-}
 
 /** The space a `clem.handoff` names: its id, its exact name, a course code, or one clearly closest by name. */
 export function resolveSpace<T extends RouteSpace>(name: string, spaces: T[]): T | undefined {

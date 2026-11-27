@@ -10,10 +10,11 @@ import {
 import { zipSync, strToU8 } from "fflate";
 test("study requests and quiz indices are validated", () => {
   assert.equal(studyRequest("/quiz calculus"), "quiz");
-  assert.equal(studyRequest("make flashcards from this"), "flashcards");
+  assert.equal(studyRequest("/flashcards chapter 4"), "flashcards");
+  // Asked in words, a study set is the chat AI's call (clem.studySet), never a rule's.
+  assert.equal(studyRequest("make flashcards from this"), null);
+  assert.equal(studyRequest("Create flashcards to prepare for my quiz on Friday"), null);
   assert.equal(studyRequest("I took a quiz yesterday"), null);
-  assert.equal(studyRequest("Create flashcards to prepare for my quiz on Friday"), "flashcards");
-  assert.equal(studyRequest("Make a quiz, then flashcards"), "quiz");
   assert.throws(() =>
     parseStudy(
       '{"title":"Quiz","items":[{"question":"Q","answer":"A","choices":["A","B"],"correct":4}]}',

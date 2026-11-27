@@ -15,7 +15,7 @@ import {CommandPalette,type Command} from "./command/CommandPalette";
 import {ShortcutsSheet} from "./command/ShortcutsSheet";
 import {usePlaceHistory} from "./command/usePlaceHistory";
 import {hasCapacity,isBelowSwitchThreshold} from '../core/account-usage';
-import {studyRequest,studyInstructions} from '../core/study-request';
+import {studyRequest,studyInstructions,STUDY_SET_GUIDE} from '../core/study-request';
 import {studyStanding} from '../core/study-standing';
 import {MemoryConversation} from "./MemoryConversation";
 import {LocalAutomations,nextAutomation,firstAutomationRun} from "./LocalAutomations";
@@ -60,7 +60,7 @@ import {PACK_EXTENSION} from '../core/study-pack';
 import {FileCard,DocumentCard} from './FileCard';
 import {withMainThread,mainThreadOf,isSpaceChat,earlierChats,moveEarlier} from '../core/main-thread/migrate';
 import {carriedNote} from '../core/main-thread/route';
-import {handsOff,mainOnly,SENT_UP,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtMessage,broughtText} from '../core/main-thread/handoff';
+import {spaceHints,TO_MAIN_GUIDE,SENT_UP,resolveSpace as spaceNamed,lastUsedModel,taskTitle,broughtMessage,broughtText} from '../core/main-thread/handoff';
 import {buildContext,localNowCard,withGuc,type NowCard} from '../core/main-thread/context';
 import type {GucNow} from '../core/guc/ai-tools';
 // Recall (MiniSearch) loads with the first main-thread turn, not with the window.
@@ -83,8 +83,8 @@ import {TelegramSettings} from './telegram/TelegramPair';
 import './documents.css';
 import {ProviderConnection} from './ProviderConnection';
 import {DriveLogo} from './BrandLogos';
+import {editOpenGuide} from './files/edit-open';
 import {FilePanel,canEditInPanel,remoteFile,type FileFocus,type FilePanelHandle,type FilePointer,type PointerBox} from './files/FilePanel';
-import {isEditRequest} from './files/intent';
 import {DrivePicker} from './drive/DrivePicker';
 import {GucRow} from './guc/GucRow';
 import {VpsRow} from './vps/VpsRow';
@@ -481,6 +481,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     return () => { document.removeEventListener("mouseup", pick); document.removeEventListener("keyup", pick); window.removeEventListener("scroll", hide, true); };
   }, []);
   const panelRef = useRef<FilePanelHandle>(null);
+  /** The file open beside the chat now, for clem.editOpen (a tool call comes while the answer streams). */
+  const panelFileRef = useRef<StoredFile | null>(null);
+  panelFileRef.current = panelFile;
   const [attachments, setAttachments] = useState<string[]>([]);
   /** Files added in the chat box that have not been sent. They join the person's files (and the subject's or project's
    *  sources) only with the message that carries them; taken off the box, or left when the chat changes, they are
@@ -495,6 +498,9 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const [driveRefs, setDriveRefs] = useState<DriveItem[]>([]);
   // Chats answering right now and what each is doing. Chats run side by side; stopping one never stops another.
   const [runs, setRuns] = useState<Record<string, string>>({});
+  /** What is running now, for tools called while an answer streams (their closures hold an older `runs`). */
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
   const answering = Object.keys(runs).length > 0;
   const controllers = useRef(new Map<string, AbortController>());
   // Chats that finished answering while the person was looking at something else.
@@ -1035,18 +1041,16 @@ export default function App({offline=false}:{offline?:boolean}={}) {
   const sentUp = useRef(new Map<string, { from: string }>());
   const handoffQueue = useRef<{ prompt: string; carry: Carry; turn: Turn }[]>([]);
   const [handoffTick, setHandoffTick] = useState(0);
-  /** `ask`: the person's message goes into the main thread with the card (a hand-off by the rules, before any answer);
-   *  the AI's own clem.handoff comes from a turn that already has it. */
-  function startHandoff(main: Chat, space: Space, task: string, o: { carry?: Carry; ask?: { reason: "mention" | "match" } }) {
+  /** Only ever the main-thread AI's clem.handoff (no rule hands a message off before it answers): the turn that called
+   *  it already holds the person's message, so the card follows it. `carry`: the files sent with that message. */
+  function startHandoff(main: Chat, space: Space, task: string, o: { carry?: Carry }) {
     const now = Date.now(), id = uid();
     const pick = lastUsedModel(stateRef.current.chats, (m) => modelsRef.current.some((x) => x.id === m && x.connected), { model: defaultModel, reasoning: defaultReasoning || undefined });
     const note = carriedNote(main.messages.filter((m) => !m.digest).map((m) => ({ role: m.role, content: m.content })));
-    const card = cardBlock({ type: "handoff", spaceId: space.id, spaceName: space.name, spaceKind: space.kind, chatId: id, title: taskTitle(task).slice(0, 160), back: true, ...(o.ask ? { reason: o.ask.reason } : {}) });
+    const card = cardBlock({ type: "handoff", spaceId: space.id, spaceName: space.name, spaceKind: space.kind, chatId: id, title: taskTitle(task).slice(0, 160), back: true });
     patch((s) => ({ ...s, chats: [
       { id, title: taskTitle(task), spaceId: space.id, messages: [], updated: now, ...(pick.model ? { model: pick.model } : {}), ...(pick.reasoning ? { reasoning: pick.reasoning } : {}) },
-      ...s.chats.map((c) => c.id === main.id ? { ...c, updated: now, messages: [...c.messages,
-        ...(o.ask ? [{ id: uid(), role: "user" as const, content: task, at: now, ...(o.ask.reason === "mention" ? { mentions: [space.id] } : {}) }] : []),
-        { id: uid(), role: "assistant" as const, content: card, at: now }] } : c),
+      ...s.chats.map((c) => c.id === main.id ? { ...c, updated: now, messages: [...c.messages, { id: uid(), role: "assistant" as const, content: card, at: now }] } : c),
     ] }));
     handoffRuns.current.set(id, { chat: id, main: main.id, space: space.id, name: space.name });
     handoffQueue.current.push({ prompt: task, carry: o.carry ?? { attachments: [], drive: [] }, turn: { carried: note || undefined, into: { id, spaceId: space.id, model: pick.model, reasoning: pick.reasoning } } });
@@ -1054,14 +1058,32 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     return id;
   }
   /** The main-thread AI's clem.handoff: only from the main thread typed in the app. */
-  function handoffTool(chat: Chat, args: { space?: unknown; task?: unknown }) {
+  function handoffTool(chat: Chat, args: { space?: unknown; task?: unknown }, carry?: Carry, mentioned: string[] = []) {
     if (chat.kind !== "main") return { error: "clem.handoff works only in the main thread; you are already in a subject or project chat, so do the work here." };
     const spaces = stateRef.current.spaces, task = String(args.task || "").trim(), space = spaceNamed(String(args.space || ""), spaces);
     if (!task) return { error: 'clem.handoff needs "task": the request, complete.' };
     if (!space) return { error: `No subject or project matches "${String(args.space || "")}". Theirs: ${spaces.map((s) => s.name).join(", ") || "none"}. Ask which one they mean.` };
+    // An @mention is the person's own choice of space: a hand-off of that message goes there, never elsewhere.
+    const chosen = mentioned.map((id) => spaces.find((s) => s.id === id)).filter((s): s is Space => !!s);
+    if (chosen.length && !chosen.some((s) => s.id === space.id)) return { error: `The person @mentioned ${chosen.map((s) => s.name).join(" and ")} for this message, so hand it off there, or answer here.` };
     const main = stateRef.current.chats.find((c) => c.id === chat.id) || chat;
-    startHandoff(main, space, task, {});
+    startHandoff(main, space, task, { carry });
     return { ok: true, space: space.name, note: `A new chat in ${space.name} is doing it on their latest AI; the result comes back to this thread by itself. Reply with one short line, not the answer.` };
+  }
+  /** A subject or project chat's AI sends the main thread's business up to it (clem.toMain; TO_MAIN_GUIDE): the main
+   *  thread runs it in the background on the organizer model and its answer is copied back to this chat. */
+  function toMainTool(chat: Chat, args: { task?: unknown }) {
+    const task = String(args.task || "").trim(), main = mainThreadOf(stateRef.current.chats);
+    if (!task) return { error: 'clem.toMain needs "task": the request, complete.' };
+    if (chat.kind === "main") return { error: "You are the main thread: do it here with your own tools." };
+    if (!main || chat.setup || chat.temporary) return { error: "There is no main thread to send this to from this chat. Do what you can here, or tell the person to ask in their main thread." };
+    if (main.id in runsRef.current || sentUp.current.has(main.id) || handoffQueue.current.some((q) => q.turn.into?.id === main.id)) return { error: "The main thread is busy with another message right now. Tell the person to ask there, or to try again in a moment." };
+    const where = stateRef.current.spaces.find((x) => x.id === chat.spaceId)?.name || "";
+    sentUp.current.set(main.id, { from: chat.id });
+    const organizer = stateRef.current.organizer?.model && modelsRef.current.some((m) => m.id === stateRef.current.organizer!.model && m.connected) ? stateRef.current.organizer.model : defaultModel;
+    handoffQueue.current.push({ prompt: task, carry: { attachments: [], drive: [] }, turn: { carried: `The person asked this in their ${where ? where + " " : ""}chat; it was sent here because it's yours to do. Do it with your tools and answer as usual (your answer is shown in that chat too).`, into: { id: main.id, spaceId: null, model: organizer, reasoning: stateRef.current.organizer?.reasoning } } });
+    setHandoffTick((n) => n + 1);
+    return { ok: true, note: SENT_UP + " Say that in one short line; the main thread's answer is added to this chat by itself." };
   }
   /** A hand-off's chat finished: its answer and files come back to the main thread as one plain message. */
   function finishHandoff(chatId: string) {
@@ -1313,38 +1335,10 @@ export default function App({offline=false}:{offline?:boolean}={}) {
       setQueued({ prompt, chat: main.id, carry: { attachments: carry?.attachments ?? attachments, drive: carry?.drive ?? driveRefs }, turn: { ...turn, mentions: mentionIds } });
       return;
     }
-    // A subject or project chat asked something only the main thread can do (a reminder, a mute, Coming up, the
-    // schedule, grades…): the message goes to the main thread, which answers with its tools, and the answer is copied
-    // back here. The person stays in this chat.
-    if (!into && activeChat && activeChat.kind !== "main" && !activeChat.setup && !activeChat.temporary && !temporaryNext && !long && !isVisual
-      && main && main.id !== activeChat.id && !(main.id in runs) && !files.length && !pickedDrive.length && !pointers.length && mainOnly(prompt)) {
-      const now = Date.now(), where = viewSpace?.name || stateRef.current.spaces.find((x) => x.id === activeChat.spaceId)?.name || "";
-      updateChat(activeChat.id, (c) => ({ ...c, updated: now, messages: [...c.messages, { id: uid(), role: "user" as const, content: prompt, at: now }, { id: uid(), role: "assistant" as const, content: SENT_UP, at: now }] }));
-      sentUp.current.set(main.id, { from: activeChat.id });
-      const organizer = stateRef.current.organizer?.model && modelsRef.current.some((m) => m.id === stateRef.current.organizer!.model && m.connected) ? stateRef.current.organizer.model : defaultModel;
-      handoffQueue.current.push({ prompt, carry: { attachments: [], drive: [] }, turn: { carried: `The person asked this in their ${where ? where + " " : ""}chat; it was sent here because it's yours to do. Do it with your tools and answer as usual (your answer is shown in that chat too).`, into: { id: main.id, spaceId: null, model: organizer, reasoning: stateRef.current.organizer?.reasoning } } });
-      setHandoffTick((n) => n + 1);
-      if (override === undefined) { setDraft(""); drafts.current.delete(activeChat.id); }
-      setMentions([]); setAttachments([]); setDriveRefs([]); setAttach(false);
-      return;
-    }
-    // In the main thread a task on the material of one clearly named (or @mentioned) subject or project goes to a new
-    // chat there at once; anything the rules can't place is the main-thread AI's call (clem.handoff).
-    if (activeChat?.kind === "main" && !long && !into) {
-      // Only work on a subject's material goes to its own chat (core/main-thread/handoff.ts handsOff); merely naming
-      // or @mentioning a subject, planning, deadlines, reminders, grades and what an exam covers stay here.
-      const to = handsOff(prompt, stateRef.current.spaces.map(({ id, name, kind, description }) => ({ id, name, kind, description })), mentionIds);
-      const space = to ? stateRef.current.spaces.find((x) => x.id === to) : undefined;
-      if (space) {
-        startHandoff(activeChat, space, prompt, { carry: { attachments: files, drive: carry?.drive ?? driveRefs }, ask: { reason: mentionIds.includes(space.id) ? "mention" : "match" } });
-        if (override === undefined) { setDraft(""); drafts.current.delete(activeChat.id); }
-        setMentions([]); setAttachments([]); setDriveRefs([]); setAttach(false);
-        return;
-      }
-    }
     const id = chatId || (desktop?draftChatId.current:uid());
     const messageId = uid();
-    const editing = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long && isEditRequest(prompt);
+    // The file open beside the chat can be changed in place: the AI decides when a message asks for that (clem.editOpen).
+    const editable = !!panelFile && panelEdit && canEditInPanel(panelFile) && !isVisual && !long ? panelFile : null;
     const pointed = carry ? [] : pointers;
     const pointerNote = pointed.length ? "\n\nThe user is pointing at these exact parts:\n" + pointed.map((p) => `- ${p.file === REPLY_SOURCE ? "From your earlier answer" : "In " + p.file}${p.page ? ", page " + p.page : ""}: ${p.text ? "“" + p.text + "”" : ""}${p.image ? (p.text ? " " : "") + "(an area of the page, attached as an image)" : ""}`).join("\n") : "";
     const user = {
@@ -1415,27 +1409,6 @@ export default function App({offline=false}:{offline?:boolean}={}) {
     if (!into) setPanelEdit(true);
     // A subject's setup thread reads its own answers (core/guc/setup-flow.ts) until setup is done; then the AI answers.
     if (next.setup && !isVisual && desktop && await gucSetup.reply(next, prompt)) return;
-    if (editing) {
-      const target = panelFile!;
-      const say = (content: string) => updateChat(id, (c) => ({ ...c, messages: c.messages.some((m) => m.id === messageId) ? c.messages.map((m) => (m.id === messageId ? { ...m, content } : m)) : [...c.messages, { id: messageId, role: "assistant", content, model: model || undefined }] }));
-      say(`Editing **${target.name}**…`);
-      const controller = begin(id);
-      status(id)("Editing " + target.name + "…");
-      controller.signal.addEventListener("abort", () => panelRef.current?.stop());
-      try {
-        // Waits for the file to open; fails if it cannot be opened, and Stop wakes it.
-        await Promise.race([panelRef.current!.ready(), new Promise<never>((_, reject) => { if (controller.signal.aborted) reject(Error("Stopped.")); controller.signal.addEventListener("abort", () => reject(Error("Stopped."))); })]);
-        // A Clem-made PDF is re-typeset from its source, so it can grow: it gets the conversation and the chat's files to write from.
-        const context = target.made ? await chatContext(next, prompt, controller.signal) : undefined;
-        const summary = await panelRef.current!.edit(prompt + pointerNote, context);
-        say(`${summary}\n\nSaved to **${target.name}**; the changes are highlighted beside the chat. Use Before/After to compare, or Undo to go back.`);
-      } catch (error) {
-        say(controller.signal.aborted ? `Stopped editing **${target.name}**.` : `I couldn’t edit **${target.name}**: ${(error as Error).message}`);
-      } finally {
-        end(id, controller);
-      }
-      return;
-    }
     const modelReady=models.some((m) => m.id === model && m.connected);
     // The model's AI program gets ready (connection opened, sign-in checked) while the files below are read.
     if (desktop && modelReady) void desktop.invoke({ action: "prepare", model }).catch(() => {});
@@ -1770,6 +1743,10 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
                 memory ? `User-authorized memory for this scope: ${memory}` : "",
                 planNote,
                 gucNote,
+                // Tools the AI decides with: change the open file in place, and send the main thread's business up to it.
+                desktop && editable ? editOpenGuide(editable.name) : "",
+                desktop && activeSpace?.kind === "subject" ? STUDY_SET_GUIDE : "",
+                desktop && chat.kind !== "main" && !chat.setup && !chat.temporary && mainThreadOf(stateRef.current.chats) ? TO_MAIN_GUIDE : "",
                 titleInstruction(chat.titled ? chat.title : null, activeSpace && activeSpace.mark?.for !== activeSpace.name ? { kind: activeSpace.kind, name: activeSpace.name, description: activeSpace.description, keys: markKeys } : undefined, chat.messages.some((m) => m.chapter) ? chaptersOf(chat).map((c) => c.title).slice(-12) : [], !!chat.renamed),
                 standing ? `Where the learner stands in this subject, from their own flashcards and quizzes (pitch explanations to it and suggest what to review when it helps; do not recite it): ${standing}` : "",
                 struggling.length ? `In this subject the learner keeps missing these questions in review; connect to them when relevant: ${struggling.map((q) => "“" + q + "”").join("; ")}` : "",
@@ -1783,11 +1760,50 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
       // The main thread sends its layers within a budget (core/main-thread/context.ts), never the whole thread.
       const conversation = chat.kind === "main" && !isVisual ? await mainRequest(next, expandCommand(prompt) + pointerNote, {
         prefix: [systems[0]?.content || "", MAIN_THREAD_NOTE, ownWorkflows()].filter(Boolean),
-        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:|VIDEOS GEMINI WATCHES:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote].filter(Boolean).join("\n\n"),
+        instructions: [desktop ? answerExtras([expandCommand(prompt), ...next.messages.slice(-5).map((m) => m.content || "")]) : "", workflowText(prompt,{cli:!!desktop,openFile:panelFile?.name,videos:/VIDEO TRANSCRIPTS:|VIDEOS GEMINI WATCHES:/.test(driveNote),drive:linkable.size>0||!!activeSpace?.drive,documents:documentsIn(next).length>0,subject:activeSpace?.kind==="subject",plans:plansHere,guc:gucConnected,vps:vpsConnected}), planNote,
+          // Which spaces this message may be about, and the ones the person @mentioned: context for the AI's own hand-off call.
+          spaceHints(prompt, stateRef.current.spaces.map(({ id, name, kind, description }) => ({ id, name, kind, description })), mentionIds),
+          desktop && editable ? editOpenGuide(editable.name) : ""].filter(Boolean).join("\n\n"),
         memory,
         // Today's classes, deadlines and unread from the engine (cached there until a sync changes them).
         guc: desktop && gucConnected ? await gucNowQuick() : null,
       }) : [...systems, ...sentTurns];
+      // clem.editOpen: the AI changes the file open beside the chat in place (FilePanel's edit: saved into the same file,
+      // the changes highlighted, Before/After and Undo). Only while that file is still the one open.
+      const editOpen = async (args: { instruction?: unknown }) => {
+        const instruction = String(args?.instruction || "").trim();
+        if (!editable) return { error: "No file Clem can change in place is open beside this chat." };
+        if (!instruction) return { error: 'clem.editOpen needs "instruction": what to change, complete.' };
+        if (panelFileRef.current?.id !== editable.id || !panelRef.current) return { error: `${editable.name} is no longer open beside the chat, so it can't be changed in place now.` };
+        const panel = panelRef.current, stop = () => panel.stop();
+        controller.signal.addEventListener("abort", stop);
+        status(id)("Editing " + editable.name + "…");
+        try {
+          await panel.ready();
+          // A Clem-made PDF is re-typeset from its source, so it can grow: it gets the conversation and the chat's files to write from.
+          const context = editable.made ? await chatContext(next, prompt, controller.signal) : undefined;
+          const summary = await panel.edit(instruction + pointerNote, context);
+          return { ok: true, file: editable.name, summary, note: `Saved into ${editable.name} itself; the changes are highlighted beside the chat, and Before/After and Undo are there. Say in one or two sentences what changed.` };
+        } catch (error) {
+          return { error: controller.signal.aborted ? "Stopped." : `${editable.name} couldn't be edited: ${(error as Error).message}` };
+        } finally {
+          controller.signal.removeEventListener("abort", stop);
+          status(id)("");
+        }
+      };
+      // clem.studySet: the AI saves the flashcards or quiz it wrote as a study set in this subject (STUDY_SET_GUIDE).
+      const studySet = async (args: { kind?: unknown; title?: unknown; items?: unknown }) => {
+        const space = activeSpace?.kind === "subject" ? activeSpace : undefined, kind = args?.kind === "quiz" ? "quiz" : args?.kind === "flashcards" ? "flashcards" : null;
+        if (!space) return { error: "Study sets are saved only in a subject chat. Write the questions here instead." };
+        if (!kind) return { error: 'clem.studySet needs "kind": "flashcards" or "quiz".' };
+        try {
+          const parsed = (await import("../core/study")).parseStudy(JSON.stringify({ title: args.title, items: args.items }), kind);
+          patch((s) => ({ ...s, studySets: [...s.studySets, { ...parsed, id: uid(), spaceId: space.id, chatId: id, kind, created: Date.now(), attempts: [] }] }));
+          return { ok: true, title: parsed.title, items: parsed.items.length, note: `Saved in ${space.name}'s ${kind === "quiz" ? "Quizzes" : "Flashcards"} tab. Say so in one line.` };
+        } catch (error) {
+          return { error: "The set wasn't saved: " + ((error as Error).message || "it didn't fit the format").slice(0, 400) + ". Fix the items and call clem.studySet again." };
+        }
+      };
       const reply = await streamChat(
         [
           ...conversation,
@@ -1817,7 +1833,7 @@ ${desktop ? figureLanguage + "\n\n" + coreAnswerInstructions : answerInstruction
             ),
           }));
         },
-        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, videos: watched, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "handoff") return Promise.resolve({ data: handoffTool(chat, args) }); if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
+        "chat", undefined, images, { chat: id, scope: activeSpace ? `${activeSpace.kind}:${activeSpace.id}` : undefined, queuedSince, documents: documentsIn(next), pdfs: pdfs.files, pdfNotes: pdfs.notes, videos: watched, library: isVisual ? undefined : library, look: isVisual ? undefined : (name, pages) => { const at = byId(name); return at ? pageImages([at], at.name, pages) : pageImages(lookable(), name, pages); }, pdfTask: isVisual ? undefined : (op, args) => { if (op === "handoff") return Promise.resolve({ data: handoffTool(chat, args, { attachments: user.attachments, drive: user.drive || [] }, mentionIds) }); if (op === "toMain") return Promise.resolve({ data: toMainTool(chat, args) }); if (op === "editOpen") return editOpen(args).then((data) => ({ data })); if (op === "studySet") return studySet(args).then((data) => ({ data })); if (op === "find" || op === "attach") return import("./files/finder").then((m) => m.findTask(finder, op, args)); const at = byId(args?.file); return import("./desktop/pdf-tasks").then((m) => at ? m.pdfTask([at], op, { ...args, file: at.name }) : m.pdfTask(lookable(), op, args)); } },
       );
       const named = isVisual ? { content: reply } : takeTitle(reply);
       // A reply that used tools: the notes written on the way are dropped and only the answer is shown.
