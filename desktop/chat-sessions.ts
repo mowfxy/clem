@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { withoutFilesNote } from "../core/chat-turns.ts";
 
 /**
  * Each chat keeps its CLI session between messages, the way a CLI keeps its own conversation: the next message goes
@@ -62,8 +63,9 @@ export type SavedSession = Omit<KeptSession, "sent" | "end"> & { key: string; se
 export type SessionWant = { provider: string; account: string; model: string; history: string };
 
 /** What the person typed: the note on parts they pointed at, and /visual's rewording, go only with the message they were
- *  sent with, so a later message sees that turn without them and must still match it. */
-const spoken = (text: string) => text.replace(/\n\nThe user is pointing at these exact parts:\n[\s\S]*$/, "").replace(/^(?:\/visual\s*|Visualize: )/i, "");
+ *  sent with, so a later message sees that turn without them and must still match it. The note naming an earlier
+ *  message's files (core/chat-turns.ts) is added only once it is earlier, so it is left out too. */
+const spoken = (text: string) => withoutFilesNote(text).replace(/\n\nThe user is pointing at these exact parts:\n[\s\S]*$/, "").replace(/^(?:\/visual\s*|Visualize: )/i, "");
 /**
  * A fingerprint of a conversation: the person's messages word for word, and where each answer came, in order. An
  * answer's own words are left out: the chat stores them as shown (file cards, folded notes, shortened later), not as
