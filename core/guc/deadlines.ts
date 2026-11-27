@@ -49,6 +49,18 @@ function names(sentence: string): Named[] {
   return out;
 }
 
+/** An item's name without a course code in front: "ELCT 301 Quiz 2" → "Quiz 2", "CSEN301 - Lab Test 3" → "Lab Test 3"
+ *  (Coming up shows the course beside the name). A name that is only a code stays as it is. */
+export function nameOnly(title: string) {
+  const t = title.replace(/^\s*[A-Z]{2,5}\s?-?\s?\d{3}[A-Z]?\b\s*[-:–—·|]?\s*/, "");
+  return /\p{L}/u.test(t) ? t : title.trim();
+}
+/** A short name for an item whose given name is a sentence ("The second quiz will take place on Monday in Exam Hall
+ *  2"): the item it names ("Quiz 2"), else what kind of thing it is ("Quiz", "Submission", "Deadline"). */
+export function itemName(sentence: string) {
+  return names(sentence)[0]?.name || unnamed(sentence);
+}
+
 /** What an item is, from its name: "quiz", "exam", "assignment", "in-class", "lab", "project", "presentation" or "other". */
 export function kindOf(name: string) {
   const n = name.toLowerCase();

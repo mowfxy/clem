@@ -6,6 +6,7 @@
 // engine stores them (desktop/engine/corrections.ts) and applies them at sync time (guc-sync.ts) and read time
 // (guc-read.ts).
 import { itemKey, type CourseText } from "./deadline-ai.ts";
+import { nameOnly } from "./deadlines.ts";
 import { DONE_DAYS, endsAt } from "./hub.ts";
 import type { GucDeadline } from "./types.ts";
 
@@ -48,16 +49,20 @@ export function applyCorrections<T extends Item>(list: T[], corrections: Correct
   const live = [...corrections].sort((a, b) => a.at - b.at), rules = live.filter((c) => c.kind === "rule");
   // Items the person added that nothing read since has brought (same id or the same quiz/assignment of the course).
   const added = live.filter((c) => c.kind === "add" && c.patch?.item && (!o.course || c.courseKey === o.course)
-    && !list.some((d) => d.id === c.patch.item.id || (!!c.fingerprint && fingerprint(d) === c.fingerprint && d.courseKey === c.patch.item.courseKey))).map((c) => c.patch.item as T);
+    && !list.some((d) => d.id === c.patch.item.id || (!!c.fingerprint && fingerprint(d) === c.fingerprint && d.courseKey === c.patch.item.courseKey))).map((c) => { const t = c.patch.item as T; return { ...t, title: nameOnly(t.title) }; });
+  // An item the person added that a post has since brought (the same quiz of the course, read from a post or mail) is
+  // that one now, so Coming up never holds it twice: theirs leaves, and their edits and notes follow it (fingerprint).
+  const yours = (d: Item) => d.id.startsWith("you-");
+  const read = new Set(list.filter((d) => !yours(d)).map((d) => fingerprint(d)));
   const out: T[] = [];
-  for (const item of [...list, ...added]) {
+  for (const item of [...list.filter((d) => !yours(d) || !read.has(fingerprint(d))), ...added]) {
     let d: T = item, hidden = false;
     for (const c of live) {
       if (!matches(c, d)) continue;
       if (c.kind === "hide") hidden = true;
       else if (c.kind === "edit") {
         const p = c.patch;
-        d = { ...d, ...(p.title ? { title: p.title } : {}), ...(p.due ? { due: p.due, timeKnown: p.timeKnown !== false } : {}), ...(p.place !== undefined ? { place: p.place || undefined } : {}) };
+        d = { ...d, ...(p.title ? { title: nameOnly(p.title) } : {}), ...(p.due ? { due: p.due, timeKnown: p.timeKnown !== false } : {}), ...(p.place !== undefined ? { place: p.place || undefined } : {}) };
         if (p.due) { delete d.either; delete d.ends; }
       } else if (c.kind === "note" && !d.note?.startsWith(`Your note: ${noteOf(c)}`)) d = { ...d, note: `Your note: ${noteOf(c)}${d.note ? ` (read: "${d.note.slice(0, 160)}")` : ""}`.slice(0, 400) };
       else if (c.kind === "done" && o.hub) d = { ...d, done: true, removeAt: new Date(Math.max(endsAt(d), c.at) + DONE_DAYS * 864e5).toISOString() };
