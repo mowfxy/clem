@@ -2638,9 +2638,9 @@ void app.whenReady().then(async () => {
       const cropIo = request.temporary || !request.chat ? memoryIo(temporaryCrops.store(request.chat || request.id)) : diskCrops(user.id);
       const crops = new CropAssets(cropIo, request.chat || request.id);
       /** One task for the window, with the same minute "look" has. */
-      const windowTask = (op: string, args: Record<string, unknown>) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
+      const windowTask = (op: string, args: Record<string, unknown>, waitMs = 60_000) => new Promise<{ data: any; images: { name: string; data: string }[]; files: Uint8Array[] }>((resolve, reject) => {
         const task = randomUUID();
-        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, 60_000);
+        const timer = setTimeout(() => { pendingTasks.delete(task); reject(Error("That took too long.")); }, waitMs);
         pendingTasks.set(task, { resolve: (value) => { clearTimeout(timer); resolve(value); }, reject: (error) => { clearTimeout(timer); reject(error); } });
         send({ id: request.id, type: "pdfTask", task, op, args });
       });
@@ -2694,8 +2694,33 @@ void app.whenReady().then(async () => {
         // The main thread hands subject and project work to a new chat there (core/main-thread/handoff.ts): the window
         // opens it, runs it on the person's last AI, and brings the result back to the main thread when it is done.
         if (tool?.action === "clem.handoff") {
-          if (typeof tool.space !== "string" || !tool.space.trim() || typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "space" (the subject or project, by name) and "task" (the request, complete).' };
-          try { return (await windowTask("handoff", { space: tool.space.slice(0, 200), task: tool.task.slice(0, 8000) })).data; }
+          const space = typeof tool.space === "string" ? tool.space.trim().slice(0, 200) : "", thread = typeof tool.thread === "string" ? tool.thread.trim().slice(0, 200) : "";
+          if (typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "task" (the request, complete) and "space" (the subject or project, by name) or "thread" (a thread id).' };
+          try { return (await windowTask("handoff", { space, thread, task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // A space's threads, for choosing which one a hand-off continues (core/main-thread/handoff.ts spaceThreads).
+        if (tool?.action === "clem.threads") {
+          try { return (await windowTask("threads", { space: typeof tool.space === "string" ? tool.space.slice(0, 200) : "" })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // A subject or project chat's AI sends the main thread's business up to it (core/main-thread/handoff.ts
+        // TO_MAIN_GUIDE); the window queues it on the main thread and copies the answer back.
+        if (tool?.action === "clem.toMain") {
+          if (typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.toMain needs "task": the request, complete.' };
+          try { return (await windowTask("toMain", { task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // The file open beside the chat, changed in place when the AI decides the message asks for it (src/files/edit-open.ts).
+        // An edit of a long document reads, rewrites and saves it: it gets longer than a page task.
+        if (tool?.action === "clem.editOpen") {
+          if (typeof tool.instruction !== "string" || !tool.instruction.trim()) return { error: 'clem.editOpen needs "instruction": what to change, complete.' };
+          try { return (await windowTask("editOpen", { instruction: tool.instruction.slice(0, 8000) }, 10 * 60_000)).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // Flashcards or a quiz the AI wrote, saved as a study set in the subject (core/study-request.ts STUDY_SET_GUIDE).
+        if (tool?.action === "clem.studySet") {
+          try { return (await windowTask("studySet", { kind: tool.kind, title: tool.title, items: tool.items })).data; }
           catch (error) { return { error: (error as Error).message }; }
         }
         // Schedule, reminders, study time, watches, routines, and what the person steers by text (mute, unmute, undo):

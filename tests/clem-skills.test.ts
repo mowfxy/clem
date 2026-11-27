@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {clemSkills,clemSkillsFor,clemSkillText,documentsNote,capabilityIndex,type SkillContext} from '../core/clem-skills.ts';
 import {parseChecks} from '../core/checks.ts';
 import {relevantSkills,builtinSkills} from '../core/skills.ts';
-import {isEditRequest,isDocumentChange} from '../src/files/intent.ts';
+import {editOpenGuide} from '../src/files/edit-open.ts';
 import {validatePlan,parseLeadPlan,plannerInstructions,MIN_STEPS,MAX_STEPS} from '../core/orchestration.ts';
 
 test('asking for videos brings the video playbook, with web search and visible links',()=>{
@@ -29,11 +29,19 @@ test('every built-in skill is detailed',()=>{
   for(const s of builtinSkills){assert.ok(s.steps.length>=5,s.id);assert.ok(s.steps.every(x=>x.length>20),s.id);}
   assert.ok(!builtinSkills.some(s=>s.steps.some(x=>/no web access/i.test(x))),'skills no longer claim there is no web access');
 });
-test('change requests to an open file are recognised in plain words',()=>{
-  for(const t of ['the diagram is wrong, redo it','I want more examples','make it longer','it should have a table of contents','redo page 2','add a section on enzymes']) assert.equal(isEditRequest(t),true,t);
-  for(const t of ['what does page 2 say?','explain the diagram','make flashcards from this','summarize this']) assert.equal(isEditRequest(t),false,t);
-  assert.equal(isDocumentChange('make the pdf longer'),true);
-  assert.equal(isDocumentChange('add salt to the soup'),false);
+test('the AI decides when a message changes the open file (clem.editOpen), no rule before it',async()=>{
+  const g=editOpenGuide('Notes.docx');
+  assert.match(g,/"Notes\.docx" is open beside the chat/);
+  assert.match(g,/"action":"clem\.editOpen","instruction"/);
+  assert.match(g,/A question about the file, or a request for something new from it/);
+  const app=await import('node:fs/promises').then(f=>f.readFile('src/App.tsx','utf8'));
+  assert.match(app,/if \(op === "editOpen"\) return editOpen\(args\)/);
+  assert.match(app,/desktop && editable \? editOpenGuide\(editable\.name\)/);
+  const {ACTIONS}=await import('../desktop/kinetra-turn.ts');
+  for(const a of ['clem.editOpen','clem.toMain','clem.studySet','clem.handoff'])assert.ok(ACTIONS.has(a),a);
+  const skills=clemSkillText('edit the open file',{openFile:'Notes.docx'});
+  assert.match(skills,/clem\.editOpen/);
+  assert.doesNotMatch(skills,/so they do not reach you/);
 });
 test('long tasks have as many steps as the work needs',()=>{
   const models=[{id:'m',name:'m',provider:'OpenAI' as const,connected:true,context:1,specialties:[],tools:[]}];
@@ -104,7 +112,7 @@ test('playbook formats match the parsers that read them',()=>{
   const visuals=clemSkills.find(s=>s.id==='visuals')!.steps.join('\n');
   for(const key of ['"title"','6 sliders','24 nodes']) assert.ok(visuals.includes(key),key);
   const study=clemSkills.find(s=>s.id==='study')!.steps.join('\n');
-  assert.match(study,/no set was saved/);assert.match(study,/\/flashcards/);
+  assert.match(study,/Never say a set was saved unless clem\.studySet answered ok/);assert.match(study,/\/flashcards/);
 });
 test('built-in workflows are not triggered by passing words',()=>{
   const ids=(q:string)=>relevantSkills(q).map(s=>s.id);
