@@ -1,0 +1,25 @@
+/* Reactions under a message (src/chat/Reactions.tsx). Small: the emoji sits inside a quiet pill, like the rest of the
+   message tools. Without reactions the row takes no room until hovered; the chips themselves animate, never a parent. */
+.chat-reactions{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:5px;min-height:0;margin-top:2px}
+.chat-reactions.user{justify-content:flex-end}
+.chat-reactions:not(.has){height:0;margin:0}
+.message:is(:hover,:focus-within) .chat-reactions:not(.has),.chat-reactions:not(.has):has(.cr-pick){height:28px;margin-top:4px}
+.cr-chip{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:32px;height:24px;padding:0 8px;border-radius:99px;border:1px solid var(--c-line-2,#363633);background:#ffffff08;color:var(--c-soft,#b5b4ad);font:12px/1 var(--sans);cursor:pointer;transition:background .15s,border-color .15s,transform .18s var(--ease-spring,cubic-bezier(.2,1.25,.35,1));animation:cr-pop .3s var(--ease-spring,cubic-bezier(.2,1.25,.35,1)) backwards}
+.cr-chip:hover{background:#ffffff10;border-color:#4a4a46}
+.cr-chip:active{transform:scale(.94)}
+.cr-chip.mine{border-color:#5a5a55;background:#ffffff14;color:var(--c-ink,#f0efeb)}
+.cr-emoji{font-size:13px;line-height:1}
+.cr-n{color:var(--c-muted,#85847e)}
+@keyframes cr-pop{from{transform:scale(.6);opacity:0}}
+.cr-add{display:inline-grid;place-items:center;width:26px;height:26px;padding:0;border-radius:50%;border:0;background:none;color:var(--c-muted,#85847e);cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s}
+.cr-add:hover,.cr-add[aria-expanded=true]{background:#ffffff0d;color:var(--c-ink,#f0efeb)}
+.message:is(:hover,:focus-within) .cr-add,.cr-add[aria-expanded=true],.cr-add:focus-visible{opacity:1}
+.chat-reactions.user .cr-add{order:-2}
+.cr-pick{display:flex;align-items:center;gap:1px;height:30px;padding:0 2px;box-sizing:border-box;border-radius:99px;border:1px solid #3c3c39;background:#232322;animation:cr-rise .16s ease-out}
+.chat-reactions.user .cr-pick{order:-3}
+.cr-pick button{width:26px;height:26px;padding:0;border:0;border-radius:50%;background:none;font-size:14px;line-height:1;cursor:pointer;transition:background .12s,transform .15s}
+.cr-pick button:hover,.cr-pick button:focus-visible{background:#ffffff12;transform:translateY(-2px) scale(1.12)}
+.cr-pick button.on{background:#ffffff16}
+@keyframes cr-rise{from{opacity:0;transform:translateY(4px)}}
+@media (hover:none){.chat-reactions.has .cr-add{opacity:1}}
+@media (prefers-reduced-motion:reduce){.cr-chip,.cr-pick{animation:none}}
