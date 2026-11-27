@@ -11,7 +11,7 @@ export type Space = { id: string; name: string; kind: 'project' | 'subject'; /**
 /** Model and thinking level for the coordinator and for every subagent; unset fields fall back to the coordinator's, then the app's. */
 export type ProjectTeam = { coordinatorModel?: string; coordinatorEffort?: string; agentModel?: string; agentEffort?: string };
 /** `by`: 'you', 'coordinator' or an agent's id. */
-export type Reaction = { emoji: string; by: string };
+export type Reaction = { emoji: string; by: string; /** When it was given (older reactions have none). */ at?: number };
 /** A message in a project's coordinator chat or one of its threads. `from`: 'you', 'coordinator' or an agent's id.
  *  `threads`: threads this coordinator message started; `recalled`: ids of the memory lines it was given. */
 /** A file the person sent with a project message: kept in the project's files, named here for the model and the message. */
@@ -35,6 +35,7 @@ export type Message = { id: string; role: 'user' | 'assistant'; content: string;
   /** The size cap's one quiet line (core/main-thread/trim.ts): shown small, never sent back as context. */ trim?: { bytes: number; files: number; messages: number };
   /** A setup question Clem asked in a subject's Setup chat (core/guc/setup-flow.ts), so it is asked once. */ setupStep?: string;
   /** Sent from the person's paired Telegram chat (docs/DESKTOP.md "Telegram"); the answer goes back there too. */ via?: 'telegram';
+  /** Reactions on this message (core/reactions.ts): the person ("you") and the AI ("clem"). Absent on older messages. */ reactions?: Reaction[];
   /** Said by Clem by itself, from a briefing of its background engine (desktop/telegram-thread.ts ownTurn): the briefing's key. */ own?: string;
   /** A main-thread message bringing back what a subject or project chat did for a hand-off (core/main-thread/handoff.ts):
    *  that chat's answer and files, with a link to it. */ brought?: { chat: string; space: string; name: string };
