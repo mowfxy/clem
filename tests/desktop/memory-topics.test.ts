@@ -45,7 +45,7 @@ test("what is stored and sent is far shorter than the old sentences", () => {
   ], chat("a"));
   state.records.forEach((m) => { m.scope = m.scope === "chat:a" ? "subject:phys" : m.scope; });
   const lines = memoryLines(retrieveMemory(state, "subject:phys", "anything", { now: Date.parse("2026-09-02") }), "subject:phys");
-  assert.equal(lines, "How the user wants answers (follow these every time unless they ask otherwise now):\n- Answer style: short answers; no bullet points\nAbout the user:\n- Studies: 2nd-year physics\nThis subject:\n- Entropy: mixes up ΔS and ΔH");
+  assert.equal(lines, "How the user wants answers (follow these every time unless they ask otherwise now):\n- Answer style: inferred: short answers; no bullet points\nAbout the user:\n- Studies: inferred: 2nd-year physics\nThis subject:\n- Entropy: inferred: mixes up ΔS and ΔH");
   assert.ok(!/learned from conversation|confirmed|2026-/.test(lines));
   assert.match(extractionInstructions, /Never write "The user"/);
   assert.ok(!/one sentence/.test(extractionInstructions));

@@ -339,3 +339,16 @@ test("the files in play are shared across the project, newest first, with a thre
   assert.deepEqual(filesInPlay(room, undefined, 1), ["other"]);
   assert.deepEqual(filesInPlay(emptyRoom("s")), []);
 });
+
+test("the coordinator forgets a note when the person asks, and never files a secret", async () => {
+  const { forgetNote } = await import("../core/project-memory.ts");
+  const { readReply } = await import("../core/coordinator.ts");
+  const list = remember([], [entry("Dec 3", ["launch"]), entry("soft launch Nov 28", ["launch"])]);
+  const left = forgetNote(list, "soft launch Nov 28");
+  assert.equal(left.length, 1);
+  assert.equal(left[0].text, "Dec 3");
+  assert.deepEqual(forgetNote(left, "Dec 3"), []);
+  const { directives } = readReply("Removed. [[forget: soft launch Nov 28]] [[remember: access | password is hunter22]]");
+  assert.deepEqual(directives.forget, ["soft launch Nov 28"]);
+  assert.deepEqual(directives.remember, []);
+});
