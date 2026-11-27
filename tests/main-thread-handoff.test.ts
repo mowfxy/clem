@@ -69,7 +69,7 @@ test("no rule hands a main-thread message off before the AI answers (owner, 2026
   const app = await import("node:fs/promises").then((f) => f.readFile("src/App.tsx", "utf8"));
   assert.doesNotMatch(app, /handsOff\(|mainOnly\(|isEditRequest\(/, "the window decides nothing about what a message means");
   assert.match(app, /spaceHints\(prompt, /, "the AI gets the spaces as context");
-  assert.match(app, /if \(op === "handoff"\) return Promise\.resolve\(\{ data: handoffTool\(chat, args, \{ attachments: user\.attachments/, "the AI's hand-off carries the message's files");
+  assert.match(app, /if \(op === "handoff"\) return Promise\.resolve\(\{ data: handoffTool\(chat, args, \{ carry: \{ attachments: user\.attachments/, "the AI's hand-off carries the message's files");
   assert.match(app, /You mentioned|@mentioned \$\{chosen/, "an @mention stays the person's choice of space");
   assert.match(HANDOFF_GUIDE, /Naming a subject is never by itself a reason to hand off/);
   assert.match(HANDOFF_GUIDE, /@mentioned is their own choice of space/);
@@ -84,6 +84,6 @@ test("a hand-off's result in the main thread: its files posted with it, its visu
   assert.equal(broughtMessage({ content: "```kinetra\n{}\n```" }, "Physics").content, "Done: the visual is in the Physics chat. Open it to see it.");
   assert.equal("attachments" in visual, false);
   const app = await import("node:fs/promises").then((f) => f.readFile("src/App.tsx", "utf8"));
-  assert.match(app, /const brought = broughtMessage\(reply, h\.name\)/, "the window posts exactly that");
+  assert.match(app, /const brought = handoffResult\(target\?\.messages \|\| \[\], user, h\.name, h\.task\)/, "the window posts exactly that (through handoffResult)");
   assert.match(app, /type: "handoff", spaceId: space\.id[^\n]*chatId: id/, "the card links the chat the person can open");
 });

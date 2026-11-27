@@ -2684,8 +2684,14 @@ void app.whenReady().then(async () => {
         // The main thread hands subject and project work to a new chat there (core/main-thread/handoff.ts): the window
         // opens it, runs it on the person's last AI, and brings the result back to the main thread when it is done.
         if (tool?.action === "clem.handoff") {
-          if (typeof tool.space !== "string" || !tool.space.trim() || typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "space" (the subject or project, by name) and "task" (the request, complete).' };
-          try { return (await windowTask("handoff", { space: tool.space.slice(0, 200), task: tool.task.slice(0, 8000) })).data; }
+          const space = typeof tool.space === "string" ? tool.space.trim().slice(0, 200) : "", thread = typeof tool.thread === "string" ? tool.thread.trim().slice(0, 200) : "";
+          if (typeof tool.task !== "string" || !tool.task.trim()) return { error: 'clem.handoff needs "task" (the request, complete) and "space" (the subject or project, by name) or "thread" (a thread id).' };
+          try { return (await windowTask("handoff", { space, thread, task: tool.task.slice(0, 8000) })).data; }
+          catch (error) { return { error: (error as Error).message }; }
+        }
+        // A space's threads, for choosing which one a hand-off continues (core/main-thread/handoff.ts spaceThreads).
+        if (tool?.action === "clem.threads") {
+          try { return (await windowTask("threads", { space: typeof tool.space === "string" ? tool.space.slice(0, 200) : "" })).data; }
           catch (error) { return { error: (error as Error).message }; }
         }
         // A subject or project chat's AI sends the main thread's business up to it (core/main-thread/handoff.ts
