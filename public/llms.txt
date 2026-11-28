@@ -1,0 +1,40 @@
+# Clem
+
+> A calm, local-first Windows workspace for projects, study and documents, powered by the AI plan you already have. Free and open source (MIT), from M4 Labs.
+
+Clem is one quiet place for the work you bring to an AI: a course, a research question, a report, a pile of PDFs. Instead of another chat tab, you get subjects and projects that hold your files, chats, flashcards and drafts together, and an AI that answers from them.
+
+- Yours, on your PC: everything lives in `Documents\Clem` as plain files. No lock-in, no upload of your library.
+- Bring your own AI: connect the ChatGPT, Claude, Grok or Google AI (Antigravity) plan you already pay for. Clem adds no subscription.
+- Free and open source: no plan, no trial, no card.
+
+Clem is a preview: most of it is used daily, but some flows are still being verified.
+
+## What it does
+
+- Study that sticks: subjects collect your notes and slides; Clem makes flashcards, quizzes and worksheets from them and schedules every card with FSRS spaced repetition, paced to your exam date.
+- Real documents: typeset PDFs, or real Word, PowerPoint and Excel files. Edits change the same file, with Before/After and Undo.
+- Answers you can check: citations open your file at the right page; calculations end with a check block Clem recomputes; any answer can get a second opinion from another model.
+- Visuals for any idea: `/visual` and a topic gives interactive plots, 3D surfaces, step-through diagrams and charts, exportable to PNG, SVG or PDF.
+- Your folders, live: link folders on your PC or in Google Drive; Clem reads them in place and proposes edits as diffs you approve.
+- Long tasks: multi-step work, chats side by side, and moving to another connected account when one runs low on usage.
+- Proactivity: a main thread where Clem plans your day, turns deadlines into tasks and sends updates in Clem, as Windows notifications or on Telegram.
+- GUC (German University in Cairo) connector: course files, announcements, grades and deadlines, saved on a schedule you describe in plain words.
+
+## Get Clem
+
+- [Download for Windows](https://clem.m4labs.xyz/download/windows): Windows 10 and 11, 64-bit
+- [Releases](https://github.com/mowfxy/clem-releases/releases)
+
+## Docs
+
+- [Source code](https://github.com/mowfxy/clem)
+- [Features in detail](https://github.com/mowfxy/clem/blob/main/docs/FEATURES.md)
+- [Architecture](https://github.com/mowfxy/clem/blob/main/docs/ARCHITECTURE.md)
+- [Production status](https://github.com/mowfxy/clem/blob/main/docs/PRODUCTION-STATUS.md)
+
+## About
+
+- [M4 Labs](https://m4labs.xyz): the lab that makes Clem
+- [Privacy Policy](https://m4labs.xyz/privacy)
+- [Terms of Service](https://m4labs.xyz/terms)

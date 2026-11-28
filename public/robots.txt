@@ -1,0 +1,6 @@
+# AI agents and assistants are welcome to read and cite this site.
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://clem.m4labs.xyz/sitemap.xml
